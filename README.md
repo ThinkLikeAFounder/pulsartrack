@@ -99,7 +99,7 @@ cp .env.example .env              # Configure DB and contract IDs
 npm run dev
 ```
 
-Backend runs on http://localhost:4000 with WebSocket on ws://localhost:4000/ws
+Backend runs on http://localhost:3001 with WebSocket on ws://localhost:3001/ws
 
 ---
 
@@ -169,11 +169,10 @@ NEXT_PUBLIC_CONTRACT_CAMPAIGN_ORCHESTRATOR=<contract-id>
 
 ```env
 STELLAR_NETWORK=testnet
-PORT=4000
-DB_HOST=localhost
-DB_NAME=pulsartrack
+PORT=3001
+DATABASE_URL=postgresql://user:password@localhost:5432/pulsartrack
 CONTRACT_CAMPAIGN_ORCHESTRATOR=<contract-id>
-# ... (see backend/.env for full list)
+# ... (see backend/.env.example for full list)
 ```
 
 ---
