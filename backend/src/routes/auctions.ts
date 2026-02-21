@@ -3,10 +3,16 @@ import pool from '../config/database';
 import { callReadOnly } from '../services/soroban-client';
 import { CONTRACT_IDS } from '../config/stellar';
 import { requireAuth } from '../middleware/auth';
+import { validate } from '../middleware/validate';
 
 const router = Router();
 
-router.get('/', async (req: Request, res: Response) => {
+router.get('/', validate({
+  query: {
+    limit: { type: 'number', integer: true, min: 1, max: 100 },
+    status: { type: 'string', maxLength: 20 },
+  },
+}), async (req: Request, res: Response) => {
   try {
     const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
     const status = req.query.status as string;
@@ -62,7 +68,15 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
-router.post('/:auctionId/bid', requireAuth, async (req: Request, res: Response) => {
+router.post('/:auctionId/bid', requireAuth, validate({
+  params: {
+    auctionId: { type: 'number', required: true, integer: true, min: 1 },
+  },
+  body: {
+    campaignId: { type: 'number', required: true, integer: true, min: 1 },
+    amountStroops: { type: 'number', required: true, integer: true, min: 1 },
+  },
+}), async (req: Request, res: Response) => {
   try {
     const address = (req as any).stellarAddress;
     const auctionId = parseInt(req.params.auctionId);
