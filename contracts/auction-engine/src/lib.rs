@@ -1,5 +1,10 @@
 //! PulsarTrack - Auction Engine (Soroban)
 //! Real-time bidding (RTB) auction system for ad impressions on Stellar.
+//!
+//! Events:
+//! - ("auction", "created"): [auction_id: u64, publisher: Address]
+//! - ("bid", "placed"): [auction_id: u64, bidder: Address, amount: i128]
+//! - ("auction", "settle"): [auction_id: u64, winner: Option<Address>, amount: Option<i128>]
 
 #![no_std]
 use soroban_sdk::{
@@ -198,8 +203,8 @@ impl AuctionEngineContract {
         env.storage().persistent().set(&DataKey::Auction(auction_id), &auction);
 
         env.events().publish(
-            (symbol_short!("auction"), symbol_short!("settled")),
-            auction_id,
+            (symbol_short!("auction"), symbol_short!("settle")),
+            (auction_id, auction.winner, auction.winning_bid),
         );
     }
 

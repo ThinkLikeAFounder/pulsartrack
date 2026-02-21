@@ -1,5 +1,11 @@
 //! PulsarTrack - Escrow Vault (Soroban)
 //! Advanced escrow with time-locked funds, performance triggers, and multi-party approval.
+//!
+//! Events:
+//! - ("escrow", "created"): [escrow_id: u64, campaign_id: u64, amount: i128]
+//! - ("escrow", "release"): [escrow_id: u64, amount: i128]
+//! - ("escrow", "release_partial"): [escrow_id: u64, amount: i128]
+//! - ("escrow", "refund"): [escrow_id: u64, amount: i128]
 
 
 #![no_std]
@@ -266,7 +272,7 @@ impl EscrowVaultContract {
             .set(&DataKey::Escrow(escrow_id), &escrow);
 
         env.events().publish(
-            (symbol_short!("escrow"), symbol_short!("released")),
+            (symbol_short!("escrow"), symbol_short!("release")),
             (escrow_id, locked),
         );
     }
@@ -307,6 +313,11 @@ impl EscrowVaultContract {
         env.storage()
             .persistent()
             .set(&DataKey::Escrow(escrow_id), &escrow);
+
+        env.events().publish(
+            (symbol_short!("escrow"), symbol_short!("release_p")), // "release_partial" is too long for symbol_short
+            (escrow_id, amount),
+        );
     }
 
     /// Refund escrow if expired
@@ -346,7 +357,7 @@ impl EscrowVaultContract {
             .set(&DataKey::Escrow(escrow_id), &escrow);
 
         env.events().publish(
-            (symbol_short!("escrow"), symbol_short!("refunded")),
+            (symbol_short!("escrow"), symbol_short!("refund")),
             (escrow_id, refund),
         );
     }

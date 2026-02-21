@@ -1,5 +1,9 @@
 //! PulsarTrack - Payout Automation (Soroban)
 //! Automated publisher payouts and scheduled payments on Stellar.
+//!
+//! Events:
+//! - ("payout", "schedule"): [payout_id: u64, recipient: Address, amount: i128]
+//! - ("payout", "execute"): [payout_id: u64, amount: i128]
 
 #![no_std]
 use soroban_sdk::{
@@ -100,6 +104,11 @@ impl PayoutAutomationContract {
         env.storage().persistent().set(&DataKey::Payout(payout_id), &payout);
         env.storage().instance().set(&DataKey::PayoutCounter, &payout_id);
 
+        env.events().publish(
+            (symbol_short!("payout"), symbol_short!("schedule")),
+            (payout_id, recipient, amount),
+        );
+
         payout_id
     }
 
@@ -148,7 +157,7 @@ impl PayoutAutomationContract {
         env.storage().persistent().set(&key, &earnings);
 
         env.events().publish(
-            (symbol_short!("payout"), symbol_short!("executed")),
+            (symbol_short!("payout"), symbol_short!("execute")),
             (payout_id, payout.amount),
         );
     }

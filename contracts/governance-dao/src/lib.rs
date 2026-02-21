@@ -1,5 +1,10 @@
 //! PulsarTrack - Governance DAO (Soroban)
 //! On-chain DAO governance with proposals and voting on Stellar.
+//!
+//! Events:
+//! - ("proposal", "created"): [proposal_id: u64, proposer: Address]
+//! - ("gov", "voted"): [proposal_id: u64, voter: Address, power: i128]
+//! - ("proposal", "finalized"): [proposal_id: u64, status: ProposalStatus]
 
 
 #![no_std]
@@ -241,7 +246,7 @@ impl GovernanceDaoContract {
             .set(&DataKey::Proposal(proposal_id), &proposal);
 
         env.events().publish(
-            (symbol_short!("vote"), symbol_short!("cast")),
+            (symbol_short!("gov"), symbol_short!("voted")),
             (proposal_id, voter, power),
         );
     }

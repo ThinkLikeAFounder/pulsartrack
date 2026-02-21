@@ -1,5 +1,10 @@
 //! PulsarTrack - Campaign Lifecycle (Soroban)
 //! Manages ad campaign state transitions and lifecycle events on Stellar.
+//!
+//! Events:
+//! - ("lifecycle", "transit"): [campaign_id: u64]
+//! - ("campaign", "pause"): [campaign_id: u64, actor: Address]
+//! - ("campaign", "resume"): [campaign_id: u64, actor: Address]
 
 #![no_std]
 use soroban_sdk::{
@@ -139,10 +144,20 @@ impl CampaignLifecycleContract {
         match new_state {
             LifecycleState::Active => {
                 lifecycle.activated_at = Some(now);
+                if old_state == LifecycleState::Paused {
+                    env.events().publish(
+                        (symbol_short!("campaign"), symbol_short!("resume")),
+                        (campaign_id, actor.clone()),
+                    );
+                }
             }
             LifecycleState::Paused => {
                 lifecycle.paused_at = Some(now);
                 lifecycle.pause_count += 1;
+                env.events().publish(
+                    (symbol_short!("campaign"), symbol_short!("pause")),
+                    (campaign_id, actor.clone()),
+                );
             }
             LifecycleState::Completed => {
                 lifecycle.completed_at = Some(now);
