@@ -59,6 +59,7 @@ pub enum DataKey {
     Admin,
     TargetingConfig(u64),   // campaign_id
     TargetingScore(u64, Address),  // campaign_id, publisher
+    AuthorizedOracle(Address),
 }
 
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17_280;
@@ -78,6 +79,28 @@ impl TargetingEngineContract {
         }
         admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &admin);
+    }
+
+    pub fn add_oracle(env: Env, admin: Address, oracle: Address) {
+        env.storage().instance().extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+        let _ttl_key = DataKey::AuthorizedOracle(oracle.clone());
+        env.storage().persistent().set(&_ttl_key, &true);
+        env.storage().persistent().extend_ttl(&_ttl_key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
+    }
+
+    pub fn remove_oracle(env: Env, admin: Address, oracle: Address) {
+        env.storage().instance().extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+        env.storage().persistent().remove(&DataKey::AuthorizedOracle(oracle));
     }
 
     pub fn set_targeting(
@@ -132,9 +155,8 @@ impl TargetingEngineContract {
     ) {
         env.storage().instance().extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
         oracle.require_auth();
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
-        // In production, use authorized oracle list
-        if oracle != admin {
+        
+        if !env.storage().persistent().has(&DataKey::AuthorizedOracle(oracle.clone())) {
             panic!("unauthorized");
         }
 

@@ -48,6 +48,9 @@ pub struct VerificationCache {
 #[contracttype]
 pub enum DataKey {
     Admin,
+    CampaignLifecycle,
+    PublisherNetwork,
+    EscrowVault,
     VerificationThreshold,
     MaxViewsPerPeriod,
     SuspiciousThreshold,
@@ -92,6 +95,24 @@ impl FraudPreventionContract {
         env.storage()
             .instance()
             .set(&DataKey::VerifyCounter, &0u64);
+    }
+
+    pub fn set_dependent_contracts(
+        env: Env,
+        admin: Address,
+        lifecycle: Address,
+        network: Address,
+        vault: Address,
+    ) {
+        env.storage().instance().extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+        env.storage().instance().set(&DataKey::CampaignLifecycle, &lifecycle);
+        env.storage().instance().set(&DataKey::PublisherNetwork, &network);
+        env.storage().instance().set(&DataKey::EscrowVault, &vault);
     }
 
     /// Verify an ad view
@@ -240,6 +261,11 @@ impl FraudPreventionContract {
 
         if activity.suspicious_views > threshold {
             activity.suspended = true;
+            // Cross-contract call to suspend publisher
+            if let Some(network_addr) = env.storage().instance().get::<DataKey, Address>(&DataKey::PublisherNetwork) {
+                let network_client = PublisherNetworkContractClient::new(&env, &network_addr);
+                network_client.suspend_publisher(&env.current_contract_address(), &publisher);
+            }
         }
 
         env.storage().persistent().set(&key, &activity);
@@ -344,14 +370,52 @@ impl FraudPreventionContract {
 
     fn _calculate_score(
         env: &Env,
-        _campaign_id: u64,
-        _publisher: &Address,
+        campaign_id: u64,
+        publisher: &Address,
         proof_data: &Option<BytesN<32>>,
     ) -> u32 {
         let base_score: u32 = 80;
         let proof_bonus: u32 = if proof_data.is_some() { 10 } else { 0 };
-        // Additional logic could check publisher reputation here
-        base_score + proof_bonus
+        
+        let score = base_score + proof_bonus;
+        
+        // If score is very low, trigger campaign pause
+        if score < 50 {
+           if let Some(lifecycle_addr) = env.storage().instance().get::<DataKey, Address>(&DataKey::CampaignLifecycle) {
+               let lifecycle_client = CampaignLifecycleContractClient::new(env, &lifecycle_addr);
+               lifecycle_client.pause_for_fraud(&env.current_contract_address(), &campaign_id);
+           }
+        }
+
+        score
+    }
+}
+
+// External contract clients
+#[contract]
+pub struct CampaignLifecycleContract;
+#[contractimpl]
+impl CampaignLifecycleContract {
+    pub fn pause_for_fraud(env: Env, fraud_contract: Address, campaign_id: u64) {
+        let _ = (env, fraud_contract, campaign_id);
+    }
+}
+
+#[contract]
+pub struct PublisherNetworkContract;
+#[contractimpl]
+impl PublisherNetworkContract {
+    pub fn suspend_publisher(env: Env, fraud_contract: Address, publisher: Address) {
+        let _ = (env, fraud_contract, publisher);
+    }
+}
+
+#[contract]
+pub struct EscrowVaultContract;
+#[contractimpl]
+impl EscrowVaultContract {
+    pub fn hold_for_fraud(env: Env, fraud_contract: Address, escrow_id: u64) {
+        let _ = (env, fraud_contract, escrow_id);
     }
 }
 

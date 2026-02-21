@@ -42,6 +42,7 @@ pub struct NetworkStats {
 #[contracttype]
 pub enum DataKey {
     Admin,
+    FraudContract,
     NodeCount,
     NetworkStats,
     Node(Address),
@@ -141,11 +142,41 @@ impl PublisherNetworkContract {
         env.storage().instance().extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
         publisher.require_auth();
 
+        Self::_deactivate_node(&env, publisher);
+    }
+
+    pub fn set_fraud_contract(env: Env, admin: Address, fraud_contract: Address) {
+        env.storage().instance().extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+        env.storage().instance().set(&DataKey::FraudContract, &fraud_contract);
+    }
+
+    pub fn suspend_publisher(env: Env, fraud_contract: Address, publisher: Address) {
+        env.storage().instance().extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        fraud_contract.require_auth();
+
+        let stored_fraud: Address = env.storage().instance().get(&DataKey::FraudContract).expect("fraud contract not set");
+        if fraud_contract != stored_fraud {
+            panic!("unauthorized fraud contract");
+        }
+
+        Self::_deactivate_node(&env, publisher);
+    }
+
+    fn _deactivate_node(env: &Env, publisher: Address) {
         let mut node: NetworkNode = env
             .storage()
             .persistent()
             .get(&DataKey::Node(publisher.clone()))
             .expect("not in network");
+
+        if !node.is_active {
+            return;
+        }
 
         node.is_active = false;
         let _ttl_key = DataKey::Node(publisher);

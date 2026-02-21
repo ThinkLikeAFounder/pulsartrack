@@ -56,6 +56,7 @@ pub struct StateTransition {
 #[contracttype]
 pub enum DataKey {
     Admin,
+    FraudContract,
     LifecycleCounter,
     Lifecycle(u64),
     TransitionCount(u64),
@@ -80,6 +81,34 @@ impl CampaignLifecycleContract {
         admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::LifecycleCounter, &0u64);
+    }
+
+    pub fn set_fraud_contract(env: Env, admin: Address, fraud_contract: Address) {
+        env.storage().instance().extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+        env.storage().instance().set(&DataKey::FraudContract, &fraud_contract);
+    }
+
+    pub fn pause_for_fraud(env: Env, fraud_contract: Address, campaign_id: u64) {
+        env.storage().instance().extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        fraud_contract.require_auth();
+        
+        let stored_fraud_contract: Address = env.storage().instance().get(&DataKey::FraudContract).expect("fraud contract not set");
+        if fraud_contract != stored_fraud_contract {
+            panic!("unauthorized fraud contract");
+        }
+
+        Self::transition(
+            env.clone(),
+            fraud_contract,
+            campaign_id,
+            LifecycleState::Paused,
+            String::from_str(&env, "paused for fraud detection"),
+        );
     }
 
     pub fn register_campaign(
@@ -141,10 +170,17 @@ impl CampaignLifecycleContract {
             .expect("lifecycle not found");
 
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        let fraud_contract: Option<Address> = env.storage().instance().get(&DataKey::FraudContract);
 
-        // Only advertiser or admin can transition
+        // Only advertiser, admin or authorized fraud contract can transition
         if actor != lifecycle.advertiser && actor != admin {
-            panic!("unauthorized");
+            if let Some(fraud_addr) = fraud_contract {
+                if actor != fraud_addr {
+                    panic!("unauthorized");
+                }
+            } else {
+                panic!("unauthorized");
+            }
         }
 
         // Validate state transition

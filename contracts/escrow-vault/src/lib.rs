@@ -26,6 +26,7 @@ pub enum EscrowState {
     Released,
     Refunded,
     PartiallyReleased,
+    Disputed,
 }
 
 #[contracttype]
@@ -70,6 +71,7 @@ pub struct PerformanceMetrics {
 #[contracttype]
 pub enum DataKey {
     Admin,
+    FraudContract,
     TokenAddress,
     OracleAddress,
     MinApprovalThreshold,
@@ -115,6 +117,38 @@ impl EscrowVaultContract {
         env.storage()
             .instance()
             .set(&DataKey::EscrowNonce, &0u64);
+    }
+
+    pub fn set_fraud_contract(env: Env, admin: Address, fraud_contract: Address) {
+        env.storage().instance().extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+        env.storage().instance().set(&DataKey::FraudContract, &fraud_contract);
+    }
+
+    pub fn hold_for_fraud(env: Env, fraud_contract: Address, escrow_id: u64) {
+        env.storage().instance().extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        fraud_contract.require_auth();
+
+        let stored_fraud: Address = env.storage().instance().get(&DataKey::FraudContract).expect("fraud contract not set");
+        if fraud_contract != stored_fraud {
+            panic!("unauthorized fraud contract");
+        }
+
+        let mut escrow: Escrow = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Escrow(escrow_id))
+            .expect("escrow not found");
+
+        escrow.state = EscrowState::Disputed;
+        
+        let _ttl_key = DataKey::Escrow(escrow_id);
+        env.storage().persistent().set(&_ttl_key, &escrow);
+        env.storage().persistent().extend_ttl(&_ttl_key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
     }
 
     /// Create a new escrow
@@ -513,6 +547,9 @@ impl EscrowVaultContract {
     // ============================================================
 
     fn _check_can_release(env: &Env, escrow: &Escrow, escrow_id: u64) {
+        if escrow.state == EscrowState::Disputed {
+            panic!("escrow is disputed due to fraud");
+        }
         let now = env.ledger().timestamp();
         if now < escrow.time_lock_until {
             panic!("time lock active");
