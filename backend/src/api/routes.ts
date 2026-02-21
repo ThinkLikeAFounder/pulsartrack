@@ -1,6 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { getAccountDetails, getAccountTransactions, getFeeStats } from '../services/horizon';
 import { stellarConfig, CONTRACT_IDS } from '../config/stellar';
+import campaignRoutes from '../routes/campaigns';
+import publisherRoutes from '../routes/publishers';
+import auctionRoutes from '../routes/auctions';
+import analyticsRoutes from '../routes/analytics';
 
 const router = Router();
 
@@ -60,30 +64,10 @@ router.get('/contracts', (_req: Request, res: Response) => {
   res.json({ contracts: CONTRACT_IDS });
 });
 
-// Campaign stats (aggregate from DB)
-router.get('/campaigns/stats', async (_req: Request, res: Response) => {
-  res.json({
-    total_campaigns: 0,
-    active_campaigns: 0,
-    total_impressions: 0,
-    total_clicks: 0,
-    total_spent_xlm: 0,
-  });
-});
-
-// Publisher leaderboard
-router.get('/publishers/leaderboard', async (_req: Request, res: Response) => {
-  res.json({ publishers: [] });
-});
-
-// Auction feed
-router.get('/auctions', async (_req: Request, res: Response) => {
-  res.json({ auctions: [], total: 0 });
-});
-
-// Governance proposals
-router.get('/governance/proposals', async (_req: Request, res: Response) => {
-  res.json({ proposals: [] });
-});
+// Domain routes
+router.use('/campaigns', campaignRoutes);
+router.use('/publishers', publisherRoutes);
+router.use('/auctions', auctionRoutes);
+router.use('/governance', analyticsRoutes);
 
 export default router;
