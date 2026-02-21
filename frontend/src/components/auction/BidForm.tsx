@@ -73,10 +73,11 @@ export function BidForm({ auction, campaignId, onSuccess, onCancel }: BidFormPro
 
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-1">
+          <label htmlFor="bid-campaign-id" className="block text-sm font-medium text-gray-300 mb-1">
             Campaign ID
           </label>
           <input
+            id="bid-campaign-id"
             type="number"
             value={selectedCampaign}
             onChange={(e) => setSelectedCampaign(e.target.value)}
@@ -86,11 +87,12 @@ export function BidForm({ auction, campaignId, onSuccess, onCancel }: BidFormPro
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-1">
+          <label htmlFor="bid-amount" className="block text-sm font-medium text-gray-300 mb-1">
             Bid Amount (XLM)
           </label>
           <div className="relative">
             <input
+              id="bid-amount"
               type="number"
               value={bidXlm}
               onChange={(e) => setBidXlm(e.target.value)}

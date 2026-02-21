@@ -55,10 +55,11 @@ export function CampaignForm({ onSuccess, onCancel }: CampaignFormProps) {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label className="block text-sm font-medium text-gray-300 mb-1">
+        <label htmlFor="campaign-title" className="block text-sm font-medium text-gray-300 mb-1">
           Campaign Title <span className="text-red-400">*</span>
         </label>
         <input
+          id="campaign-title"
           type="text"
           value={form.title}
           onChange={set('title')}
@@ -68,10 +69,11 @@ export function CampaignForm({ onSuccess, onCancel }: CampaignFormProps) {
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-300 mb-1">
+        <label htmlFor="campaign-content-id" className="block text-sm font-medium text-gray-300 mb-1">
           Content ID <span className="text-red-400">*</span>
         </label>
         <input
+          id="campaign-content-id"
           type="text"
           value={form.contentId}
           onChange={set('contentId')}
@@ -82,10 +84,11 @@ export function CampaignForm({ onSuccess, onCancel }: CampaignFormProps) {
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-1">
+          <label htmlFor="campaign-budget" className="block text-sm font-medium text-gray-300 mb-1">
             Total Budget (XLM) <span className="text-red-400">*</span>
           </label>
           <input
+            id="campaign-budget"
             type="number"
             value={form.budgetXlm}
             onChange={set('budgetXlm')}
@@ -96,10 +99,11 @@ export function CampaignForm({ onSuccess, onCancel }: CampaignFormProps) {
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-1">
+          <label htmlFor="campaign-daily-budget" className="block text-sm font-medium text-gray-300 mb-1">
             Daily Budget (XLM)
           </label>
           <input
+            id="campaign-daily-budget"
             type="number"
             value={form.dailyBudgetXlm}
             onChange={set('dailyBudgetXlm')}
@@ -112,10 +116,11 @@ export function CampaignForm({ onSuccess, onCancel }: CampaignFormProps) {
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-300 mb-1">
+        <label htmlFor="campaign-duration" className="block text-sm font-medium text-gray-300 mb-1">
           Duration (days)
         </label>
         <select
+          id="campaign-duration"
           value={form.durationDays}
           onChange={(e) => setForm((f) => ({ ...f, durationDays: e.target.value }))}
           className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 text-sm"
@@ -127,10 +132,11 @@ export function CampaignForm({ onSuccess, onCancel }: CampaignFormProps) {
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-300 mb-1">
+        <label htmlFor="campaign-geo" className="block text-sm font-medium text-gray-300 mb-1">
           Geographic Targets
         </label>
         <input
+          id="campaign-geo"
           type="text"
           value={form.targetGeo}
           onChange={set('targetGeo')}
@@ -140,10 +146,11 @@ export function CampaignForm({ onSuccess, onCancel }: CampaignFormProps) {
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-300 mb-1">
+        <label htmlFor="campaign-interests" className="block text-sm font-medium text-gray-300 mb-1">
           Interest Segments
         </label>
         <input
+          id="campaign-interests"
           type="text"
           value={form.targetInterests}
           onChange={set('targetInterests')}
