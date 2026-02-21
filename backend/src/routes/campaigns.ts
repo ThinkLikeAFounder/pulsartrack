@@ -3,6 +3,7 @@ import pool from '../config/database';
 import { callReadOnly } from '../services/soroban-client';
 import { CONTRACT_IDS } from '../config/stellar';
 import { requireAuth } from '../middleware/auth';
+import { validate } from '../middleware/validate';
 
 const router = Router();
 
@@ -44,7 +45,14 @@ router.get('/stats', async (_req: Request, res: Response) => {
   }
 });
 
-router.post('/', requireAuth, async (req: Request, res: Response) => {
+router.post('/', requireAuth, validate({
+  body: {
+    title: { type: 'string', required: true, minLength: 1, maxLength: 200 },
+    contentId: { type: 'string', required: true, minLength: 1 },
+    budgetStroops: { type: 'number', required: true, integer: true, min: 1 },
+    dailyBudgetStroops: { type: 'number', required: true, integer: true, min: 1 },
+  },
+}), async (req: Request, res: Response) => {
   try {
     const address = (req as any).stellarAddress;
     const { title, contentId, budgetStroops, dailyBudgetStroops } = req.body;
