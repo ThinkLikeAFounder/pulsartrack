@@ -1,0 +1,146 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Campaign {
+  id                 String    @id @default(uuid()) @db.Uuid
+  campaignId         BigInt    @unique @map("campaign_id")
+  advertiser         String    @db.VarChar(64)
+  title              String
+  contentId          String    @map("content_id")
+  budgetStroops      BigInt    @default(0) @map("budget_stroops")
+  dailyBudgetStroops BigInt    @default(0) @map("daily_budget_stroops")
+  spentStroops       BigInt    @default(0) @map("spent_stroops")
+  impressions        BigInt    @default(0)
+  clicks             BigInt    @default(0)
+  status             String    @default("Active") @db.VarChar(20)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  expiresAt          DateTime? @map("expires_at") @db.Timestamptz()
+  txHash             String?   @map("tx_hash") @db.VarChar(128)
+  ledgerSequence     BigInt?   @map("ledger_sequence")
+
+  @@index([advertiser])
+  @@index([status])
+  @@map("campaigns")
+}
+
+model Publisher {
+  id                String   @id @default(uuid()) @db.Uuid
+  address           String   @unique @db.VarChar(64)
+  displayName       String   @map("display_name")
+  website           String?
+  status            String   @default("Pending") @db.VarChar(20)
+  tier              String   @default("Bronze") @db.VarChar(20)
+  reputationScore   Int      @default(500) @map("reputation_score")
+  impressionsServed BigInt   @default(0) @map("impressions_served")
+  earningsStroops   BigInt   @default(0) @map("earnings_stroops")
+  joinedAt          DateTime @default(now()) @map("joined_at") @db.Timestamptz()
+  lastActivity      DateTime @default(now()) @map("last_activity") @db.Timestamptz()
+
+  @@index([address])
+  @@index([tier])
+  @@map("publishers")
+}
+
+model Auction {
+  id                  String    @id @default(uuid()) @db.Uuid
+  auctionId           BigInt    @unique @map("auction_id")
+  publisher           String    @db.VarChar(64)
+  impressionSlot      String    @map("impression_slot")
+  floorPriceStroops   BigInt    @default(0) @map("floor_price_stroops")
+  reservePriceStroops BigInt    @default(0) @map("reserve_price_stroops")
+  winningBidStroops   BigInt?   @map("winning_bid_stroops")
+  winner              String?   @db.VarChar(64)
+  bidCount            Int       @default(0) @map("bid_count")
+  status              String    @default("Open") @db.VarChar(20)
+  startTime           DateTime  @default(now()) @map("start_time") @db.Timestamptz()
+  endTime             DateTime  @map("end_time") @db.Timestamptz()
+  settledAt           DateTime? @map("settled_at") @db.Timestamptz()
+  txHash              String?   @map("tx_hash") @db.VarChar(128)
+
+  @@index([publisher])
+  @@index([status])
+  @@map("auctions")
+}
+
+model Bid {
+  id            String   @id @default(uuid()) @db.Uuid
+  auctionId     BigInt   @map("auction_id")
+  bidder        String   @db.VarChar(64)
+  campaignId    BigInt   @map("campaign_id")
+  amountStroops BigInt   @map("amount_stroops")
+  timestamp     DateTime @default(now()) @db.Timestamptz()
+  txHash        String?  @map("tx_hash") @db.VarChar(128)
+
+  @@index([auctionId])
+  @@index([bidder])
+  @@map("bids")
+}
+
+model Impression {
+  id             String   @id @default(uuid()) @db.Uuid
+  campaignId     BigInt   @map("campaign_id")
+  publisher      String   @db.VarChar(64)
+  viewerHash     String?  @map("viewer_hash") @db.VarChar(128)
+  payoutStroops  BigInt   @default(0) @map("payout_stroops")
+  verified       Boolean  @default(false)
+  timestamp      DateTime @default(now()) @db.Timestamptz()
+  ledgerSequence BigInt?  @map("ledger_sequence")
+
+  @@index([campaignId])
+  @@index([publisher])
+  @@index([timestamp])
+  @@map("impressions")
+}
+
+model Subscription {
+  id                String   @id @default(uuid()) @db.Uuid
+  subscriber        String   @db.VarChar(64)
+  tier              String   @db.VarChar(20)
+  isAnnual          Boolean  @default(false) @map("is_annual")
+  amountPaidStroops BigInt   @map("amount_paid_stroops")
+  startedAt         DateTime @default(now()) @map("started_at") @db.Timestamptz()
+  expiresAt         DateTime @map("expires_at") @db.Timestamptz()
+  autoRenew         Boolean  @default(true) @map("auto_renew")
+  txHash            String?  @map("tx_hash") @db.VarChar(128)
+
+  @@index([subscriber])
+  @@map("subscriptions")
+}
+
+model GovernanceProposal {
+  id           String    @id @default(uuid()) @db.Uuid
+  proposalId   BigInt    @unique @map("proposal_id")
+  proposer     String    @db.VarChar(64)
+  title        String
+  description  String
+  status       String    @default("Active") @db.VarChar(20)
+  votesFor     BigInt    @default(0) @map("votes_for")
+  votesAgainst BigInt    @default(0) @map("votes_against")
+  votesAbstain BigInt    @default(0) @map("votes_abstain")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  votingEndsAt DateTime  @map("voting_ends_at") @db.Timestamptz()
+  executedAt   DateTime? @map("executed_at") @db.Timestamptz()
+
+  @@map("governance_proposals")
+}
+
+model LedgerEvent {
+  id             String   @id @default(uuid()) @db.Uuid
+  ledgerSequence BigInt   @map("ledger_sequence")
+  txHash         String   @map("tx_hash") @db.VarChar(128)
+  contractId     String?  @map("contract_id") @db.VarChar(64)
+  eventType      String   @map("event_type") @db.VarChar(50)
+  eventData      Json?    @map("event_data")
+  indexedAt       DateTime @default(now()) @map("indexed_at") @db.Timestamptz()
+
+  @@index([contractId])
+  @@index([eventType])
+  @@index([ledgerSequence])
+  @@map("ledger_events")
+}
