@@ -167,14 +167,12 @@ NEXT_PUBLIC_CONTRACT_CAMPAIGN_ORCHESTRATOR=<contract-id>
 
 ### Backend (`backend/.env`)
 
-```env
-STELLAR_NETWORK=testnet
-PORT=4000
-DB_HOST=localhost
-DB_NAME=pulsartrack
-CONTRACT_CAMPAIGN_ORCHESTRATOR=<contract-id>
-# ... (see backend/.env for full list)
+```bash
+cd backend
+cp .env.example .env   # then fill in contract IDs and DB credentials
 ```
+
+See [`backend/.env.example`](backend/.env.example) for the full list of required variables including database, Stellar network, all 17 contract IDs, Redis, and auth configuration.
 
 ---
 
