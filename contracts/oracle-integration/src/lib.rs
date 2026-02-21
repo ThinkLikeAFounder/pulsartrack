@@ -31,8 +31,6 @@ pub struct PerformanceData {
 #[contracttype]
 pub enum DataKey {
     Admin,
-    PriceOracle,
-    PerformanceOracle,
     PriceFeed(String),   // asset symbol
     PerformanceData(u64), // campaign_id
     OracleCount,
@@ -59,7 +57,7 @@ impl OracleIntegrationContract {
         env.storage().instance().set(&DataKey::OracleCount, &0u32);
     }
 
-    pub fn authorize_oracle(env: Env, admin: Address, oracle: Address) {
+    pub fn add_oracle(env: Env, admin: Address, oracle: Address) {
         env.storage().instance().extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
         admin.require_auth();
         let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
@@ -74,7 +72,7 @@ impl OracleIntegrationContract {
         env.storage().instance().set(&DataKey::OracleCount, &(count + 1));
     }
 
-    pub fn revoke_oracle(env: Env, admin: Address, oracle: Address) {
+    pub fn remove_oracle(env: Env, admin: Address, oracle: Address) {
         env.storage().instance().extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
         admin.require_auth();
         let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
