@@ -9,12 +9,12 @@ interface CampaignStatsProps {
 
 export function CampaignStats({ campaigns }: CampaignStatsProps) {
   const active = campaigns.filter((c) => c.status === 'Active').length;
-  const totalBudget = campaigns.reduce((acc, c) => acc + c.budget, 0n);
-  const totalSpent = campaigns.reduce((acc, c) => acc + c.spent, 0n);
-  const totalImpressions = campaigns.reduce((acc, c) => acc + BigInt(c.impressions), 0n);
-  const totalClicks = campaigns.reduce((acc, c) => acc + BigInt(c.clicks), 0n);
+  const totalBudget = campaigns.reduce((acc, c) => acc + c.budget, BigInt(0));
+  const totalSpent = campaigns.reduce((acc, c) => acc + c.spent, BigInt(0));
+  const totalImpressions = campaigns.reduce((acc, c) => acc + BigInt(c.impressions), BigInt(0));
+  const totalClicks = campaigns.reduce((acc, c) => acc + BigInt(c.clicks), BigInt(0));
   const ctr =
-    totalImpressions > 0n
+    totalImpressions > BigInt(0)
       ? ((Number(totalClicks) / Number(totalImpressions)) * 100).toFixed(2)
       : '0.00';
 

@@ -22,7 +22,7 @@ const INITIAL_STATE = {
 export function CampaignForm({ onSuccess, onCancel }: CampaignFormProps) {
   const [form, setForm] = useState(INITIAL_STATE);
   const [error, setError] = useState<string | null>(null);
-  const { mutateAsync: createCampaign, isPending } = useCreateCampaign();
+  const { createCampaign, isPending } = useCreateCampaign();
 
   const set = (field: keyof typeof form) => (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -41,11 +41,11 @@ export function CampaignForm({ onSuccess, onCancel }: CampaignFormProps) {
       const result = await createCampaign({
         title: form.title,
         contentId: form.contentId,
-        budget: xlmToStroops(budget),
-        dailyBudget: xlmToStroops(parseFloat(form.dailyBudgetXlm) || budget / 30),
+        budgetXlm: budget,
+        dailyBudgetXlm: parseFloat(form.dailyBudgetXlm) || budget / 30,
         durationDays: parseInt(form.durationDays) || 30,
       });
-      onSuccess?.(result as number);
+      onSuccess?.((result as any)?.result || 0);
       setForm(INITIAL_STATE);
     } catch (err: any) {
       setError(err?.message || 'Failed to create campaign');

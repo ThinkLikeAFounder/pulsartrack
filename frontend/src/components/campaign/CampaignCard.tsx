@@ -10,7 +10,7 @@ interface CampaignCardProps {
 }
 
 function StatusBadge({ status }: { status: CampaignStatus }) {
-  const colors: Record<CampaignStatus, string> = {
+  const colors: Record<string, string> = {
     Active: 'bg-green-900/40 text-green-300 border border-green-700',
     Paused: 'bg-yellow-900/40 text-yellow-300 border border-yellow-700',
     Completed: 'bg-blue-900/40 text-blue-300 border border-blue-700',
@@ -25,7 +25,7 @@ function StatusBadge({ status }: { status: CampaignStatus }) {
 }
 
 function ProgressBar({ spent, total }: { spent: bigint; total: bigint }) {
-  const pct = total > 0n ? Number((spent * 100n) / total) : 0;
+  const pct = total > BigInt(0) ? Number((spent * BigInt(100)) / total) : 0;
   return (
     <div className="w-full bg-gray-700 rounded-full h-1.5">
       <div
@@ -40,8 +40,8 @@ export function CampaignCard({ campaign, onSelect }: CampaignCardProps) {
   const budgetXlm = formatXlm(campaign.budget);
   const spentXlm = formatXlm(campaign.spent);
   const spentPct =
-    campaign.budget > 0n
-      ? Math.round(Number((campaign.spent * 100n) / campaign.budget))
+    campaign.budget > BigInt(0)
+      ? Math.round(Number((campaign.spent * BigInt(100)) / campaign.budget))
       : 0;
 
   return (
@@ -87,9 +87,9 @@ export function CampaignCard({ campaign, onSelect }: CampaignCardProps) {
         </div>
       </div>
 
-      {campaign.expiresAt && (
+      {campaign.expires_at && (
         <p className="text-xs text-gray-500 mt-2">
-          Expires: {new Date(campaign.expiresAt * 1000).toLocaleDateString()}
+          Expires: {new Date(Number(campaign.expires_at) * 1000).toLocaleDateString()}
         </p>
       )}
     </div>

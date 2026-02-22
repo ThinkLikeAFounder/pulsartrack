@@ -47,9 +47,23 @@ export async function callReadOnly(options: ReadOnlyOptions): Promise<any> {
   const server = getSorobanServer();
   const contract = new Contract(options.contractId);
 
-  // Use a well-known placeholder account for simulation
-  const placeholderAccount = 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN';
-  const account = await server.getAccount(placeholderAccount).catch(() => null);
+  // The Soroban RPC Server and SDK require a source account to compute the footprint and fee for a simulation,
+  // even for read-only invocations.
+  let simulationAccount = process.env.NEXT_PUBLIC_SIMULATION_ACCOUNT;
+
+  if (!simulationAccount) {
+    if (process.env.NODE_ENV === 'development') {
+      // Fall back to a well-known placeholder account during development
+      simulationAccount = 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN';
+    } else {
+      throw new Error(
+        'NEXT_PUBLIC_SIMULATION_ACCOUNT environment variable is not set. A source account is required for contract simulations.'
+      );
+    }
+  }
+
+  const account = await server.getAccount(simulationAccount).catch(() => null);
+
 
   if (!account) {
     throw new Error('Could not fetch account for read simulation');

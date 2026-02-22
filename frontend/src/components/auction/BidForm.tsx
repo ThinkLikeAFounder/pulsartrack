@@ -17,11 +17,11 @@ export function BidForm({ auction, campaignId, onSuccess, onCancel }: BidFormPro
   const [bidXlm, setBidXlm] = useState('');
   const [selectedCampaign, setSelectedCampaign] = useState(campaignId?.toString() ?? '');
   const [error, setError] = useState<string | null>(null);
-  const { mutateAsync: placeBid, isPending } = usePlaceBid();
+  const { placeBid, isPending } = usePlaceBid();
 
-  const floorXlm = Number(formatXlm(BigInt(auction.floorPrice)));
-  const currentBidXlm = auction.winningBid
-    ? Number(formatXlm(BigInt(auction.winningBid)))
+  const floorXlm = Number(formatXlm(BigInt(auction.floor_price)));
+  const currentBidXlm = auction.winning_bid
+    ? Number(formatXlm(BigInt(auction.winning_bid)))
     : null;
   const minBid = currentBidXlm ? currentBidXlm * 1.05 : floorXlm; // 5% increment or floor
 
@@ -39,9 +39,9 @@ export function BidForm({ auction, campaignId, onSuccess, onCancel }: BidFormPro
 
     try {
       await placeBid({
-        auctionId: auction.auctionId,
+        auctionId: Number(auction.auction_id),
         campaignId: parseInt(selectedCampaign),
-        amount: xlmToStroops(amount),
+        amountStroops: xlmToStroops(amount),
       });
       onSuccess?.();
     } catch (err: any) {
@@ -53,7 +53,7 @@ export function BidForm({ auction, campaignId, onSuccess, onCancel }: BidFormPro
     <div className="bg-gray-800 border border-gray-700 rounded-xl p-5">
       <h3 className="text-white font-semibold mb-1">Place Bid</h3>
       <p className="text-gray-400 text-xs mb-4">
-        Auction #{auction.auctionId} &mdash; {auction.impressionSlot}
+        Auction #{auction.auction_id} &mdash; {auction.impression_slot}
       </p>
 
       <div className="grid grid-cols-2 gap-3 mb-4 text-sm">

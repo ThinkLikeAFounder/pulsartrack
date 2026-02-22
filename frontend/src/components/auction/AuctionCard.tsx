@@ -9,9 +9,9 @@ interface AuctionCardProps {
   onBid?: (auction: Auction) => void;
 }
 
-function AuctionStatus({ status, endTime }: { status: string; endTime: number }) {
+function AuctionStatus({ status, endTime }: { status: string; endTime: number | bigint }) {
   const now = Math.floor(Date.now() / 1000);
-  const timeLeft = endTime - now;
+  const timeLeft = Number(endTime) - now;
   const isExpiringSoon = timeLeft > 0 && timeLeft < 300; // < 5 min
 
   const colors: Record<string, string> = {
@@ -37,9 +37,9 @@ function AuctionStatus({ status, endTime }: { status: string; endTime: number })
   );
 }
 
-function Countdown({ endTime }: { endTime: number }) {
+function Countdown({ endTime }: { endTime: number | bigint }) {
   const now = Math.floor(Date.now() / 1000);
-  const diff = endTime - now;
+  const diff = Number(endTime) - now;
 
   if (diff <= 0) return <span className="text-gray-500 text-xs">Ended</span>;
 
@@ -57,19 +57,19 @@ function Countdown({ endTime }: { endTime: number }) {
 
 export function AuctionCard({ auction, onBid }: AuctionCardProps) {
   const isOpen = auction.status === 'Open';
-  const floorXlm = formatXlm(BigInt(auction.floorPrice));
-  const winningBidXlm = auction.winningBid ? formatXlm(BigInt(auction.winningBid)) : null;
+  const floorXlm = formatXlm(BigInt(auction.floor_price));
+  const winningBidXlm = auction.winning_bid ? formatXlm(BigInt(auction.winning_bid)) : null;
 
   return (
     <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 hover:border-gray-600 transition-all">
       <div className="flex items-start justify-between mb-3">
         <div>
-          <p className="text-xs text-gray-500 font-mono">Auction #{auction.auctionId}</p>
+          <p className="text-xs text-gray-500 font-mono">Auction #{auction.auction_id}</p>
           <p className="text-white font-medium text-sm mt-0.5 truncate max-w-[180px]">
-            {auction.impressionSlot}
+            {auction.impression_slot}
           </p>
         </div>
-        <AuctionStatus status={auction.status} endTime={auction.endTime} />
+        <AuctionStatus status={auction.status} endTime={auction.end_time} />
       </div>
 
       <div className="space-y-2 text-sm">
@@ -89,12 +89,12 @@ export function AuctionCard({ auction, onBid }: AuctionCardProps) {
         )}
         <div className="flex justify-between">
           <span className="text-gray-400">Bids</span>
-          <span className="text-gray-200">{auction.bidCount}</span>
+          <span className="text-gray-200">{auction.bid_count}</span>
         </div>
         {isOpen && (
           <div className="flex justify-between">
             <span className="text-gray-400">Time left</span>
-            <Countdown endTime={auction.endTime} />
+            <Countdown endTime={auction.end_time} />
           </div>
         )}
       </div>

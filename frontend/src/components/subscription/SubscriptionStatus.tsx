@@ -26,13 +26,13 @@ export function SubscriptionStatus({ subscription, onCancel, onRenew }: Subscrip
     );
   }
 
-  const expiresDate = new Date(subscription.expiresAt * 1000);
+  const expiresDate = new Date(Number(subscription.expires_at) * 1000);
   const now = Date.now();
-  const daysLeft = Math.max(0, Math.floor((subscription.expiresAt * 1000 - now) / 86400000));
+  const daysLeft = Math.max(0, Math.floor((Number(subscription.expires_at) * 1000 - now) / 86400000));
   const isExpiringSoon = daysLeft <= 7 && daysLeft > 0;
   const isExpired = daysLeft === 0;
   const tierStyle = TIER_COLORS[subscription.tier] || TIER_COLORS.Starter;
-  const pricePaid = (Number(subscription.amountPaidStroops) / 1e7).toFixed(2);
+  const pricePaid = (Number(subscription.amount_paid) / 1e7).toFixed(2);
 
   return (
     <div className="bg-gray-800 border border-gray-700 rounded-xl p-5 space-y-4">
@@ -51,7 +51,7 @@ export function SubscriptionStatus({ subscription, onCancel, onRenew }: Subscrip
         <div className="text-right">
           <p className="text-xs text-gray-500">Billing</p>
           <p className="text-sm text-gray-200 font-medium">
-            {subscription.isAnnual ? 'Annual' : 'Monthly'}
+            {subscription.is_annual ? 'Annual' : 'Monthly'}
           </p>
         </div>
       </div>
@@ -77,7 +77,7 @@ export function SubscriptionStatus({ subscription, onCancel, onRenew }: Subscrip
       </div>
 
       <div className="flex items-center justify-between text-xs text-gray-500 pt-1">
-        <span>Auto-renew: {subscription.autoRenew ? '✓ On' : '✗ Off'}</span>
+        <span>Auto-renew: {subscription.auto_renew ? '✓ On' : '✗ Off'}</span>
       </div>
 
       {/* Actions */}
