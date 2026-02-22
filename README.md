@@ -21,36 +21,84 @@ PulsarTrack/
 
 ## Smart Contracts (Soroban)
 
-| Category | Contracts |
-|---|---|
-| **Core Ad** | ad-registry, campaign-orchestrator, escrow-vault, fraud-prevention, payment-processor |
-| **Governance** | governance-token (PULSAR), governance-dao, governance-core, timelock-executor |
-| **Publishers** | publisher-verification, publisher-network, publisher-reputation |
-| **Analytics** | analytics-aggregator, campaign-analytics, campaign-lifecycle |
-| **Privacy** | privacy-layer (ZKP consent), targeting-engine, audience-segments |
-| **Identity** | identity-registry, kyc-registry |
-| **Marketplace** | auction-engine (RTB), creative-marketplace |
-| **Subscriptions** | subscription-manager, subscription-benefits |
-| **Finance** | liquidity-pool, milestone-tracker, multisig-treasury, oracle-integration, payout-automation, performance-oracle, recurring-payment, refund-processor, revenue-settlement, rewards-distributor |
-| **Bridge** | token-bridge, wrapped-token |
-| **Utility** | dispute-resolution, budget-optimizer, anomaly-detector |
+| Category          | Contracts                                                                                                                                                                                     |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Core Ad**       | ad-registry, campaign-orchestrator, escrow-vault, fraud-prevention, payment-processor                                                                                                         |
+| **Governance**    | governance-token (PULSAR), governance-dao, governance-core, timelock-executor                                                                                                                 |
+| **Publishers**    | publisher-verification, publisher-network, publisher-reputation                                                                                                                               |
+| **Analytics**     | analytics-aggregator, campaign-analytics, campaign-lifecycle                                                                                                                                  |
+| **Privacy**       | privacy-layer (ZKP consent), targeting-engine, audience-segments                                                                                                                              |
+| **Identity**      | identity-registry, kyc-registry                                                                                                                                                               |
+| **Marketplace**   | auction-engine (RTB), creative-marketplace                                                                                                                                                    |
+| **Subscriptions** | subscription-manager, subscription-benefits                                                                                                                                                   |
+| **Finance**       | liquidity-pool, milestone-tracker, multisig-treasury, oracle-integration, payout-automation, performance-oracle, recurring-payment, refund-processor, revenue-settlement, rewards-distributor |
+| **Bridge**        | token-bridge, wrapped-token                                                                                                                                                                   |
+| **Utility**       | dispute-resolution, budget-optimizer, anomaly-detector                                                                                                                                        |
 
 ---
 
-## Prerequisites
+## Quick Start
+
+### Option 1: Docker (Recommended for Quick Setup)
+
+The fastest way to get PulsarTrack running locally:
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/yourusername/pulsartrack.git
+cd pulsartrack
+
+# 2. Copy environment file
+cp .env.example .env
+
+# 3. Start all services (frontend, backend, PostgreSQL, Redis)
+docker-compose up
+
+# 4. Access the application
+# Frontend: http://localhost:3000
+# Backend API: http://localhost:3001
+# PostgreSQL: localhost:5432
+# Redis: localhost:6379
+```
+
+That's it! Docker will automatically:
+
+- Build the frontend and backend
+- Set up PostgreSQL database
+- Configure Redis for caching
+- Connect all services together
+
+To stop the services:
+
+```bash
+docker-compose down
+```
+
+To rebuild after code changes:
+
+```bash
+docker-compose up --build
+```
+
+### Option 2: Manual Setup
+
+If you prefer to run services individually or need to develop contracts:
+
+#### Prerequisites
 
 - [Rust](https://rustup.rs/) with `wasm32-unknown-unknown` target
 - [Stellar CLI](https://developers.stellar.org/docs/smart-contracts/getting-started/setup) (`stellar`)
 - [Node.js](https://nodejs.org/) 20+
 - [PostgreSQL](https://www.postgresql.org/) 14+
+- [Redis](https://redis.io/) 7+
 
-### Install Rust WASM target
+#### Install Rust WASM target
 
 ```bash
 rustup target add wasm32-unknown-unknown
 ```
 
-### Install Stellar CLI
+#### Install Stellar CLI
 
 ```bash
 cargo install --locked stellar-cli --features opt
@@ -58,7 +106,7 @@ cargo install --locked stellar-cli --features opt
 
 ---
 
-## Quick Start
+## Building & Deploying Contracts
 
 ### 1. Build all contracts
 
@@ -114,27 +162,35 @@ Install the Freighter browser extension, then connect from the app header.
 ## Key Features
 
 ### Real-Time Bidding (RTB)
+
 Publishers create impression slots with floor/reserve prices. Advertisers bid in real-time via the `auction-engine` contract. Winning bids settle via XLM token transfer.
 
 ### Privacy Layer (ZKP)
+
 GDPR-compliant consent management with zero-knowledge proof submission for anonymous audience segmentation. Users control exactly what data is used.
 
 ### Reputation System
+
 Publisher reputation scoring (0-1000) with:
+
 - Advertiser reviews (weighted by rating)
 - Oracle-reported uptime scores
 - Slashing for fraudulent activity
 - Tiered access: Bronze → Silver → Gold → Platinum
 
 ### PULSAR Governance
+
 On-chain DAO using PULSAR token (SEP-41 compatible) for:
+
 - Platform parameter changes
 - Fee structure updates
 - New feature approvals
 - Timelock-protected execution
 
 ### XLM Settlements
+
 All payments use Soroban token interface:
+
 - Campaign funding → escrow
 - Per-impression payouts → publishers
 - Platform fees → treasury
@@ -144,10 +200,10 @@ All payments use Soroban token interface:
 
 ## Networks
 
-| Network | Horizon URL | Soroban RPC |
-|---|---|---|
+| Network | Horizon URL                         | Soroban RPC                         |
+| ------- | ----------------------------------- | ----------------------------------- |
 | Testnet | https://horizon-testnet.stellar.org | https://soroban-testnet.stellar.org |
-| Mainnet | https://horizon.stellar.org | https://mainnet.sorobanrpc.com |
+| Mainnet | https://horizon.stellar.org         | https://mainnet.sorobanrpc.com      |
 
 Set `NEXT_PUBLIC_NETWORK=testnet` in `frontend/.env.local` and `STELLAR_NETWORK=testnet` in `backend/.env`.
 

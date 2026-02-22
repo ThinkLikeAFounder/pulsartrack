@@ -1,0 +1,186 @@
+version: "3.8"
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:16-alpine
+    container_name: pulsartrack-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pulsartrack
+      POSTGRES_PASSWORD: pulsartrack_dev_password
+      POSTGRES_DB: pulsartrack
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/prisma/schema.prisma:/docker-entrypoint-initdb.d/schema.prisma:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pulsartrack"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pulsartrack-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: pulsartrack-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - pulsartrack-network
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: pulsartrack-backend
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+
+      # Database
+      DATABASE_URL: postgresql://pulsartrack:pulsartrack_dev_password@db:5432/pulsartrack
+
+      # Redis
+      REDIS_URL: redis://redis:6379
+
+      # Stellar Network
+      STELLAR_NETWORK: testnet
+      STELLAR_HORIZON_URL: https://horizon-testnet.stellar.org
+      STELLAR_SOROBAN_RPC_URL: https://soroban-testnet.stellar.org
+
+      # Contract IDs (placeholder - update with actual deployed contract IDs)
+      CONTRACT_CAMPAIGN_ORCHESTRATOR: ${CONTRACT_CAMPAIGN_ORCHESTRATOR:-PLACEHOLDER}
+      CONTRACT_CAMPAIGN_LIFECYCLE: ${CONTRACT_CAMPAIGN_LIFECYCLE:-PLACEHOLDER}
+      CONTRACT_ESCROW_VAULT: ${CONTRACT_ESCROW_VAULT:-PLACEHOLDER}
+      CONTRACT_FRAUD_PREVENTION: ${CONTRACT_FRAUD_PREVENTION:-PLACEHOLDER}
+      CONTRACT_PAYMENT_PROCESSOR: ${CONTRACT_PAYMENT_PROCESSOR:-PLACEHOLDER}
+      CONTRACT_AUCTION_ENGINE: ${CONTRACT_AUCTION_ENGINE:-PLACEHOLDER}
+      CONTRACT_PUBLISHER_NETWORK: ${CONTRACT_PUBLISHER_NETWORK:-PLACEHOLDER}
+      CONTRACT_PUBLISHER_VERIFICATION: ${CONTRACT_PUBLISHER_VERIFICATION:-PLACEHOLDER}
+      CONTRACT_GOVERNANCE_DAO: ${CONTRACT_GOVERNANCE_DAO:-PLACEHOLDER}
+      CONTRACT_GOVERNANCE_TOKEN: ${CONTRACT_GOVERNANCE_TOKEN:-PLACEHOLDER}
+      CONTRACT_IDENTITY_REGISTRY: ${CONTRACT_IDENTITY_REGISTRY:-PLACEHOLDER}
+      CONTRACT_ORACLE_INTEGRATION: ${CONTRACT_ORACLE_INTEGRATION:-PLACEHOLDER}
+      CONTRACT_TARGETING_ENGINE: ${CONTRACT_TARGETING_ENGINE:-PLACEHOLDER}
+      CONTRACT_ANALYTICS_AGGREGATOR: ${CONTRACT_ANALYTICS_AGGREGATOR:-PLACEHOLDER}
+      CONTRACT_PRIVACY_LAYER: ${CONTRACT_PRIVACY_LAYER:-PLACEHOLDER}
+      CONTRACT_SUBSCRIPTION_MANAGER: ${CONTRACT_SUBSCRIPTION_MANAGER:-PLACEHOLDER}
+      CONTRACT_TOKEN_BRIDGE: ${CONTRACT_TOKEN_BRIDGE:-PLACEHOLDER}
+
+      # API Configuration
+      CORS_ORIGIN: http://localhost:3000
+      RATE_LIMIT_WINDOW_MS: 900000
+      RATE_LIMIT_MAX_REQUESTS: 100
+
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend/src:/app/src:ro
+      - ./backend/prisma:/app/prisma:ro
+    networks:
+      - pulsartrack-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://localhost:3001/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Frontend Next.js App
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: runner
+    container_name: pulsartrack-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+
+      # API Configuration
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+      NEXT_PUBLIC_WS_URL: ws://localhost:3001
+
+      # Stellar Network
+      NEXT_PUBLIC_NETWORK: testnet
+      NEXT_PUBLIC_HORIZON_URL: https://horizon-testnet.stellar.org
+      NEXT_PUBLIC_SOROBAN_RPC_URL: https://soroban-testnet.stellar.org
+
+      # Contract IDs (placeholder - update with actual deployed contract IDs)
+      NEXT_PUBLIC_CONTRACT_CAMPAIGN_ORCHESTRATOR: ${CONTRACT_CAMPAIGN_ORCHESTRATOR:-PLACEHOLDER}
+      NEXT_PUBLIC_CONTRACT_CAMPAIGN_LIFECYCLE: ${CONTRACT_CAMPAIGN_LIFECYCLE:-PLACEHOLDER}
+      NEXT_PUBLIC_CONTRACT_ESCROW_VAULT: ${CONTRACT_ESCROW_VAULT:-PLACEHOLDER}
+      NEXT_PUBLIC_CONTRACT_FRAUD_PREVENTION: ${CONTRACT_FRAUD_PREVENTION:-PLACEHOLDER}
+      NEXT_PUBLIC_CONTRACT_PAYMENT_PROCESSOR: ${CONTRACT_PAYMENT_PROCESSOR:-PLACEHOLDER}
+      NEXT_PUBLIC_CONTRACT_AUCTION_ENGINE: ${CONTRACT_AUCTION_ENGINE:-PLACEHOLDER}
+      NEXT_PUBLIC_CONTRACT_PUBLISHER_NETWORK: ${CONTRACT_PUBLISHER_NETWORK:-PLACEHOLDER}
+      NEXT_PUBLIC_CONTRACT_PUBLISHER_VERIFICATION: ${CONTRACT_PUBLISHER_VERIFICATION:-PLACEHOLDER}
+      NEXT_PUBLIC_CONTRACT_GOVERNANCE_DAO: ${CONTRACT_GOVERNANCE_DAO:-PLACEHOLDER}
+      NEXT_PUBLIC_CONTRACT_GOVERNANCE_TOKEN: ${CONTRACT_GOVERNANCE_TOKEN:-PLACEHOLDER}
+      NEXT_PUBLIC_CONTRACT_IDENTITY_REGISTRY: ${CONTRACT_IDENTITY_REGISTRY:-PLACEHOLDER}
+      NEXT_PUBLIC_CONTRACT_ORACLE_INTEGRATION: ${CONTRACT_ORACLE_INTEGRATION:-PLACEHOLDER}
+      NEXT_PUBLIC_CONTRACT_TARGETING_ENGINE: ${CONTRACT_TARGETING_ENGINE:-PLACEHOLDER}
+      NEXT_PUBLIC_CONTRACT_ANALYTICS_AGGREGATOR: ${CONTRACT_ANALYTICS_AGGREGATOR:-PLACEHOLDER}
+      NEXT_PUBLIC_CONTRACT_PRIVACY_LAYER: ${CONTRACT_PRIVACY_LAYER:-PLACEHOLDER}
+      NEXT_PUBLIC_CONTRACT_SUBSCRIPTION_MANAGER: ${CONTRACT_SUBSCRIPTION_MANAGER:-PLACEHOLDER}
+      NEXT_PUBLIC_CONTRACT_TOKEN_BRIDGE: ${CONTRACT_TOKEN_BRIDGE:-PLACEHOLDER}
+
+      # Simulation Account (for read-only contract calls)
+      NEXT_PUBLIC_SIMULATION_ACCOUNT: GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN
+
+    depends_on:
+      - backend
+    networks:
+      - pulsartrack-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:3000",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  pulsartrack-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
