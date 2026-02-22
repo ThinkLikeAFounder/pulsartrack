@@ -42,11 +42,10 @@ export function AuctionList({ auctions, isLoading, onRefresh }: AuctionListProps
             <button
               key={f}
               onClick={() => setFilter(f)}
-              className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-                filter === f
+              className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${filter === f
                   ? 'bg-indigo-600 text-white'
                   : 'text-gray-400 hover:text-gray-200'
-              }`}
+                }`}
             >
               {f}
               {f !== 'All' && (
@@ -85,7 +84,7 @@ export function AuctionList({ auctions, isLoading, onRefresh }: AuctionListProps
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((auction) => (
             <AuctionCard
-              key={auction.auctionId}
+              key={auction.auction_id}
               auction={auction}
               onBid={auction.status === 'Open' ? setBiddingOn : undefined}
             />

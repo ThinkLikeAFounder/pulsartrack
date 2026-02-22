@@ -109,20 +109,19 @@ export function useAuction(auctionId: number, enabled = true) {
  * Hook to create a campaign
  */
 export function useCreateCampaign() {
-  const { mutate, ...rest } = useContractCall();
+  const { mutateAsync, ...rest } = useContractCall();
   const { address } = useWalletStore();
 
-  const createCampaign = (params: {
+  const createCampaign = async (params: {
     title: string;
     budgetXlm: number;
     dailyBudgetXlm: number;
     durationDays: number;
     contentId: string;
-    campaignType: number;
   }) => {
-    if (!address) return;
+    if (!address) throw new Error("Wallet not connected");
     const STROOPS = 10_000_000;
-    mutate({
+    return mutateAsync({
       contractId: CONTRACT_IDS.CAMPAIGN_ORCHESTRATOR,
       method: 'create_campaign',
       source: address,
@@ -144,16 +143,16 @@ export function useCreateCampaign() {
  * Hook to place a bid in an auction
  */
 export function usePlaceBid() {
-  const { mutate, ...rest } = useContractCall();
+  const { mutateAsync, ...rest } = useContractCall();
   const { address } = useWalletStore();
 
-  const placeBid = (params: {
+  const placeBid = async (params: {
     auctionId: number;
     amountStroops: bigint;
     campaignId: number;
   }) => {
-    if (!address) return;
-    mutate({
+    if (!address) throw new Error("Wallet not connected");
+    return mutateAsync({
       contractId: CONTRACT_IDS.AUCTION_ENGINE,
       method: 'place_bid',
       source: address,

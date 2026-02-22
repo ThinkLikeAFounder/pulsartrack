@@ -8,14 +8,14 @@ interface GovernanceStatsProps {
   votingPower?: bigint;
 }
 
-export function GovernanceStats({ proposals, tokenBalance = 0n, votingPower = 0n }: GovernanceStatsProps) {
+export function GovernanceStats({ proposals, tokenBalance = BigInt(0), votingPower = BigInt(0) }: GovernanceStatsProps) {
   const active = proposals.filter((p) => p.status === 'Active').length;
   const passed = proposals.filter((p) => p.status === 'Passed' || p.status === 'Executed').length;
-  const failed = proposals.filter((p) => p.status === 'Failed').length;
+  const failed = proposals.filter((p) => p.status === 'Rejected').length;
 
   const totalVotes = proposals.reduce(
-    (acc, p) => acc + p.votesFor + p.votesAgainst + p.votesAbstain,
-    0n
+    (acc, p) => acc + p.votes_for + p.votes_against + p.votes_abstain,
+    BigInt(0)
   );
 
   const formatPulsar = (amount: bigint) => {
