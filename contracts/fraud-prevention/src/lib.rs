@@ -77,7 +77,7 @@ pub struct FraudPreventionContract;
 impl FraudPreventionContract {
     /// Initialize the contract
     pub fn initialize(env: Env, admin: Address) {
-        env.storage().instance().extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+
         if env.storage().instance().has(&DataKey::Admin) {
             panic!("already initialized");
         }
@@ -235,8 +235,13 @@ impl FraudPreventionContract {
     }
 
     /// Flag suspicious publisher activity
-    pub fn flag_suspicious(env: Env, publisher: Address) {
+    pub fn flag_suspicious(env: Env, caller: Address, publisher: Address) {
         env.storage().instance().extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        caller.require_auth();
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if caller != admin {
+            panic!("unauthorized");
+        }
         let key = DataKey::SuspiciousActivity(publisher.clone());
         let mut activity: SuspiciousActivity = env
             .storage()

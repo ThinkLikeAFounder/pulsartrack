@@ -81,7 +81,7 @@ fn test_set_dependent_contracts() {
 fn test_set_dependent_contracts_unauthorized() {
     let env = Env::default();
     env.mock_all_auths();
-    let (client, _) = setup(&env);
+    let (client, admin) = setup(&env);
     let stranger = Address::generate(&env);
 
     let lifecycle = Address::generate(&env);
@@ -107,7 +107,7 @@ fn test_set_threshold() {
 fn test_set_threshold_unauthorized() {
     let env = Env::default();
     env.mock_all_auths();
-    let (client, _) = setup(&env);
+    let (client, admin) = setup(&env);
     let stranger = Address::generate(&env);
 
     client.set_threshold(&stranger, &90u32);
@@ -143,7 +143,7 @@ fn test_flag_suspicious() {
 
     let publisher = Address::generate(&env);
 
-    client.flag_suspicious(&publisher);
+    client.flag_suspicious(&admin, &publisher);
 
     let status = client.get_suspicious_status(&publisher).unwrap();
     assert_eq!(status.suspicious_views, 1);
@@ -155,13 +155,13 @@ fn test_flag_suspicious() {
 fn test_flag_suspicious_accumulates() {
     let env = Env::default();
     env.mock_all_auths();
-    let (client, _) = setup(&env);
+    let (client, admin) = setup(&env);
 
     let publisher = Address::generate(&env);
 
-    client.flag_suspicious(&publisher);
-    client.flag_suspicious(&publisher);
-    client.flag_suspicious(&publisher);
+    client.flag_suspicious(&admin, &publisher);
+    client.flag_suspicious(&admin, &publisher);
+    client.flag_suspicious(&admin, &publisher);
 
     let status = client.get_suspicious_status(&publisher).unwrap();
     assert_eq!(status.suspicious_views, 3);
@@ -173,7 +173,7 @@ fn test_flag_suspicious_accumulates() {
 fn test_publisher_not_suspended_initially() {
     let env = Env::default();
     env.mock_all_auths();
-    let (client, _) = setup(&env);
+    let (client, admin) = setup(&env);
     let publisher = Address::generate(&env);
 
     assert!(!client.is_publisher_suspended(&publisher));
@@ -188,7 +188,7 @@ fn test_clear_flag() {
     let (client, admin) = setup(&env);
 
     let publisher = Address::generate(&env);
-    client.flag_suspicious(&publisher);
+    client.flag_suspicious(&admin, &publisher);
     assert!(client.get_suspicious_status(&publisher).is_some());
 
     client.clear_flag(&admin, &publisher);
@@ -200,11 +200,11 @@ fn test_clear_flag() {
 fn test_clear_flag_unauthorized() {
     let env = Env::default();
     env.mock_all_auths();
-    let (client, _) = setup(&env);
+    let (client, admin) = setup(&env);
     let stranger = Address::generate(&env);
     let publisher = Address::generate(&env);
 
-    client.flag_suspicious(&publisher);
+    client.flag_suspicious(&admin, &publisher);
     client.clear_flag(&stranger, &publisher);
 }
 
@@ -279,7 +279,7 @@ fn test_verification_stats_updated() {
 fn test_get_suspicious_status_unknown() {
     let env = Env::default();
     env.mock_all_auths();
-    let (client, _) = setup(&env);
+    let (client, admin) = setup(&env);
     let unknown = Address::generate(&env);
 
     assert!(client.get_suspicious_status(&unknown).is_none());
@@ -289,7 +289,7 @@ fn test_get_suspicious_status_unknown() {
 fn test_get_total_verifications_initial() {
     let env = Env::default();
     env.mock_all_auths();
-    let (client, _) = setup(&env);
+    let (client, admin) = setup(&env);
 
     assert_eq!(client.get_total_verifications(), 0);
 }
@@ -318,5 +318,17 @@ fn test_fraud_integration() {
     // Normally we'd call flag_suspicious multiple times
     // For this test, let's just verify it can be called without panic
     // (Actual cross-contract verification would require registering the other contracts too)
-    client.flag_suspicious(&publisher);
+    client.flag_suspicious(&admin, &publisher);
+}
+
+#[test]
+#[should_panic(expected = "unauthorized")]
+fn test_flag_suspicious_unauthorized() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin) = setup(&env);
+    let stranger = Address::generate(&env);
+    let publisher = Address::generate(&env);
+
+    client.flag_suspicious(&stranger, &publisher);
 }
