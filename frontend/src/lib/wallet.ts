@@ -76,9 +76,42 @@ export const getWalletAddress = async (): Promise<string | null> => {
 };
 
 /**
+ * Known Stellar network passphrases for mapping to labels
+ */
+const TESTNET_PASSPHRASE = 'Test SDF Network ; September 2015';
+const PUBLIC_PASSPHRASE = 'Public Global Stellar Network ; September 2015';
+
+/**
+ * Get human-friendly label for the network Freighter is connected to.
+ * Returns "testnet", "public" or "unknown" or null on failure.
+ */
+export const getFreighterNetworkLabel = async (): Promise<string | null> => {
+  try {
+    const result = await getNetworkDetails();
+    if (result.error || !result.networkPassphrase) return null;
+    if (result.networkPassphrase === TESTNET_PASSPHRASE) return 'testnet';
+    if (result.networkPassphrase === PUBLIC_PASSPHRASE) return 'public';
+    return 'unknown';
+  } catch {
+    return null;
+  }
+};
+
+/**
  * Sign a transaction XDR string using Freighter
+ * If Freighter network doesn't match the app network, refuse to sign.
  */
 export const signTx = async (txXdr: string): Promise<string> => {
+  // Ensure network matches before attempting to sign
+  const isCorrect = await verifyNetwork();
+  if (!isCorrect) {
+    const freighterLabel = (await getFreighterNetworkLabel()) || 'unknown';
+    // Use CURRENT_NETWORK (app expected network) for message
+    throw new Error(
+      `Network mismatch: Freighter is on "${freighterLabel}" but app requires "${CURRENT_NETWORK}". Signing is blocked.`,
+    );
+  }
+
   const networkPassphrase = getNetworkPassphrase();
   const result = await signTransaction(txXdr, { networkPassphrase });
   if (result.error) {

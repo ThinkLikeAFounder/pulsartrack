@@ -8,6 +8,8 @@ import {
   isWalletConnected,
   getWalletAddress,
   verifyNetwork,
+  getFreighterNetworkLabel,
+  getWalletData,
 } from "../lib/wallet";
 import { parseStellarError } from "../lib/error-handler";
 
@@ -20,22 +22,42 @@ export function useWallet() {
     setAddress,
     setConnected,
     setNetworkMismatch,
+    setNetwork,
+    setFreighterNetwork,
     disconnect: storeDisconnect,
+    autoReconnect,
   } = useWalletStore();
   const queryClient = useQueryClient();
 
   const connect = useCallback(async () => {
     try {
       const addr = await connectWallet();
+
+      // Update address/connected
       setAddress(addr);
       setConnected(true);
+
+      // Immediately verify Freighter network after a successful connect
+      const isNetworkCorrect = await verifyNetwork();
+      const freighterLabel = await getFreighterNetworkLabel();
+      setFreighterNetwork(freighterLabel || null);
+      setNetworkMismatch(!isNetworkCorrect);
+
+      // Ensure app network is set from wallet data (keeps store in sync)
+      try {
+        const data = await getWalletData();
+        if (data.network) setNetwork(data.network);
+      } catch {
+        // ignore
+      }
+
       return { success: true, address: addr };
     } catch (err) {
       const parsed = parseStellarError(err);
       console.error("Wallet connect error:", parsed);
       return { success: false, error: parsed };
     }
-  }, [setAddress, setConnected]);
+  }, [setAddress, setConnected, setFreighterNetwork, setNetworkMismatch, setNetwork]);
 
   const disconnect = useCallback(() => {
     // Freighter doesn't have a programmatic disconnect
@@ -83,6 +105,12 @@ export function useWallet() {
 
     return () => clearInterval(intervalId);
   }, [checkConnection]);
+
+  // Run autoReconnect on mount so store re-checks connection + network on rehydrate
+  useEffect(() => {
+    // ignore promise warning; autoReconnect is safe
+    autoReconnect();
+  }, [autoReconnect]);
 
   return {
     address,
