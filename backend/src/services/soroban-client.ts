@@ -7,12 +7,13 @@ import {
   nativeToScVal,
   xdr,
   Address,
-} from '@stellar/stellar-sdk';
-import { stellarConfig } from '../config/stellar';
+} from "@stellar/stellar-sdk";
+import { stellarConfig } from "../config/stellar";
 
-const SIMULATION_ACCOUNT = 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN';
+const SIMULATION_ACCOUNT =
+  "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
 
-function getServer(): rpc.Server {
+export function getServer(): rpc.Server {
   return new rpc.Server(stellarConfig.sorobanRpcUrl, { allowHttp: false });
 }
 
@@ -22,7 +23,7 @@ function getServer(): rpc.Server {
 export async function callReadOnly(
   contractId: string,
   method: string,
-  args: xdr.ScVal[] = []
+  args: xdr.ScVal[] = [],
 ): Promise<any> {
   const server = getServer();
   const contract = new Contract(contractId);
@@ -43,10 +44,11 @@ export async function callReadOnly(
   }
 
   if (!rpc.Api.isSimulationSuccess(sim)) {
-    throw new Error('Simulation returned no result');
+    throw new Error("Simulation returned no result");
   }
 
-  const retval = (sim as rpc.Api.SimulateTransactionSuccessResponse).result?.retval;
+  const retval = (sim as rpc.Api.SimulateTransactionSuccessResponse).result
+    ?.retval;
   return retval ? scValToNative(retval) : null;
 }
 
@@ -55,5 +57,5 @@ export function toAddressScVal(address: string): xdr.ScVal {
 }
 
 export function toU64ScVal(value: number | bigint): xdr.ScVal {
-  return nativeToScVal(BigInt(value), { type: 'u64' });
+  return nativeToScVal(BigInt(value), { type: "u64" });
 }

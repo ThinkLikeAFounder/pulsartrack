@@ -9,7 +9,7 @@
 
 #![no_std]
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short,
+    contract, contractimpl, contracttype, symbol_short, token,
     Address, Env, String,
 };
 
@@ -141,6 +141,24 @@ impl GovernanceDaoContract {
     ) -> u64 {
         env.storage().instance().extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
         proposer.require_auth();
+
+        // Enforce minimum token requirement for proposal creation
+        let min_tokens: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::ProposerMinTokens)
+            .unwrap_or(0);
+        if min_tokens > 0 {
+            let gov_token: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::GovernanceToken)
+                .unwrap();
+            let balance = token::Client::new(&env, &gov_token).balance(&proposer);
+            if balance < min_tokens {
+                panic!("insufficient tokens to create proposal");
+            }
+        }
 
         let counter: u64 = env
             .storage()

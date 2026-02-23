@@ -1,10 +1,11 @@
-import { WebSocketServer, WebSocket } from 'ws';
-import { IncomingMessage, Server } from 'http';
-import { streamLedgers } from './horizon';
+import { WebSocketServer, WebSocket } from "ws";
+import { IncomingMessage, Server } from "http";
+import { streamLedgers } from "./horizon";
+import { logger } from "../lib/logger";
 
 interface PulsarEvent {
   type: string;
-  data: Record<string, any>;
+  payload: any;
   timestamp: number;
   txHash?: string;
 }
@@ -24,19 +25,19 @@ function startLedgerStream(): void {
       currentBackoff = INITIAL_BACKOFF_MS;
 
       broadcast({
-        type: 'ledger_closed',
-        data: {
+        type: "LEDGER_CLOSED",
+        payload: {
           sequence: ledger.sequence,
-          closedAt: ledger.closed_at,
+          closed_at: ledger.closed_at,
           transactionCount: ledger.transaction_count,
         },
         timestamp: Date.now(),
       });
     },
-    (err) => {
-      console.error('[WS] Ledger stream error:', err?.message);
+    (err: any) => {
+      logger.error(err, "[WS] Ledger stream error");
       scheduleReconnect();
-    }
+    },
   );
 }
 
@@ -44,27 +45,34 @@ function scheduleReconnect(): void {
   if (reconnectTimer) return;
 
   broadcast({
-    type: 'reconnecting',
-    data: { message: 'Horizon stream dropped, reconnecting...', retryMs: currentBackoff },
+    type: "reconnecting",
+    payload: {
+      message: "Horizon stream dropped, reconnecting...",
+      retryMs: currentBackoff,
+    },
     timestamp: Date.now(),
   });
 
-  console.log(`[WS] Reconnecting in ${currentBackoff}ms...`);
+  logger.info(`[WS] Reconnecting in ${currentBackoff}ms...`);
 
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
 
     // Clean up previous stream
     if (stopStream) {
-      try { stopStream(); } catch { /* already closed */ }
+      try {
+        stopStream();
+      } catch {
+        /* already closed */
+      }
       stopStream = null;
     }
 
     startLedgerStream();
 
     broadcast({
-      type: 'reconnected',
-      data: { message: 'Horizon stream resumed' },
+      type: "reconnected",
+      payload: { message: "Horizon stream resumed" },
       timestamp: Date.now(),
     });
 
@@ -74,35 +82,39 @@ function scheduleReconnect(): void {
 }
 
 export function setupWebSocketServer(server: Server): WebSocketServer {
-  const wss = new WebSocketServer({ server, path: '/ws' });
+  const wss = new WebSocketServer({ server, path: "/ws" });
 
-  wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
+  wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
     clients.add(ws);
-    console.log(`[WS] Client connected. Total: ${clients.size}`);
+    logger.info(`[WS] Client connected. Total: ${clients.size}`);
 
     // Send welcome message
     sendToClient(ws, {
-      type: 'connected',
-      data: { message: 'Connected to PulsarTrack WebSocket server' },
+      type: "connected",
+      payload: { message: "Connected to PulsarTrack WebSocket server" },
       timestamp: Date.now(),
     });
 
-    ws.on('close', () => {
+    ws.on("close", () => {
       clients.delete(ws);
-      console.log(`[WS] Client disconnected. Total: ${clients.size}`);
+      logger.info(`[WS] Client disconnected. Total: ${clients.size}`);
     });
 
-    ws.on('error', (err) => {
-      console.error('[WS] Client error:', err.message);
+    ws.on("error", (err) => {
+      logger.error(err, "[WS] Client error");
       clients.delete(ws);
     });
 
     // Handle ping-pong
-    ws.on('message', (data) => {
+    ws.on("message", (data) => {
       try {
         const msg = JSON.parse(data.toString());
-        if (msg.type === 'ping') {
-          sendToClient(ws, { type: 'pong', data: {}, timestamp: Date.now() });
+        if (msg.type === "ping") {
+          sendToClient(ws, {
+            type: "pong",
+            payload: {},
+            timestamp: Date.now(),
+          });
         }
       } catch {
         // ignore
@@ -114,7 +126,7 @@ export function setupWebSocketServer(server: Server): WebSocketServer {
   startLedgerStream();
 
   // Clean up on server close
-  wss.on('close', () => {
+  wss.on("close", () => {
     if (reconnectTimer) {
       clearTimeout(reconnectTimer);
       reconnectTimer = null;
@@ -147,18 +159,18 @@ export function broadcast(event: PulsarEvent): void {
  * Broadcast a campaign event
  */
 export function broadcastCampaignEvent(
-  type: 'campaign_created' | 'view_recorded' | 'payment_processed',
-  data: Record<string, any>
+  type: "campaign_created" | "view_recorded" | "payment_processed",
+  data: Record<string, any>,
 ): void {
-  broadcast({ type, data, timestamp: Date.now() });
+  broadcast({ type, payload: data, timestamp: Date.now() });
 }
 
 /**
  * Broadcast an auction event
  */
 export function broadcastAuctionEvent(
-  type: 'bid_placed' | 'auction_created' | 'auction_settled',
-  data: Record<string, any>
+  type: "bid_placed" | "auction_created" | "auction_settled",
+  data: Record<string, any>,
 ): void {
-  broadcast({ type, data, timestamp: Date.now() });
+  broadcast({ type, payload: data, timestamp: Date.now() });
 }

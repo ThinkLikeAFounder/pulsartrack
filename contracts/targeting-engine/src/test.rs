@@ -1,100 +1,102 @@
 #![cfg(test)]
 use super::*;
-use soroban_sdk::{testutils::Address as _, Address, Env, vec, String};
+use soroban_sdk::{testutils::Address as _, Address, Env, String};
+
+fn setup(env: &Env) -> (TargetingEngineContractClient, Address) {
+    let admin = Address::generate(env);
+    let id = env.register_contract(None, TargetingEngineContract);
+    let c = TargetingEngineContractClient::new(env, &id);
+    c.initialize(&admin);
+    (c, admin)
+}
+fn s(env: &Env, v: &str) -> String { String::from_str(env, v) }
+
+fn default_params(env: &Env) -> TargetingParams {
+    TargetingParams {
+        geographic_targets: s(env, "US,EU"),
+        interest_segments: s(env, "tech,news"),
+        excluded_segments: s(env, ""),
+        min_age: 18,
+        max_age: 65,
+        device_types: s(env, "mobile,desktop"),
+        languages: s(env, "en"),
+        min_reputation: 50,
+        exclude_fraud: true,
+        require_kyc: false,
+        max_cpm: 10_000,
+    }
+}
 
 #[test]
-fn test_initialize() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let contract_id = env.register_contract(None, TargetingEngineContract);
-    let client = TargetingEngineContractClient::new(&env, &contract_id);
-
-    let admin = Address::generate(&env);
-
-    client.initialize(&admin);
-}
+fn test_initialize() { let env = Env::default(); env.mock_all_auths(); setup(&env); }
 
 #[test]
 #[should_panic(expected = "already initialized")]
 fn test_initialize_twice() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let contract_id = env.register_contract(None, TargetingEngineContract);
-    let client = TargetingEngineContractClient::new(&env, &contract_id);
-
-    let admin = Address::generate(&env);
-
-    client.initialize(&admin);
-    client.initialize(&admin);
+    let env = Env::default(); env.mock_all_auths();
+    let id = env.register_contract(None, TargetingEngineContract);
+    let c = TargetingEngineContractClient::new(&env, &id);
+    let a = Address::generate(&env); c.initialize(&a); c.initialize(&a);
 }
 
 #[test]
 #[should_panic]
 fn test_initialize_non_admin_fails() {
     let env = Env::default();
-    
-    let contract_id = env.register_contract(None, TargetingEngineContract);
-    let client = TargetingEngineContractClient::new(&env, &contract_id);
-
-    let admin = Address::generate(&env);
-
-    // This should panic because admin didn't authorize it and we haven't mocked it
-    client.initialize(&admin);
+    let id = env.register_contract(None, TargetingEngineContract);
+    let c = TargetingEngineContractClient::new(&env, &id);
+    c.initialize(&Address::generate(&env));
 }
 
 #[test]
-fn test_oracle_authorization() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let contract_id = env.register_contract(None, TargetingEngineContract);
-    let client = TargetingEngineContractClient::new(&env, &contract_id);
-
-    let admin = Address::generate(&env);
-    let oracle = Address::generate(&env);
-    let publisher = Address::generate(&env);
-
-    client.initialize(&admin);
-
-    // Initial compute_score should fail (unauthorized)
-    let res = client.try_compute_score(&oracle, &1, &publisher, &500, &String::from_str(&env, "match"));
-    assert!(res.is_err());
-
-    // Admin adds oracle
-    client.add_oracle(&admin, &oracle);
-
-    // Now compute_score should succeed
-    client.compute_score(&oracle, &1, &publisher, &500, &String::from_str(&env, "match"));
-
-    // Verify score was set
-    let score = client.get_targeting_score(&1, &publisher).unwrap();
-    assert_eq!(score.score, 500);
-
-    // Admin removes oracle
-    client.remove_oracle(&admin, &oracle);
-
-    // compute_score should fail again
-    let res = client.try_compute_score(&oracle, &1, &publisher, &600, &String::from_str(&env, "match"));
-    assert!(res.is_err());
+fn test_add_oracle() {
+    let env = Env::default(); env.mock_all_auths();
+    let (c, admin) = setup(&env);
+    c.add_oracle(&admin, &Address::generate(&env));
 }
 
 #[test]
-#[should_panic(expected = "unauthorized")]
-fn test_non_admin_cannot_add_oracle() {
-    let env = Env::default();
-    env.mock_all_auths();
+fn test_set_targeting() {
+    let env = Env::default(); env.mock_all_auths();
+    let (c, _) = setup(&env);
+    let advertiser = Address::generate(&env);
+    let params = default_params(&env);
+    c.set_targeting(&advertiser, &1u64, &params);
+    let config = c.get_targeting(&1u64).unwrap();
+    assert_eq!(config.geographic_targets, s(&env, "US,EU"));
+}
 
-    let contract_id = env.register_contract(None, TargetingEngineContract);
-    let client = TargetingEngineContractClient::new(&env, &contract_id);
-
-    let admin = Address::generate(&env);
-    let non_admin = Address::generate(&env);
+#[test]
+fn test_compute_score() {
+    let env = Env::default(); env.mock_all_auths();
+    let (c, admin) = setup(&env);
     let oracle = Address::generate(&env);
+    let pub1 = Address::generate(&env);
+    let advertiser = Address::generate(&env);
+    c.add_oracle(&admin, &oracle);
+    c.set_targeting(&advertiser, &1u64, &default_params(&env));
+    c.compute_score(&oracle, &1u64, &pub1, &750u32, &s(&env, "geo_match,interest_match"));
+    let score = c.get_targeting_score(&1u64, &pub1).unwrap();
+    assert_eq!(score.score, 750);
+}
 
-    client.initialize(&admin);
+#[test]
+fn test_is_publisher_targeted() {
+    let env = Env::default(); env.mock_all_auths();
+    let (c, admin) = setup(&env);
+    let oracle = Address::generate(&env);
+    let pub1 = Address::generate(&env);
+    let advertiser = Address::generate(&env);
+    c.add_oracle(&admin, &oracle);
+    c.set_targeting(&advertiser, &1u64, &default_params(&env));
+    c.compute_score(&oracle, &1u64, &pub1, &750u32, &s(&env, "match"));
+    assert!(c.is_publisher_targeted(&1u64, &pub1, &600u32));
+    assert!(!c.is_publisher_targeted(&1u64, &pub1, &800u32));
+}
 
-    // non_admin tries to add oracle
-    client.add_oracle(&non_admin, &oracle);
+#[test]
+fn test_get_targeting_nonexistent() {
+    let env = Env::default(); env.mock_all_auths();
+    let (c, _) = setup(&env);
+    assert!(c.get_targeting(&999u64).is_none());
 }

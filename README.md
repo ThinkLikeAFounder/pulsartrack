@@ -84,7 +84,14 @@ cargo build --release --target wasm32-unknown-unknown
 ```bash
 cd frontend
 npm install
-cp .env.local.example .env.local  # Add deployed contract IDs
+
+# 1. Copy the example environment file
+cp .env.local.example .env.local
+
+# 2. Add your deployed contract IDs to .env.local
+# You can find these in deployments/deployed-testnet.json after running deploy.sh
+
+# 3. Start the dev server
 npm run dev
 ```
 
