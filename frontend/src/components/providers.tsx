@@ -6,6 +6,8 @@ import { useWallet } from '../hooks/useWallet';
 import { ContractProvider } from '@/contexts/ContractContext';
 import { ToastProvider } from '@/contexts/ToastContext';
 
+import { ErrorBoundary } from './ErrorBoundary';
+
 function WalletAutoReconnect({ children }: { children: React.ReactNode }) {
   const { checkConnection } = useWallet();
 
@@ -30,12 +32,14 @@ export function Providers({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <ContractProvider>
-        <ToastProvider>
-          <WalletAutoReconnect>{children}</WalletAutoReconnect>
-        </ToastProvider>
-      </ContractProvider>
-    </QueryClientProvider>
+    <ErrorBoundary name="GlobalProviders">
+      <QueryClientProvider client={queryClient}>
+        <ContractProvider>
+          <ToastProvider>
+            <WalletAutoReconnect>{children}</WalletAutoReconnect>
+          </ToastProvider>
+        </ContractProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }

@@ -68,6 +68,11 @@ const INSTANCE_BUMP_AMOUNT: u32 = 86_400;
 const PERSISTENT_LIFETIME_THRESHOLD: u32 = 120_960;
 const PERSISTENT_BUMP_AMOUNT: u32 = 1_051_200;
 
+/// Maximum number of times a campaign can be extended.
+const MAX_EXTENSIONS: u32 = 10;
+/// Maximum total duration multiplier relative to original_end_ledger.
+const MAX_DURATION_MULTIPLIER: u32 = 3;
+
 #[contract]
 pub struct CampaignLifecycleContract;
 
@@ -273,7 +278,29 @@ impl CampaignLifecycleContract {
             panic!("unauthorized");
         }
 
-        lifecycle.current_end_ledger += extra_ledgers;
+        // Only active campaigns can be extended
+        if lifecycle.state != LifecycleState::Active {
+            panic!("campaign not active");
+        }
+
+        // Reject zero-ledger extensions
+        if extra_ledgers == 0 {
+            panic!("extra_ledgers must be greater than zero");
+        }
+
+        // Enforce maximum extension count
+        if lifecycle.extension_count >= MAX_EXTENSIONS {
+            panic!("max extensions reached");
+        }
+
+        // Enforce maximum total duration (original_end_ledger * MAX_DURATION_MULTIPLIER)
+        let max_end = lifecycle.original_end_ledger.saturating_mul(MAX_DURATION_MULTIPLIER);
+        let new_end = lifecycle.current_end_ledger.saturating_add(extra_ledgers);
+        if new_end > max_end {
+            panic!("extension exceeds max campaign duration");
+        }
+
+        lifecycle.current_end_ledger = new_end;
         lifecycle.extension_count += 1;
 
         let _ttl_key = DataKey::Lifecycle(campaign_id);

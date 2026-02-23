@@ -56,6 +56,29 @@ export const CONTRACT_IDS = {
   REWARDS_DISTRIBUTOR: process.env.NEXT_PUBLIC_CONTRACT_REWARDS_DISTRIBUTOR || '',
 } as const;
 
+/**
+ * Validates that all required contract IDs are present.
+ * Throws in production, warns in development.
+ */
+function validateContractIds() {
+  const missing = Object.entries(CONTRACT_IDS)
+    .filter(([_, id]) => !id)
+    .map(([name]) => name);
+
+  if (missing.length > 0) {
+    const message = `Deployment Error: Missing contract IDs: ${missing.join(', ')}. Ensure they are set in .env.local`;
+
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(message);
+    } else {
+      console.warn(message);
+    }
+  }
+}
+
+// Run validation
+validateContractIds();
+
 export type ContractName = keyof typeof CONTRACT_IDS;
 
 /**

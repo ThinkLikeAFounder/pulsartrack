@@ -1,20 +1,47 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Menu, X, Zap, AlertTriangle } from "lucide-react";
+import { Menu, X, Zap, History, AlertTriangle } from "lucide-react";
 import { useWalletStore } from "../store/wallet-store";
+import { useTransactionStore } from "../store/tx-store";
 import { WalletConnectButton } from "./wallet/WalletModal";
 import { AccountSwitcher } from "./wallet/AccountSwitcher";
 import { WalletBalance } from "./wallet/WalletBalance";
+import { TxHistory } from "./wallet/TxHistory";
+import { checkPendingTransactions } from "../lib/tx-recovery";
+import { useTxNotifications } from "../hooks/useTxNotifications";
 
 export function Header() {
   const { address, isConnected } = useWalletStore();
+  const { getPendingTransactions } = useTransactionStore();
   const [mounted, setMounted] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [txHistoryOpen, setTxHistoryOpen] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
+
+  // Enable transaction notifications
+  useTxNotifications();
 
   useEffect(() => {
     setMounted(true);
+
+    // Check pending transactions on mount
+    checkPendingTransactions();
+
+    // Set up interval to check pending transactions periodically
+    const interval = setInterval(() => {
+      checkPendingTransactions();
+    }, 30000); // Check every 30 seconds
+
+    return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    // Update pending count
+    if (mounted) {
+      setPendingCount(getPendingTransactions().length);
+    }
+  }, [mounted, getPendingTransactions]);
 
   if (!mounted) return null;
 
@@ -77,6 +104,18 @@ export function Header() {
               {isConnected && address ? (
                 <>
                   <WalletBalance />
+                  <button
+                    onClick={() => setTxHistoryOpen(true)}
+                    className="relative p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                    aria-label="Transaction history"
+                  >
+                    <History className="w-5 h-5 text-gray-700" />
+                    {pendingCount > 0 && (
+                      <span className="absolute -top-1 -right-1 w-5 h-5 bg-yellow-500 text-white text-xs rounded-full flex items-center justify-center font-medium">
+                        {pendingCount}
+                      </span>
+                    )}
+                  </button>
                   <AccountSwitcher />
                 </>
               ) : (
@@ -120,7 +159,26 @@ export function Header() {
 
                 <div className="pt-4 border-t border-gray-200">
                   {isConnected && address ? (
-                    <AccountSwitcher className="w-full" />
+                    <>
+                      <button
+                        onClick={() => {
+                          setTxHistoryOpen(true);
+                          setMobileMenuOpen(false);
+                        }}
+                        className="w-full flex items-center justify-between px-2 py-2 text-gray-700 hover:text-indigo-600 transition-colors font-medium mb-2"
+                      >
+                        <span className="flex items-center gap-2">
+                          <History className="w-5 h-5" />
+                          Transaction History
+                        </span>
+                        {pendingCount > 0 && (
+                          <span className="w-5 h-5 bg-yellow-500 text-white text-xs rounded-full flex items-center justify-center font-medium">
+                            {pendingCount}
+                          </span>
+                        )}
+                      </button>
+                      <AccountSwitcher className="w-full" />
+                    </>
                   ) : (
                     <WalletConnectButton />
                   )}
@@ -130,6 +188,12 @@ export function Header() {
           )}
         </div>
       </header>
+
+      {/* Transaction History Drawer */}
+      <TxHistory
+        isOpen={txHistoryOpen}
+        onClose={() => setTxHistoryOpen(false)}
+      />
     </>
   );
 }

@@ -26,6 +26,16 @@ impl MockGovToken {
     pub fn total_supply(env: Env) -> i128 {
         env.storage().instance().get::<u32, i128>(&0u32).unwrap_or(0)
     }
+
+    /// Set per-address balance for proposer-min-token tests.
+    pub fn set_balance(env: Env, addr: Address, amount: i128) {
+        env.storage().persistent().set(&addr, &amount);
+    }
+
+    /// Called by token::Client::balance() inside create_proposal.
+    pub fn balance(env: Env, id: Address) -> i128 {
+        env.storage().persistent().get::<Address, i128>(&id).unwrap_or(0)
+    }
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -39,20 +49,21 @@ fn deploy_mock_gov_token(env: &Env, total_supply: i128) -> Address {
 }
 
 /// Deploy + initialize with: voting_period=100 ledgers, quorum=10%, pass=51%.
-/// Uses a plain address as the governance token for tests that don't finalize.
+/// Uses a plain address as the governance token for tests that don't need token gating.
+/// Sets proposer_min = 0 so the token-balance check is skipped.
 fn setup(env: &Env) -> (GovernanceDaoContractClient, Address, Address, Address) {
     let admin = Address::generate(env);
-    // For simple tests (no finalize) any address works as the governance token.
     let token_addr = Address::generate(env);
 
     let contract_id = env.register_contract(None, GovernanceDaoContract);
     let client = GovernanceDaoContractClient::new(env, &contract_id);
-    client.initialize(&admin, &token_addr, &100u32, &1_000u32, &51u32, &1i128);
+    client.initialize(&admin, &token_addr, &100u32, &1_000u32, &51u32, &0i128);
 
     (client, admin, Address::generate(env), token_addr)
 }
 
 /// Deploy governance-dao initialized with a real MockGovToken (needed for finalize tests).
+/// Sets proposer_min = 0 since these tests focus on finalize/execute, not token gating.
 fn setup_with_mock_token(
     env: &Env,
     total_supply: i128,
@@ -62,7 +73,7 @@ fn setup_with_mock_token(
 
     let contract_id = env.register_contract(None, GovernanceDaoContract);
     let client = GovernanceDaoContractClient::new(env, &contract_id);
-    client.initialize(&admin, &token_addr, &100u32, &1_000u32, &51u32, &1i128);
+    client.initialize(&admin, &token_addr, &100u32, &1_000u32, &51u32, &0i128);
 
     (client, admin, token_addr)
 }
@@ -379,7 +390,7 @@ fn test_finalize_proposal_rejected_not_enough_for_votes() {
     let token_addr = deploy_mock_gov_token(&env, 1_000);
     let contract_id = env.register_contract(None, GovernanceDaoContract);
     let client = GovernanceDaoContractClient::new(&env, &contract_id);
-    client.initialize(&admin, &token_addr, &100u32, &1_000u32, &60u32, &1i128);
+    client.initialize(&admin, &token_addr, &100u32, &1_000u32, &60u32, &0i128);
 
     let proposer = Address::generate(&env);
     let voter_for = Address::generate(&env);
@@ -590,4 +601,126 @@ fn test_get_proposal_count_initial_zero() {
     let (client, _, _, _) = setup(&env);
 
     assert_eq!(client.get_proposal_count(), 0);
+}
+
+// ─── proposer minimum token enforcement (#76) ────────────────────────────────
+
+/// Deploy MockGovToken with balance support and initialize the DAO with a
+/// non-zero proposer_min. Returns (client, admin, token_addr).
+fn setup_with_token_gate(
+    env: &Env,
+    total_supply: i128,
+    proposer_min: i128,
+) -> (GovernanceDaoContractClient, Address, Address) {
+    let admin = Address::generate(env);
+    let token_addr = deploy_mock_gov_token(env, total_supply);
+
+    let contract_id = env.register_contract(None, GovernanceDaoContract);
+    let client = GovernanceDaoContractClient::new(env, &contract_id);
+    client.initialize(&admin, &token_addr, &100u32, &1_000u32, &51u32, &proposer_min);
+
+    (client, admin, token_addr)
+}
+
+#[test]
+fn test_create_proposal_with_sufficient_tokens() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _, token_addr) = setup_with_token_gate(&env, 10_000, 100);
+    let proposer = Address::generate(&env);
+
+    // Give proposer enough tokens
+    MockGovTokenClient::new(&env, &token_addr).set_balance(&proposer, &500);
+
+    let proposal_id = client.create_proposal(
+        &proposer,
+        &make_title(&env),
+        &make_desc(&env),
+        &None,
+    );
+
+    assert_eq!(proposal_id, 1);
+    let proposal = client.get_proposal(&proposal_id).unwrap();
+    assert_eq!(proposal.proposer, proposer);
+}
+
+#[test]
+#[should_panic(expected = "insufficient tokens to create proposal")]
+fn test_create_proposal_insufficient_tokens() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _, token_addr) = setup_with_token_gate(&env, 10_000, 100);
+    let proposer = Address::generate(&env);
+
+    // Give proposer fewer tokens than required
+    MockGovTokenClient::new(&env, &token_addr).set_balance(&proposer, &50);
+
+    // Should panic
+    client.create_proposal(
+        &proposer,
+        &make_title(&env),
+        &make_desc(&env),
+        &None,
+    );
+}
+
+#[test]
+#[should_panic(expected = "insufficient tokens to create proposal")]
+fn test_create_proposal_zero_balance_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _, _) = setup_with_token_gate(&env, 10_000, 100);
+    let proposer = Address::generate(&env);
+
+    // Proposer has no tokens at all (default balance = 0)
+    client.create_proposal(
+        &proposer,
+        &make_title(&env),
+        &make_desc(&env),
+        &None,
+    );
+}
+
+#[test]
+fn test_create_proposal_zero_min_allows_anyone() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    // proposer_min = 0 → token check is skipped entirely
+    let (client, _, _) = setup_with_token_gate(&env, 10_000, 0);
+    let proposer = Address::generate(&env);
+
+    let proposal_id = client.create_proposal(
+        &proposer,
+        &make_title(&env),
+        &make_desc(&env),
+        &None,
+    );
+
+    assert_eq!(proposal_id, 1);
+}
+
+#[test]
+fn test_create_proposal_exact_minimum_accepted() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let min = 250i128;
+    let (client, _, token_addr) = setup_with_token_gate(&env, 10_000, min);
+    let proposer = Address::generate(&env);
+
+    // Proposer holds exactly the minimum
+    MockGovTokenClient::new(&env, &token_addr).set_balance(&proposer, &min);
+
+    let proposal_id = client.create_proposal(
+        &proposer,
+        &make_title(&env),
+        &make_desc(&env),
+        &None,
+    );
+
+    assert_eq!(proposal_id, 1);
 }

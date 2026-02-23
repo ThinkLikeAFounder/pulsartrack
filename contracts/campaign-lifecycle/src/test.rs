@@ -277,14 +277,38 @@ fn test_pause_for_fraud_wrong_contract() {
 
 // ─── extend_campaign ─────────────────────────────────────────────────────────
 
+/// Helper: register a campaign and activate it (Draft → PendingReview → Active).
+fn activate_campaign(
+    env: &Env,
+    client: &CampaignLifecycleContractClient,
+    admin: &Address,
+    advertiser: &Address,
+    campaign_id: u64,
+    end_ledger: u32,
+) {
+    client.register_campaign(advertiser, &campaign_id, &end_ledger);
+    client.transition(
+        advertiser,
+        &campaign_id,
+        &LifecycleState::PendingReview,
+        &make_reason(env),
+    );
+    client.transition(
+        admin,
+        &campaign_id,
+        &LifecycleState::Active,
+        &make_reason(env),
+    );
+}
+
 #[test]
 fn test_extend_campaign() {
     let env = Env::default();
     env.mock_all_auths();
-    let (client, _) = setup(&env);
+    let (client, admin) = setup(&env);
     let advertiser = Address::generate(&env);
 
-    client.register_campaign(&advertiser, &1u64, &10_000u32);
+    activate_campaign(&env, &client, &admin, &advertiser, 1, 10_000);
     client.extend_campaign(&advertiser, &1u64, &5_000u32);
 
     let lc = client.get_lifecycle(&1u64).unwrap();
@@ -294,16 +318,123 @@ fn test_extend_campaign() {
 }
 
 #[test]
+fn test_extend_campaign_multiple_times() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin) = setup(&env);
+    let advertiser = Address::generate(&env);
+
+    activate_campaign(&env, &client, &admin, &advertiser, 1, 10_000);
+    client.extend_campaign(&advertiser, &1u64, &3_000u32);
+    client.extend_campaign(&advertiser, &1u64, &2_000u32);
+
+    let lc = client.get_lifecycle(&1u64).unwrap();
+    assert_eq!(lc.current_end_ledger, 15_000);
+    assert_eq!(lc.extension_count, 2);
+}
+
+#[test]
 #[should_panic(expected = "unauthorized")]
 fn test_extend_campaign_by_stranger() {
     let env = Env::default();
     env.mock_all_auths();
-    let (client, _) = setup(&env);
+    let (client, admin) = setup(&env);
     let advertiser = Address::generate(&env);
     let stranger = Address::generate(&env);
 
-    client.register_campaign(&advertiser, &1u64, &10_000u32);
+    activate_campaign(&env, &client, &admin, &advertiser, 1, 10_000);
     client.extend_campaign(&stranger, &1u64, &5_000u32);
+}
+
+#[test]
+#[should_panic(expected = "campaign not active")]
+fn test_extend_campaign_draft_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _) = setup(&env);
+    let advertiser = Address::generate(&env);
+
+    // Campaign is in Draft state — not Active
+    client.register_campaign(&advertiser, &1u64, &10_000u32);
+    client.extend_campaign(&advertiser, &1u64, &5_000u32);
+}
+
+#[test]
+#[should_panic(expected = "campaign not active")]
+fn test_extend_campaign_paused_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin) = setup(&env);
+    let advertiser = Address::generate(&env);
+
+    activate_campaign(&env, &client, &admin, &advertiser, 1, 10_000);
+    client.transition(
+        &advertiser,
+        &1u64,
+        &LifecycleState::Paused,
+        &String::from_str(&env, "budget review"),
+    );
+    client.extend_campaign(&advertiser, &1u64, &5_000u32);
+}
+
+#[test]
+#[should_panic(expected = "extra_ledgers must be greater than zero")]
+fn test_extend_campaign_zero_ledgers_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin) = setup(&env);
+    let advertiser = Address::generate(&env);
+
+    activate_campaign(&env, &client, &admin, &advertiser, 1, 10_000);
+    client.extend_campaign(&advertiser, &1u64, &0u32);
+}
+
+#[test]
+#[should_panic(expected = "max extensions reached")]
+fn test_extend_campaign_max_extensions_exceeded() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin) = setup(&env);
+    let advertiser = Address::generate(&env);
+
+    // original_end_ledger = 100_000, max_end = 300_000
+    // Each extension adds 1_000 ledgers → well within duration limit
+    activate_campaign(&env, &client, &admin, &advertiser, 1, 100_000);
+    for _ in 0..10 {
+        client.extend_campaign(&advertiser, &1u64, &1_000u32);
+    }
+    // 11th extension should fail
+    client.extend_campaign(&advertiser, &1u64, &1_000u32);
+}
+
+#[test]
+#[should_panic(expected = "extension exceeds max campaign duration")]
+fn test_extend_campaign_exceeds_max_duration() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin) = setup(&env);
+    let advertiser = Address::generate(&env);
+
+    // original_end_ledger = 10_000, max_end = 30_000
+    // Try to extend by 25_000 → 10_000 + 25_000 = 35_000 > 30_000
+    activate_campaign(&env, &client, &admin, &advertiser, 1, 10_000);
+    client.extend_campaign(&advertiser, &1u64, &25_000u32);
+}
+
+#[test]
+fn test_extend_campaign_up_to_max_duration() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin) = setup(&env);
+    let advertiser = Address::generate(&env);
+
+    // original_end_ledger = 10_000, max_end = 30_000
+    // Extend by exactly 20_000 → 10_000 + 20_000 = 30_000 (boundary)
+    activate_campaign(&env, &client, &admin, &advertiser, 1, 10_000);
+    client.extend_campaign(&advertiser, &1u64, &20_000u32);
+
+    let lc = client.get_lifecycle(&1u64).unwrap();
+    assert_eq!(lc.current_end_ledger, 30_000);
 }
 
 // ─── set_fraud_contract ──────────────────────────────────────────────────────
