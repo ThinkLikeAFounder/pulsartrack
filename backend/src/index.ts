@@ -37,7 +37,7 @@ app.use(
 app.use(
   pinoHttp({
     logger,
-    genReqId: (req) => req.headers["x-request-id"] || uuidv4(),
+    genReqId: (req: express.Request) => req.headers["x-request-id"] || uuidv4(),
   }),
 );
 
