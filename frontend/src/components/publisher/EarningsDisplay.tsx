@@ -19,13 +19,13 @@ interface EarningsDisplayProps {
 export function EarningsDisplay({
   totalEarnings,
   periods = [],
-  pendingPayout = 0n,
+  pendingPayout = BigInt(0),
   onWithdraw,
   isWithdrawing,
 }: EarningsDisplayProps) {
   const maxAmount = periods.reduce(
     (max, p) => (p.amount > max ? p.amount : max),
-    1n
+    BigInt(1)
   );
 
   return (
@@ -43,7 +43,7 @@ export function EarningsDisplay({
           <p className="text-2xl font-bold text-yellow-400 mt-1">
             {formatXlm(pendingPayout)} XLM
           </p>
-          {pendingPayout > 0n && onWithdraw && (
+          {pendingPayout > BigInt(0) && onWithdraw && (
             <button
               onClick={onWithdraw}
               disabled={isWithdrawing}
@@ -61,8 +61,8 @@ export function EarningsDisplay({
           <h4 className="text-sm font-medium text-gray-300 mb-3">Earnings History</h4>
           <div className="space-y-2">
             {periods.map((period) => {
-              const pct = maxAmount > 0n
-                ? Number((period.amount * 100n) / maxAmount)
+              const pct = maxAmount > BigInt(0)
+                ? Number((period.amount * BigInt(100)) / maxAmount)
                 : 0;
               return (
                 <div key={period.label}>

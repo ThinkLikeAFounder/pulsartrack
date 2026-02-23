@@ -43,7 +43,7 @@ export function PublisherCard({ publisher, rank, onSelect }: PublisherCardProps)
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between">
-            <h3 className="text-white font-semibold truncate">{publisher.displayName}</h3>
+            <h3 className="text-white font-semibold truncate">{publisher.display_name}</h3>
             <StatusDot status={publisher.status} />
           </div>
           {publisher.website && (
@@ -58,26 +58,26 @@ export function PublisherCard({ publisher, rank, onSelect }: PublisherCardProps)
             </a>
           )}
           <p className="text-xs text-gray-500 font-mono mt-0.5">
-            {formatAddress(publisher.address)}
+            {formatAddress(publisher.publisher)}
           </p>
         </div>
       </div>
 
       <div className="mt-3">
-        <ReputationBadge score={publisher.reputationScore} size="sm" />
+        <ReputationBadge score={(publisher as any).reputation_score || 0} size="sm" />
       </div>
 
       <div className="grid grid-cols-2 gap-3 mt-3 pt-3 border-t border-gray-700">
         <div>
           <p className="text-xs text-gray-500">Impressions</p>
           <p className="text-white font-medium text-sm">
-            {formatNumber(publisher.impressionsServed)}
+            {formatNumber(publisher.impressions_served)}
           </p>
         </div>
         <div>
           <p className="text-xs text-gray-500">Earnings</p>
           <p className="text-green-400 font-medium text-sm">
-            {formatXlm(publisher.earnings)} XLM
+            {formatXlm(publisher.earnings_total)} XLM
           </p>
         </div>
       </div>

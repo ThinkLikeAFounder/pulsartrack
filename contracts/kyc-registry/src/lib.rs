@@ -8,7 +8,7 @@ use soroban_sdk::{
 };
 
 #[contracttype]
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum KycLevel {
     None,
     Basic,     // Email + Phone verified

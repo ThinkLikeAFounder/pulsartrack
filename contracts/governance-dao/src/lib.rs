@@ -9,7 +9,7 @@
 
 #![no_std]
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short,
+    contract, contractimpl, contracttype, symbol_short, token,
     Address, Env, String,
 };
 
@@ -47,7 +47,7 @@ pub struct Proposal {
     pub votes_for: i128,
     pub votes_against: i128,
     pub votes_abstain: i128,
-    pub quorum_required: i128,
+    pub quorum_bps: u32,
     pub threshold_pct: u32, // percentage to pass
     pub start_ledger: u32,
     pub end_ledger: u32,
@@ -73,7 +73,7 @@ pub enum DataKey {
     GovernanceToken,
     ProposalCounter,
     VotingPeriod,
-    QuorumRequired,
+    QuorumBps,
     PassThreshold,
     ProposerMinTokens,
     Proposal(u64),
@@ -101,7 +101,7 @@ impl GovernanceDaoContract {
         admin: Address,
         governance_token: Address,
         voting_period: u32,     // in ledgers
-        quorum_required: i128,  // minimum tokens needed
+        quorum_bps: u32,        // basis points (e.g., 1000 = 10%)
         pass_threshold: u32,    // percentage (e.g., 51)
         proposer_min: i128,     // min tokens to create proposal
     ) {
@@ -122,7 +122,7 @@ impl GovernanceDaoContract {
             .set(&DataKey::VotingPeriod, &voting_period);
         env.storage()
             .instance()
-            .set(&DataKey::QuorumRequired, &quorum_required);
+            .set(&DataKey::QuorumBps, &quorum_bps);
         env.storage()
             .instance()
             .set(&DataKey::PassThreshold, &pass_threshold);
@@ -142,6 +142,24 @@ impl GovernanceDaoContract {
         env.storage().instance().extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
         proposer.require_auth();
 
+        // Enforce minimum token requirement for proposal creation
+        let min_tokens: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::ProposerMinTokens)
+            .unwrap_or(0);
+        if min_tokens > 0 {
+            let gov_token: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::GovernanceToken)
+                .unwrap();
+            let balance = token::Client::new(&env, &gov_token).balance(&proposer);
+            if balance < min_tokens {
+                panic!("insufficient tokens to create proposal");
+            }
+        }
+
         let counter: u64 = env
             .storage()
             .instance()
@@ -154,10 +172,10 @@ impl GovernanceDaoContract {
             .instance()
             .get(&DataKey::VotingPeriod)
             .unwrap_or(1_000);
-        let quorum: i128 = env
+        let quorum_bps: u32 = env
             .storage()
             .instance()
-            .get(&DataKey::QuorumRequired)
+            .get(&DataKey::QuorumBps)
             .unwrap_or(0);
         let threshold: u32 = env
             .storage()
@@ -175,7 +193,7 @@ impl GovernanceDaoContract {
             votes_for: 0,
             votes_against: 0,
             votes_abstain: 0,
-            quorum_required: quorum,
+            quorum_bps,
             threshold_pct: threshold,
             start_ledger: start,
             end_ledger: start + voting_period,
@@ -292,8 +310,13 @@ impl GovernanceDaoContract {
             panic!("voting period not ended");
         }
 
+        let token_address: Address = env.storage().instance().get(&DataKey::GovernanceToken).unwrap();
+        let total_supply: i128 = env.invoke_contract(&token_address, &soroban_sdk::Symbol::new(&env, "total_supply"), soroban_sdk::vec![&env]);
+
         let total_votes = proposal.votes_for + proposal.votes_against;
-        let quorum_met = total_votes >= proposal.quorum_required;
+        
+        let quorum_met = (total_votes * 10_000) >= (total_supply * (proposal.quorum_bps as i128));
+
         let for_pct = if total_votes > 0 {
             (proposal.votes_for * 100) / total_votes
         } else {

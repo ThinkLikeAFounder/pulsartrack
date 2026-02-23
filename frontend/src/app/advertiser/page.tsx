@@ -54,7 +54,6 @@ export default function AdvertiserPage() {
       dailyBudgetXlm: parseFloat(form.dailyBudgetXlm) || 0,
       durationDays: parseInt(form.durationDays) || 30,
       contentId: form.contentId,
-      campaignType: 0,
     });
   };
 
@@ -108,11 +107,10 @@ export default function AdvertiserPage() {
             <button
               key={id}
               onClick={() => setActiveTab(id as any)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                activeTab === id
+              className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === id
                   ? 'bg-white text-indigo-600 shadow-sm'
                   : 'text-gray-600 hover:text-gray-900'
-              }`}
+                }`}
             >
               <Icon className="w-4 h-4" />
               {label}

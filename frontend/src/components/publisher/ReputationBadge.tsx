@@ -1,7 +1,7 @@
 'use client';
 
 import { clsx } from 'clsx';
-import { getReputationTier, getTierLabel } from '@/lib/display-utils';
+import { getReputationTier } from '@/lib/display-utils';
 
 interface ReputationBadgeProps {
   score: number; // 0-1000
@@ -69,7 +69,7 @@ export function ReputationBadge({ score, size = 'md', showScore = true }: Reputa
   if (size === 'sm') {
     return (
       <span className={clsx('text-xs font-medium px-2 py-0.5 rounded-full', styles.badge)}>
-        {getTierLabel(tier)}
+        {styles.label}
         {showScore && <span className="ml-1 opacity-70">{score}</span>}
       </span>
     );

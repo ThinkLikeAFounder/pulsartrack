@@ -25,7 +25,7 @@ function VoteBar({ forVotes, againstVotes, abstainVotes }: {
   abstainVotes: bigint;
 }) {
   const total = forVotes + againstVotes + abstainVotes;
-  if (total === 0n) {
+  if (total === BigInt(0)) {
     return (
       <div className="w-full h-3 bg-gray-700 rounded-full overflow-hidden">
         <div className="h-full w-full bg-gray-600" />
@@ -33,8 +33,8 @@ function VoteBar({ forVotes, againstVotes, abstainVotes }: {
     );
   }
 
-  const forPct = Number((forVotes * 10000n) / total) / 100;
-  const againstPct = Number((againstVotes * 10000n) / total) / 100;
+  const forPct = Number((forVotes * BigInt(10000)) / total) / 100;
+  const againstPct = Number((againstVotes * BigInt(10000)) / total) / 100;
   // abstain fills the rest
 
   return (
@@ -56,14 +56,14 @@ function VoteBar({ forVotes, againstVotes, abstainVotes }: {
 }
 
 export function ProposalCard({ proposal, onVote, isVoting, userVote }: ProposalCardProps) {
-  const total = proposal.votesFor + proposal.votesAgainst + proposal.votesAbstain;
-  const forPct = total > 0n
-    ? ((Number(proposal.votesFor) / Number(total)) * 100).toFixed(1)
+  const total = proposal.votes_for + proposal.votes_against + proposal.votes_abstain;
+  const forPct = total > BigInt(0)
+    ? ((Number(proposal.votes_for) / Number(total)) * 100).toFixed(1)
     : '0.0';
   const isActive = proposal.status === 'Active';
-  const deadline = new Date(proposal.votingEndsAt * 1000);
+  const deadline = new Date(Number(proposal.voting_ends_at) * 1000);
   const now = Date.now();
-  const timeLeft = proposal.votingEndsAt * 1000 - now;
+  const timeLeft = Number(proposal.voting_ends_at) * 1000 - now;
   const daysLeft = Math.max(0, Math.floor(timeLeft / 86400000));
 
   return (
@@ -72,7 +72,7 @@ export function ProposalCard({ proposal, onVote, isVoting, userVote }: ProposalC
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs text-gray-500 font-mono">PIP-{proposal.proposalId}</span>
+            <span className="text-xs text-gray-500 font-mono">PIP-{proposal.proposal_id}</span>
             <span
               className={clsx(
                 'text-xs font-medium px-2 py-0.5 rounded-full',
@@ -97,9 +97,9 @@ export function ProposalCard({ proposal, onVote, isVoting, userVote }: ProposalC
 
       {/* Vote bar */}
       <VoteBar
-        forVotes={proposal.votesFor}
-        againstVotes={proposal.votesAgainst}
-        abstainVotes={proposal.votesAbstain}
+        forVotes={proposal.votes_for}
+        againstVotes={proposal.votes_against}
+        abstainVotes={proposal.votes_abstain}
       />
 
       <div className="flex justify-between text-xs text-gray-500 mt-1.5 mb-4">
@@ -108,7 +108,7 @@ export function ProposalCard({ proposal, onVote, isVoting, userVote }: ProposalC
           {Number(total).toLocaleString()} votes total
         </span>
         <span className="text-red-400">
-          {total > 0n
+          {total > BigInt(0)
             ? (100 - parseFloat(forPct)).toFixed(1)
             : '0.0'}% Against
         </span>
@@ -125,7 +125,7 @@ export function ProposalCard({ proposal, onVote, isVoting, userVote }: ProposalC
             {(['for', 'against', 'abstain'] as const).map((vote) => (
               <button
                 key={vote}
-                onClick={() => onVote(proposal.proposalId, vote)}
+                onClick={() => onVote(Number(proposal.proposal_id), vote)}
                 disabled={isVoting}
                 className={clsx(
                   'text-xs px-3 py-1.5 rounded-lg font-medium transition-colors disabled:opacity-50',
