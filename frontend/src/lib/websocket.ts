@@ -6,6 +6,8 @@
  * Horizon event data and contract events.
  */
 
+import { z } from 'zod';
+
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3001';
 
 export type EventType =
@@ -27,6 +29,25 @@ export interface PulsarEvent {
   timestamp: number;
   txHash?: string;
 }
+
+const PulsarEventSchema = z.object({
+  type: z.enum([
+    'bid_placed',
+    'auction_created',
+    'auction_settled',
+    'campaign_created',
+    'view_recorded',
+    'payment_processed',
+    'consent_updated',
+    'subscription_created',
+    'reputation_updated',
+    'connected',
+    'error'
+  ]),
+  data: z.record(z.string(), z.unknown()),
+  timestamp: z.number(),
+  txHash: z.string().optional(),
+});
 
 type EventHandler = (event: PulsarEvent) => void;
 
@@ -56,10 +77,14 @@ class PulsarWebSocket {
 
       this.ws.onmessage = (event) => {
         try {
-          const parsed: PulsarEvent = JSON.parse(event.data);
-          this.emit(parsed);
+          const result = PulsarEventSchema.safeParse(JSON.parse(event.data));
+          if (result.success) {
+            this.emit(result.data as PulsarEvent);
+          } else {
+            console.warn('Invalid WS message:', result.error);
+          }
         } catch {
-          // ignore malformed messages
+          // ignore malformed JSON messages
         }
       };
 
