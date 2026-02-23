@@ -1,5 +1,6 @@
 import { Horizon } from '@stellar/stellar-sdk';
 import { getHorizonServer } from '../config/stellar';
+import { logger } from '../lib/logger';
 
 /**
  * Fetch account details from Horizon
@@ -88,4 +89,13 @@ export async function getContractOperations(contractId: string, limit = 50) {
 export async function isAccountFunded(address: string): Promise<boolean> {
   const account = await getAccountDetails(address);
   return account !== null && account.xlmBalance >= 1;
+}
+
+async function fetchFromHorizon(path: string) {
+  try {
+    logger.debug({ path }, 'Fetching from Horizon');
+  } catch (err) {
+    logger.error({ err, path }, 'Horizon fetch failed');
+    throw err;
+  }
 }

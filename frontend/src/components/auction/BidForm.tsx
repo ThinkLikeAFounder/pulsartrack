@@ -1,10 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { Auction } from '@/types/contracts';
 import { usePlaceBid } from '@/hooks/useContract';
 import { formatXlm } from '@/lib/display-utils';
 import { xlmToStroops } from '@/lib/stellar-config';
+import { createBidSchema, BidFormData } from '@/lib/validation/schemas';
 
 interface BidFormProps {
   auction: Auction;
@@ -14,38 +17,41 @@ interface BidFormProps {
 }
 
 export function BidForm({ auction, campaignId, onSuccess, onCancel }: BidFormProps) {
-  const [bidXlm, setBidXlm] = useState('');
-  const [selectedCampaign, setSelectedCampaign] = useState(campaignId?.toString() ?? '');
-  const [error, setError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const { placeBid, isPending } = usePlaceBid();
 
   const floorXlm = Number(formatXlm(BigInt(auction.floor_price)));
   const currentBidXlm = auction.winning_bid
     ? Number(formatXlm(BigInt(auction.winning_bid)))
     : null;
-  const minBid = currentBidXlm ? currentBidXlm * 1.05 : floorXlm; // 5% increment or floor
+  const minBid = currentBidXlm ? currentBidXlm * 1.05 : floorXlm;
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
+  const schema = useMemo(() => createBidSchema(minBid), [minBid]);
 
-    const amount = parseFloat(bidXlm);
-    if (isNaN(amount) || amount <= 0) { setError('Enter a valid bid amount'); return; }
-    if (amount < minBid) {
-      setError(`Minimum bid is ${minBid.toFixed(4)} XLM`);
-      return;
-    }
-    if (!selectedCampaign) { setError('Select a campaign'); return; }
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isValid },
+  } = useForm<BidFormData>({
+    resolver: zodResolver(schema),
+    mode: 'onTouched',
+    defaultValues: {
+      campaignId: campaignId?.toString() ?? '',
+      bidAmountXlm: '',
+    },
+  });
 
+  const onSubmit = async (data: BidFormData) => {
+    setSubmitError(null);
     try {
       await placeBid({
         auctionId: Number(auction.auction_id),
-        campaignId: parseInt(selectedCampaign),
-        amountStroops: xlmToStroops(amount),
+        campaignId: parseInt(data.campaignId),
+        amountStroops: xlmToStroops(parseFloat(data.bidAmountXlm)),
       });
       onSuccess?.();
     } catch (err: any) {
-      setError(err?.message || 'Failed to place bid');
+      setSubmitError(err?.message || 'Failed to place bid');
     }
   };
 
@@ -71,7 +77,7 @@ export function BidForm({ auction, campaignId, onSuccess, onCancel }: BidFormPro
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-3">
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
         <div>
           <label htmlFor="bid-campaign-id" className="block text-sm font-medium text-gray-300 mb-1">
             Campaign ID
@@ -79,11 +85,13 @@ export function BidForm({ auction, campaignId, onSuccess, onCancel }: BidFormPro
           <input
             id="bid-campaign-id"
             type="number"
-            value={selectedCampaign}
-            onChange={(e) => setSelectedCampaign(e.target.value)}
+            {...register('campaignId')}
             placeholder="Enter campaign ID"
             className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm"
           />
+          {errors.campaignId && (
+            <p className="text-red-400 text-xs mt-1">{errors.campaignId.message}</p>
+          )}
         </div>
 
         <div>
@@ -94,8 +102,7 @@ export function BidForm({ auction, campaignId, onSuccess, onCancel }: BidFormPro
             <input
               id="bid-amount"
               type="number"
-              value={bidXlm}
-              onChange={(e) => setBidXlm(e.target.value)}
+              {...register('bidAmountXlm')}
               placeholder={minBid.toFixed(4)}
               min={minBid}
               step="0.0001"
@@ -105,19 +112,23 @@ export function BidForm({ auction, campaignId, onSuccess, onCancel }: BidFormPro
               XLM
             </span>
           </div>
-          <p className="text-xs text-gray-500 mt-1">Minimum: {minBid.toFixed(4)} XLM</p>
+          {errors.bidAmountXlm ? (
+            <p className="text-red-400 text-xs mt-1">{errors.bidAmountXlm.message}</p>
+          ) : (
+            <p className="text-xs text-gray-500 mt-1">Minimum: {minBid.toFixed(4)} XLM</p>
+          )}
         </div>
 
-        {error && (
+        {submitError && (
           <div className="bg-red-900/30 border border-red-700 rounded-lg px-3 py-2 text-red-300 text-xs">
-            {error}
+            {submitError}
           </div>
         )}
 
         <div className="flex gap-3">
           <button
             type="submit"
-            disabled={isPending}
+            disabled={!isValid || isPending}
             className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm"
           >
             {isPending ? 'Submitting...' : 'Submit Bid'}

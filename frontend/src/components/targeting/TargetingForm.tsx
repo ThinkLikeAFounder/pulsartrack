@@ -1,7 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { SegmentGroup } from './AudienceSegmentTag';
+import { targetingSchema, TargetingFormData } from '@/lib/validation/schemas';
 
 const AVAILABLE_REGIONS = ['US', 'EU', 'UK', 'CA', 'AU', 'APAC', 'LATAM', 'MEA', 'GLOBAL'];
 const AVAILABLE_INTERESTS = [
@@ -46,36 +49,57 @@ const DEFAULT_CONFIG: TargetingConfig = {
 };
 
 export function TargetingForm({ initial, onSave, isSaving }: TargetingFormProps) {
-  const [config, setConfig] = useState<TargetingConfig>({ ...DEFAULT_CONFIG, ...initial });
-  const [error, setError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
-  const addTo = (field: keyof Pick<TargetingConfig, 'regions' | 'interests' | 'excludedSegments' | 'devices' | 'languages'>) =>
-    (val: string) => setConfig((c) => ({ ...c, [field]: [...c[field], val] }));
+  const {
+    register,
+    handleSubmit,
+    watch,
+    setValue,
+    formState: { errors, isValid },
+  } = useForm<TargetingFormData>({
+    resolver: zodResolver(targetingSchema),
+    mode: 'onTouched',
+    defaultValues: { ...DEFAULT_CONFIG, ...initial },
+  });
 
-  const removeFrom = (field: keyof Pick<TargetingConfig, 'regions' | 'interests' | 'excludedSegments' | 'devices' | 'languages'>) =>
-    (val: string) => setConfig((c) => ({ ...c, [field]: c[field].filter((v) => v !== val) }));
+  const regions = watch('regions');
+  const interests = watch('interests');
+  const excludedSegments = watch('excludedSegments');
+  const devices = watch('devices');
+  const languages = watch('languages');
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
+  const addTo = (field: 'regions' | 'interests' | 'excludedSegments' | 'devices' | 'languages') =>
+    (val: string) => {
+      const current = watch(field);
+      setValue(field, [...current, val], { shouldValidate: true });
+    };
+
+  const removeFrom = (field: 'regions' | 'interests' | 'excludedSegments' | 'devices' | 'languages') =>
+    (val: string) => {
+      const current = watch(field);
+      setValue(field, current.filter((v) => v !== val), { shouldValidate: true });
+    };
+
+  const onSubmit = async (data: TargetingFormData) => {
+    setSubmitError(null);
     try {
-      await onSave?.(config);
+      await onSave?.(data as TargetingConfig);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (err: any) {
-      setError(err?.message || 'Failed to save targeting settings');
+      setSubmitError(err?.message || 'Failed to save targeting settings');
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
-      {/* Geographic Targeting */}
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
       <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 space-y-3">
         <h3 className="text-sm font-semibold text-gray-200">Geographic Targeting</h3>
         <SegmentGroup
           label="Target Regions"
-          segments={config.regions}
+          segments={regions}
           variant="active"
           onAdd={addTo('regions')}
           onRemove={removeFrom('regions')}
@@ -83,12 +107,11 @@ export function TargetingForm({ initial, onSave, isSaving }: TargetingFormProps)
         />
       </div>
 
-      {/* Audience Segments */}
       <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 space-y-3">
         <h3 className="text-sm font-semibold text-gray-200">Audience Segments</h3>
         <SegmentGroup
           label="Interest Segments"
-          segments={config.interests}
+          segments={interests}
           variant="active"
           onAdd={addTo('interests')}
           onRemove={removeFrom('interests')}
@@ -96,20 +119,19 @@ export function TargetingForm({ initial, onSave, isSaving }: TargetingFormProps)
         />
         <SegmentGroup
           label="Excluded Segments"
-          segments={config.excludedSegments}
+          segments={excludedSegments}
           variant="excluded"
           onAdd={addTo('excludedSegments')}
           onRemove={removeFrom('excludedSegments')}
-          availableSegments={AVAILABLE_INTERESTS.filter((i) => !config.interests.includes(i))}
+          availableSegments={AVAILABLE_INTERESTS.filter((i) => !interests.includes(i))}
         />
       </div>
 
-      {/* Device & Language */}
       <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 space-y-3">
         <h3 className="text-sm font-semibold text-gray-200">Device & Language</h3>
         <SegmentGroup
           label="Device Types"
-          segments={config.devices}
+          segments={devices}
           variant="neutral"
           onAdd={addTo('devices')}
           onRemove={removeFrom('devices')}
@@ -117,7 +139,7 @@ export function TargetingForm({ initial, onSave, isSaving }: TargetingFormProps)
         />
         <SegmentGroup
           label="Languages"
-          segments={config.languages}
+          segments={languages}
           variant="neutral"
           onAdd={addTo('languages')}
           onRemove={removeFrom('languages')}
@@ -125,7 +147,6 @@ export function TargetingForm({ initial, onSave, isSaving }: TargetingFormProps)
         />
       </div>
 
-      {/* Age Range */}
       <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
         <h3 className="text-sm font-semibold text-gray-200 mb-3">Age Range</h3>
         <div className="grid grid-cols-2 gap-3">
@@ -134,29 +155,32 @@ export function TargetingForm({ initial, onSave, isSaving }: TargetingFormProps)
             <input
               id="targeting-min-age"
               type="number"
-              value={config.minAge}
-              onChange={(e) => setConfig((c) => ({ ...c, minAge: parseInt(e.target.value) || 18 }))}
+              {...register('minAge', { valueAsNumber: true })}
               min={13}
               max={100}
               className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-indigo-500"
             />
+            {errors.minAge && (
+              <p className="text-red-400 text-xs mt-1">{errors.minAge.message}</p>
+            )}
           </div>
           <div>
             <label htmlFor="targeting-max-age" className="block text-xs text-gray-400 mb-1">Max Age</label>
             <input
               id="targeting-max-age"
               type="number"
-              value={config.maxAge}
-              onChange={(e) => setConfig((c) => ({ ...c, maxAge: parseInt(e.target.value) || 65 }))}
+              {...register('maxAge', { valueAsNumber: true })}
               min={13}
               max={100}
               className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-indigo-500"
             />
+            {errors.maxAge && (
+              <p className="text-red-400 text-xs mt-1">{errors.maxAge.message}</p>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Quality Filters */}
       <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
         <h3 className="text-sm font-semibold text-gray-200 mb-3">Quality Filters</h3>
         <div className="space-y-3">
@@ -167,8 +191,7 @@ export function TargetingForm({ initial, onSave, isSaving }: TargetingFormProps)
             </div>
             <input
               type="checkbox"
-              checked={config.excludeFraud}
-              onChange={(e) => setConfig((c) => ({ ...c, excludeFraud: e.target.checked }))}
+              {...register('excludeFraud')}
               aria-labelledby="exclude-fraud-label"
               aria-describedby="exclude-fraud-desc"
               className="w-4 h-4 accent-indigo-500"
@@ -181,8 +204,7 @@ export function TargetingForm({ initial, onSave, isSaving }: TargetingFormProps)
             </div>
             <input
               type="checkbox"
-              checked={config.requireKyc}
-              onChange={(e) => setConfig((c) => ({ ...c, requireKyc: e.target.checked }))}
+              {...register('requireKyc')}
               aria-labelledby="require-kyc-label"
               aria-describedby="require-kyc-desc"
               className="w-4 h-4 accent-indigo-500"
@@ -193,32 +215,36 @@ export function TargetingForm({ initial, onSave, isSaving }: TargetingFormProps)
             <input
               id="targeting-min-reputation"
               type="number"
-              value={config.minReputation}
-              onChange={(e) => setConfig((c) => ({ ...c, minReputation: parseInt(e.target.value) || 0 }))}
+              {...register('minReputation', { valueAsNumber: true })}
               min={0}
               max={1000}
               className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-indigo-500"
             />
+            {errors.minReputation && (
+              <p className="text-red-400 text-xs mt-1">{errors.minReputation.message}</p>
+            )}
           </div>
           <div>
             <label htmlFor="targeting-max-cpm" className="block text-xs text-gray-400 mb-1">Max CPM (XLM, leave blank for no limit)</label>
             <input
               id="targeting-max-cpm"
               type="number"
-              value={config.maxCpmXlm}
-              onChange={(e) => setConfig((c) => ({ ...c, maxCpmXlm: e.target.value }))}
+              {...register('maxCpmXlm')}
               placeholder="0.001"
               min="0"
               step="0.0001"
               className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-500 text-sm focus:outline-none focus:border-indigo-500"
             />
+            {errors.maxCpmXlm && (
+              <p className="text-red-400 text-xs mt-1">{errors.maxCpmXlm.message}</p>
+            )}
           </div>
         </div>
       </div>
 
-      {error && (
+      {submitError && (
         <div className="bg-red-900/30 border border-red-700 rounded-lg px-3 py-2 text-red-300 text-sm">
-          {error}
+          {submitError}
         </div>
       )}
 
@@ -230,7 +256,7 @@ export function TargetingForm({ initial, onSave, isSaving }: TargetingFormProps)
 
       <button
         type="submit"
-        disabled={isSaving}
+        disabled={!isValid || isSaving}
         className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm"
       >
         {isSaving ? 'Saving...' : 'Save Targeting Settings'}

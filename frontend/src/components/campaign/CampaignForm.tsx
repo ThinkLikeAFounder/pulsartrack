@@ -1,177 +1,219 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { useCreateCampaign } from '@/hooks/useContract';
-import { xlmToStroops } from '@/lib/stellar-config';
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useCreateCampaign } from "@/hooks/useContract";
+import { campaignSchema, CampaignFormData } from "@/lib/validation/schemas";
+import { useState } from "react";
 
 interface CampaignFormProps {
   onSuccess?: (campaignId: number) => void;
   onCancel?: () => void;
 }
 
-const INITIAL_STATE = {
-  title: '',
-  contentId: '',
-  budgetXlm: '',
-  dailyBudgetXlm: '',
-  durationDays: '30',
-  targetGeo: '',
-  targetInterests: '',
-};
-
 export function CampaignForm({ onSuccess, onCancel }: CampaignFormProps) {
-  const [form, setForm] = useState(INITIAL_STATE);
-  const [error, setError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const { createCampaign, isPending } = useCreateCampaign();
 
-  const set = (field: keyof typeof form) => (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => setForm((f) => ({ ...f, [field]: e.target.value }));
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors, isValid },
+  } = useForm<CampaignFormData>({
+    resolver: zodResolver(campaignSchema),
+    mode: "onTouched",
+    defaultValues: {
+      title: "",
+      contentId: "",
+      budgetXlm: "",
+      dailyBudgetXlm: "",
+      durationDays: 30,
+      targetGeo: "",
+      targetInterests: "",
+    },
+  });
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-
-    if (!form.title.trim()) { setError('Title is required'); return; }
-    if (!form.contentId.trim()) { setError('Content ID is required'); return; }
-    const budget = parseFloat(form.budgetXlm);
-    if (isNaN(budget) || budget <= 0) { setError('Invalid budget'); return; }
+  const onSubmit = async (data: CampaignFormData) => {
+    setSubmitError(null);
+    const budget = parseFloat(data.budgetXlm);
 
     try {
       const result = await createCampaign({
-        title: form.title,
-        contentId: form.contentId,
+        title: data.title,
+        contentId: data.contentId,
         budgetXlm: budget,
-        dailyBudgetXlm: parseFloat(form.dailyBudgetXlm) || budget / 30,
-        durationDays: parseInt(form.durationDays) || 30,
+        dailyBudgetXlm: data.dailyBudgetXlm
+          ? parseFloat(data.dailyBudgetXlm)
+          : budget / 30,
+        durationDays: data.durationDays as unknown as number,
       });
       onSuccess?.((result as any)?.result || 0);
-      setForm(INITIAL_STATE);
+      reset();
     } catch (err: any) {
-      setError(err?.message || 'Failed to create campaign');
+      setSubmitError(err?.message || "Failed to create campaign");
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
       <div>
-        <label htmlFor="campaign-title" className="block text-sm font-medium text-gray-300 mb-1">
+        <label
+          htmlFor="campaign-title"
+          className="block text-sm font-medium text-gray-300 mb-1"
+        >
           Campaign Title <span className="text-red-400">*</span>
         </label>
         <input
           id="campaign-title"
           type="text"
-          value={form.title}
-          onChange={set('title')}
+          {...register("title")}
           placeholder="e.g. Summer Product Launch"
           className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm"
         />
+        {errors.title && (
+          <p className="text-red-400 text-xs mt-1">{errors.title.message}</p>
+        )}
       </div>
 
       <div>
-        <label htmlFor="campaign-content-id" className="block text-sm font-medium text-gray-300 mb-1">
+        <label
+          htmlFor="campaign-content-id"
+          className="block text-sm font-medium text-gray-300 mb-1"
+        >
           Content ID <span className="text-red-400">*</span>
         </label>
         <input
           id="campaign-content-id"
           type="text"
-          value={form.contentId}
-          onChange={set('contentId')}
+          {...register("contentId")}
           placeholder="IPFS hash or content identifier"
           className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm"
         />
+        {errors.contentId && (
+          <p className="text-red-400 text-xs mt-1">
+            {errors.contentId.message}
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label htmlFor="campaign-budget" className="block text-sm font-medium text-gray-300 mb-1">
+          <label
+            htmlFor="campaign-budget"
+            className="block text-sm font-medium text-gray-300 mb-1"
+          >
             Total Budget (XLM) <span className="text-red-400">*</span>
           </label>
           <input
             id="campaign-budget"
             type="number"
-            value={form.budgetXlm}
-            onChange={set('budgetXlm')}
+            {...register("budgetXlm")}
             placeholder="500"
             min="1"
             step="0.1"
             className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm"
           />
+          {errors.budgetXlm && (
+            <p className="text-red-400 text-xs mt-1">
+              {errors.budgetXlm.message}
+            </p>
+          )}
         </div>
         <div>
-          <label htmlFor="campaign-daily-budget" className="block text-sm font-medium text-gray-300 mb-1">
+          <label
+            htmlFor="campaign-daily-budget"
+            className="block text-sm font-medium text-gray-300 mb-1"
+          >
             Daily Budget (XLM)
           </label>
           <input
             id="campaign-daily-budget"
             type="number"
-            value={form.dailyBudgetXlm}
-            onChange={set('dailyBudgetXlm')}
+            {...register("dailyBudgetXlm")}
             placeholder="auto"
             min="1"
             step="0.1"
             className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm"
           />
+          {errors.dailyBudgetXlm && (
+            <p className="text-red-400 text-xs mt-1">
+              {errors.dailyBudgetXlm.message}
+            </p>
+          )}
         </div>
       </div>
 
       <div>
-        <label htmlFor="campaign-duration" className="block text-sm font-medium text-gray-300 mb-1">
+        <label
+          htmlFor="campaign-duration"
+          className="block text-sm font-medium text-gray-300 mb-1"
+        >
           Duration (days)
         </label>
         <select
           id="campaign-duration"
-          value={form.durationDays}
-          onChange={(e) => setForm((f) => ({ ...f, durationDays: e.target.value }))}
+          {...register("durationDays", { valueAsNumber: true })}
           className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 text-sm"
         >
           {[7, 14, 30, 60, 90].map((d) => (
-            <option key={d} value={String(d)}>{d} days</option>
+            <option key={d} value={d}>
+              {d} days
+            </option>
           ))}
         </select>
+        {errors.durationDays && (
+          <p className="text-red-400 text-xs mt-1">
+            {errors.durationDays.message}
+          </p>
+        )}
       </div>
 
       <div>
-        <label htmlFor="campaign-geo" className="block text-sm font-medium text-gray-300 mb-1">
+        <label
+          htmlFor="campaign-geo"
+          className="block text-sm font-medium text-gray-300 mb-1"
+        >
           Geographic Targets
         </label>
         <input
           id="campaign-geo"
           type="text"
-          value={form.targetGeo}
-          onChange={set('targetGeo')}
+          {...register("targetGeo")}
           placeholder="US,EU,APAC (comma-separated)"
           className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm"
         />
       </div>
 
       <div>
-        <label htmlFor="campaign-interests" className="block text-sm font-medium text-gray-300 mb-1">
+        <label
+          htmlFor="campaign-interests"
+          className="block text-sm font-medium text-gray-300 mb-1"
+        >
           Interest Segments
         </label>
         <input
           id="campaign-interests"
           type="text"
-          value={form.targetInterests}
-          onChange={set('targetInterests')}
+          {...register("targetInterests")}
           placeholder="tech,finance,gaming (comma-separated)"
           className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm"
         />
       </div>
 
-      {error && (
+      {submitError && (
         <div className="bg-red-900/30 border border-red-700 rounded-lg px-3 py-2 text-red-300 text-sm">
-          {error}
+          {submitError}
         </div>
       )}
 
       <div className="flex gap-3 pt-2">
         <button
           type="submit"
-          disabled={isPending}
+          disabled={!isValid || isPending}
           className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm"
         >
-          {isPending ? 'Creating...' : 'Create Campaign'}
+          {isPending ? "Creating..." : "Create Campaign"}
         </button>
         {onCancel && (
           <button
