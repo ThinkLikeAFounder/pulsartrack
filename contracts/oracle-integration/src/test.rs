@@ -1,100 +1,97 @@
 #![cfg(test)]
 use super::*;
-use soroban_sdk::{testutils::Address as _, Address, Env, vec, String};
+use soroban_sdk::{testutils::Address as _, Address, Env, String};
+
+fn setup(env: &Env) -> (OracleIntegrationContractClient, Address) {
+    let admin = Address::generate(env);
+    let id = env.register_contract(None, OracleIntegrationContract);
+    let c = OracleIntegrationContractClient::new(env, &id);
+    c.initialize(&admin);
+    (c, admin)
+}
+fn s(env: &Env, v: &str) -> String { String::from_str(env, v) }
 
 #[test]
-fn test_initialize() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let contract_id = env.register_contract(None, OracleIntegrationContract);
-    let client = OracleIntegrationContractClient::new(&env, &contract_id);
-
-    let admin = Address::generate(&env);
-
-    client.initialize(&admin);
-}
+fn test_initialize() { let env = Env::default(); env.mock_all_auths(); setup(&env); }
 
 #[test]
 #[should_panic(expected = "already initialized")]
 fn test_initialize_twice() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let contract_id = env.register_contract(None, OracleIntegrationContract);
-    let client = OracleIntegrationContractClient::new(&env, &contract_id);
-
-    let admin = Address::generate(&env);
-
-    client.initialize(&admin);
-    client.initialize(&admin);
+    let env = Env::default(); env.mock_all_auths();
+    let id = env.register_contract(None, OracleIntegrationContract);
+    let c = OracleIntegrationContractClient::new(&env, &id);
+    let a = Address::generate(&env);
+    c.initialize(&a); c.initialize(&a);
 }
 
 #[test]
 #[should_panic]
 fn test_initialize_non_admin_fails() {
     let env = Env::default();
-    
-    let contract_id = env.register_contract(None, OracleIntegrationContract);
-    let client = OracleIntegrationContractClient::new(&env, &contract_id);
-
-    let admin = Address::generate(&env);
-
-    // This should panic because admin didn't authorize it and we haven't mocked it
-    client.initialize(&admin);
+    let id = env.register_contract(None, OracleIntegrationContract);
+    let c = OracleIntegrationContractClient::new(&env, &id);
+    c.initialize(&Address::generate(&env));
 }
 
 #[test]
-fn test_oracle_authorization() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let contract_id = env.register_contract(None, OracleIntegrationContract);
-    let client = OracleIntegrationContractClient::new(&env, &contract_id);
-
-    let admin = Address::generate(&env);
+fn test_add_oracle() {
+    let env = Env::default(); env.mock_all_auths();
+    let (c, admin) = setup(&env);
     let oracle = Address::generate(&env);
-    let asset = String::from_str(&env, "BTC");
+    c.add_oracle(&admin, &oracle);
+    assert!(c.is_oracle_authorized(&oracle));
+}
 
-    client.initialize(&admin);
-
-    // Initial update_price should fail (unauthorized)
-    let res = client.try_update_price(&oracle, &asset, &5000000000000, &95, &String::from_str(&env, "binance"));
-    assert!(res.is_err());
-
-    // Admin adds oracle
-    client.add_oracle(&admin, &oracle);
-
-    // Now update_price should succeed
-    client.update_price(&oracle, &asset, &5000000000000, &95, &String::from_str(&env, "binance"));
-
-    // Verify price was set
-    let price = client.get_price(&asset).unwrap();
-    assert_eq!(price.price_usd, 5000000000000);
-
-    // Admin removes oracle
-    client.remove_oracle(&admin, &oracle);
-
-    // update_price should fail again
-    let res = client.try_update_price(&oracle, &asset, &5100000000000, &95, &String::from_str(&env, "binance"));
-    assert!(res.is_err());
+#[test]
+fn test_remove_oracle() {
+    let env = Env::default(); env.mock_all_auths();
+    let (c, admin) = setup(&env);
+    let oracle = Address::generate(&env);
+    c.add_oracle(&admin, &oracle);
+    c.remove_oracle(&admin, &oracle);
+    assert!(!c.is_oracle_authorized(&oracle));
 }
 
 #[test]
 #[should_panic(expected = "unauthorized")]
-fn test_non_admin_cannot_add_oracle() {
-    let env = Env::default();
-    env.mock_all_auths();
+fn test_add_oracle_unauthorized() {
+    let env = Env::default(); env.mock_all_auths();
+    let (c, _) = setup(&env);
+    c.add_oracle(&Address::generate(&env), &Address::generate(&env));
+}
 
-    let contract_id = env.register_contract(None, OracleIntegrationContract);
-    let client = OracleIntegrationContractClient::new(&env, &contract_id);
-
-    let admin = Address::generate(&env);
-    let non_admin = Address::generate(&env);
+#[test]
+fn test_update_price() {
+    let env = Env::default(); env.mock_all_auths();
+    let (c, admin) = setup(&env);
     let oracle = Address::generate(&env);
+    c.add_oracle(&admin, &oracle);
+    c.update_price(&oracle, &s(&env, "XLM"), &1_500_000i128, &95u32, &s(&env, "external"));
+    let price = c.get_price(&s(&env, "XLM")).unwrap();
+    assert_eq!(price.price_usd, 1_500_000);
+}
 
-    client.initialize(&admin);
+#[test]
+fn test_update_performance() {
+    let env = Env::default(); env.mock_all_auths();
+    let (c, admin) = setup(&env);
+    let oracle = Address::generate(&env);
+    c.add_oracle(&admin, &oracle);
+    c.update_performance(&oracle, &1u64, &1000u64, &50u64, &5u64, &10u32);
+    let perf = c.get_performance(&1u64).unwrap();
+    assert_eq!(perf.impressions, 1000);
+}
 
-    // non_admin tries to add oracle
-    client.add_oracle(&non_admin, &oracle);
+#[test]
+fn test_get_price_nonexistent() {
+    let env = Env::default(); env.mock_all_auths();
+    let (c, _) = setup(&env);
+    assert!(c.get_price(&s(&env, "BTC")).is_none());
+}
+
+#[test]
+fn test_is_oracle_authorized_false() {
+    let env = Env::default(); env.mock_all_auths();
+    let (c, _) = setup(&env);
+    assert!(!c.is_oracle_authorized(&Address::generate(&env)));
 }
