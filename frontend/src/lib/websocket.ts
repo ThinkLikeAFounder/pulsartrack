@@ -1,5 +1,7 @@
 'use client';
 
+import { z } from 'zod';
+
 /**
  * WebSocket client for real-time Stellar event streaming
  * Connects to the PulsarTrack WebSocket server which streams
@@ -8,25 +10,30 @@
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3001';
 
-export type EventType =
-  | 'bid_placed'
-  | 'auction_created'
-  | 'auction_settled'
-  | 'campaign_created'
-  | 'view_recorded'
-  | 'payment_processed'
-  | 'consent_updated'
-  | 'subscription_created'
-  | 'reputation_updated'
-  | 'connected'
-  | 'error';
+export const EventTypeSchema = z.enum([
+  'bid_placed',
+  'auction_created',
+  'auction_settled',
+  'campaign_created',
+  'view_recorded',
+  'payment_processed',
+  'consent_updated',
+  'subscription_created',
+  'reputation_updated',
+  'connected',
+  'error',
+]);
 
-export interface PulsarEvent {
-  type: EventType;
-  data: Record<string, any>;
-  timestamp: number;
-  txHash?: string;
-}
+export type EventType = z.infer<typeof EventTypeSchema>;
+
+export const PulsarEventSchema = z.object({
+  type: EventTypeSchema,
+  data: z.record(z.any()),
+  timestamp: z.number(),
+  txHash: z.string().optional(),
+});
+
+export type PulsarEvent = z.infer<typeof PulsarEventSchema>;
 
 type EventHandler = (event: PulsarEvent) => void;
 
@@ -56,10 +63,16 @@ class PulsarWebSocket {
 
       this.ws.onmessage = (event) => {
         try {
-          const parsed: PulsarEvent = JSON.parse(event.data);
-          this.emit(parsed);
+          const rawData = JSON.parse(event.data);
+          const result = PulsarEventSchema.safeParse(rawData);
+          
+          if (result.success) {
+            this.emit(result.data);
+          } else {
+            console.warn('Malformed PulsarTrack WS message received:', result.error.format());
+          }
         } catch {
-          // ignore malformed messages
+          // ignore malformed JSON
         }
       };
 
