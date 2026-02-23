@@ -1,51 +1,11 @@
 import 'dotenv/config';
-import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import morgan from 'morgan';
-import Redis from 'ioredis';
 import { createServer } from 'http';
-import apiRoutes from './api/routes';
-import { errorHandler, rateLimit, configureRateLimiters } from './middleware/auth';
+import app, { redisClient } from './app';
 import { setupWebSocketServer } from './services/websocket-server';
 import { checkDbConnection } from './config/database';
 import prisma from './db/prisma';
 
-const app = express();
 const PORT = parseInt(process.env.PORT || '4000', 10);
-
-// Redis connection for rate limiting
-const redisClient = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
-  enableOfflineQueue: false,
-  maxRetriesPerRequest: 1,
-});
-
-redisClient.on('connect', () => console.log('[Redis] Connected'));
-redisClient.on('error', (err) => console.error('[Redis] Error:', err.message));
-
-// Initialize Redis-backed rate limiters
-configureRateLimiters(redisClient);
-
-// Middleware
-app.use(helmet());
-app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
-  credentials: true,
-}));
-app.use(morgan('combined'));
-app.use(express.json({ limit: '10mb' }));
-app.use(rateLimit());
-
-// API routes
-app.use('/api', apiRoutes);
-
-// 404 handler
-app.use((_req, res) => {
-  res.status(404).json({ error: 'Route not found' });
-});
-
-// Error handler
-app.use(errorHandler);
 
 // Create HTTP server for both REST and WebSocket
 const server = createServer(app);
@@ -86,7 +46,11 @@ async function start() {
   });
 }
 
-start().catch((err) => {
-  console.error('Failed to start server:', err);
-  process.exit(1);
-});
+if (process.env.NODE_ENV !== 'test') {
+  start().catch((err) => {
+    console.error('Failed to start server:', err);
+    process.exit(1);
+  });
+}
+
+export { server };
