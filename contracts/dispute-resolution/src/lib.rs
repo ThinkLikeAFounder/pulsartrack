@@ -20,8 +20,9 @@ pub enum DisputeStatus {
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub enum DisputeOutcome {
+    Pending,
     Claimant,
     Respondent,
     Split,
@@ -40,7 +41,7 @@ pub struct Dispute {
     pub description: String,
     pub evidence_hash: String,  // IPFS hash of evidence
     pub status: DisputeStatus,
-    pub outcome: Option<DisputeOutcome>,
+    pub outcome: DisputeOutcome,
     pub resolution_notes: String,
     pub filed_at: u64,
     pub resolved_at: Option<u64>,
@@ -127,7 +128,7 @@ impl DisputeResolutionContract {
             description,
             evidence_hash,
             status: DisputeStatus::Filed,
-            outcome: None,
+            outcome: DisputeOutcome::Pending,
             resolution_notes: String::from_str(&env, ""),
             filed_at: env.ledger().timestamp(),
             resolved_at: None,
@@ -194,11 +195,15 @@ impl DisputeResolutionContract {
             .get(&DataKey::Dispute(dispute_id))
             .expect("dispute not found");
 
-        if dispute.arbitrator != Some(arbitrator) {
+        if let Some(ref assigned) = dispute.arbitrator {
+            if *assigned != arbitrator {
+                panic!("not assigned arbitrator");
+            }
+        } else {
             panic!("not assigned arbitrator");
         }
 
-        dispute.outcome = Some(outcome);
+        dispute.outcome = outcome;
         dispute.resolution_notes = notes;
         dispute.status = DisputeStatus::Resolved;
         dispute.resolved_at = Some(env.ledger().timestamp());

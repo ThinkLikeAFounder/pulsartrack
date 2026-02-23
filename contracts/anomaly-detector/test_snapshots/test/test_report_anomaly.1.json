@@ -1,0 +1,447 @@
+{
+  "generators": {
+    "address": 4,
+    "nonce": 0
+  },
+  "auth": [
+    [],
+    [
+      [
+        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+        {
+          "function": {
+            "contract_fn": {
+              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+              "function_name": "initialize",
+              "args": [
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                }
+              ]
+            }
+          },
+          "sub_invocations": []
+        }
+      ]
+    ],
+    [
+      [
+        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+        {
+          "function": {
+            "contract_fn": {
+              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+              "function_name": "report_anomaly",
+              "args": [
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                },
+                {
+                  "u64": 1
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
+                },
+                {
+                  "vec": [
+                    {
+                      "symbol": "ClickFarming"
+                    }
+                  ]
+                },
+                {
+                  "vec": [
+                    {
+                      "symbol": "Critical"
+                    }
+                  ]
+                },
+                {
+                  "string": "spike"
+                },
+                {
+                  "string": "{}"
+                },
+                {
+                  "bool": true
+                }
+              ]
+            }
+          },
+          "sub_invocations": []
+        }
+      ]
+    ],
+    [],
+    []
+  ],
+  "ledger": {
+    "protocol_version": 22,
+    "sequence_number": 0,
+    "timestamp": 0,
+    "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
+    "base_reserve": 0,
+    "min_persistent_entry_ttl": 4096,
+    "min_temp_entry_ttl": 16,
+    "max_entry_ttl": 6312000,
+    "ledger_entries": [
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": {
+              "ledger_key_nonce": {
+                "nonce": 801925984706572462
+              }
+            },
+            "durability": "temporary"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": {
+                  "ledger_key_nonce": {
+                    "nonce": 801925984706572462
+                  }
+                },
+                "durability": "temporary",
+                "val": "void"
+              }
+            },
+            "ext": "v0"
+          },
+          6311999
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+            "key": {
+              "ledger_key_nonce": {
+                "nonce": 5541220902715666415
+              }
+            },
+            "durability": "temporary"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+                "key": {
+                  "ledger_key_nonce": {
+                    "nonce": 5541220902715666415
+                  }
+                },
+                "durability": "temporary",
+                "val": "void"
+              }
+            },
+            "ext": "v0"
+          },
+          6311999
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+            "key": {
+              "vec": [
+                {
+                  "symbol": "FlaggedPublisher"
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "FlaggedPublisher"
+                    },
+                    {
+                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "bool": true
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          259200
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+            "key": {
+              "vec": [
+                {
+                  "symbol": "Report"
+                },
+                {
+                  "u64": 1
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "Report"
+                    },
+                    {
+                      "u64": 1
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "anomaly_type"
+                      },
+                      "val": {
+                        "vec": [
+                          {
+                            "symbol": "ClickFarming"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "auto_action_taken"
+                      },
+                      "val": {
+                        "bool": true
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "campaign_id"
+                      },
+                      "val": {
+                        "u64": 1
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "description"
+                      },
+                      "val": {
+                        "string": "spike"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "metrics_snapshot"
+                      },
+                      "val": {
+                        "string": "{}"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "publisher"
+                      },
+                      "val": {
+                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "report_id"
+                      },
+                      "val": {
+                        "u64": 1
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "reported_at"
+                      },
+                      "val": {
+                        "u64": 0
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "resolved"
+                      },
+                      "val": {
+                        "bool": false
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "resolved_at"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "severity"
+                      },
+                      "val": {
+                        "vec": [
+                          {
+                            "symbol": "Critical"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          259200
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+            "key": "ledger_key_contract_instance",
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+                "key": "ledger_key_contract_instance",
+                "durability": "persistent",
+                "val": {
+                  "contract_instance": {
+                    "executable": {
+                      "wasm": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                    },
+                    "storage": [
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "Admin"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "OracleAddress"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "ReportCounter"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "u64": 1
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "SpikeThreshold"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "u32": 300
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          86400
+        ]
+      ],
+      [
+        {
+          "contract_code": {
+            "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_code": {
+                "ext": "v0",
+                "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "code": ""
+              }
+            },
+            "ext": "v0"
+          },
+          86400
+        ]
+      ]
+    ]
+  },
+  "events": []
+}
