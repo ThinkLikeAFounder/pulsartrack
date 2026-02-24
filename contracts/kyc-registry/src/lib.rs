@@ -38,8 +38,10 @@ pub struct KycProvider {
 }
 
 #[contracttype]
+#[derive(Clone)]
 pub enum DataKey {
     Admin,
+    PendingAdmin,
     KycRecord(Address),
     Provider(Address),
     RequiredLevel(String), // operation -> required KYC level
@@ -263,6 +265,20 @@ impl KycRegistryContract {
         } else {
             KycLevel::None
         }
+    }
+
+    pub fn propose_admin(env: Env, current_admin: Address, new_admin: Address) {
+        pulsar_common_admin::propose_admin(
+            &env,
+            &DataKey::Admin,
+            &DataKey::PendingAdmin,
+            current_admin,
+            new_admin,
+        );
+    }
+
+    pub fn accept_admin(env: Env, new_admin: Address) {
+        pulsar_common_admin::accept_admin(&env, &DataKey::Admin, &DataKey::PendingAdmin, new_admin);
     }
 }
 

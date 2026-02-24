@@ -369,3 +369,41 @@ fn test_set_platform_fee_unauthorized() {
     let stranger = Address::generate(&env);
     client.set_platform_fee(&stranger, &100u32);
 }
+#[test]
+fn test_admin_transfer_flow() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin, _, _, _) = setup(&env);
+    let new_admin = Address::generate(&env);
+
+    c.propose_admin(&admin, &new_admin);
+    c.accept_admin(&new_admin);
+
+    // Verify new admin can perform admin actions
+    c.set_platform_fee(&new_admin, &500u32);
+}
+
+#[test]
+#[should_panic]
+fn test_propose_admin_unauthorized() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _, _, _, _) = setup(&env);
+    let stranger = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+
+    c.propose_admin(&stranger, &new_admin);
+}
+
+#[test]
+#[should_panic]
+fn test_accept_admin_unauthorized() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin, _, _, _) = setup(&env);
+    let new_admin = Address::generate(&env);
+    let stranger = Address::generate(&env);
+
+    c.propose_admin(&admin, &new_admin);
+    c.accept_admin(&stranger);
+}

@@ -32,8 +32,10 @@ pub struct RefundRequest {
 }
 
 #[contracttype]
+#[derive(Clone)]
 pub enum DataKey {
     Admin,
+    PendingAdmin,
     TokenAddress,
     RefundCounter,
     AutoRefundPeriod,
@@ -224,6 +226,20 @@ impl RefundProcessorContract {
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
         env.storage().persistent().get(&DataKey::Refund(refund_id))
+    }
+
+    pub fn propose_admin(env: Env, current_admin: Address, new_admin: Address) {
+        pulsar_common_admin::propose_admin(
+            &env,
+            &DataKey::Admin,
+            &DataKey::PendingAdmin,
+            current_admin,
+            new_admin,
+        );
+    }
+
+    pub fn accept_admin(env: Env, new_admin: Address) {
+        pulsar_common_admin::accept_admin(&env, &DataKey::Admin, &DataKey::PendingAdmin, new_admin);
     }
 }
 

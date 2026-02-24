@@ -37,8 +37,10 @@ pub struct NetworkStats {
 }
 
 #[contracttype]
+#[derive(Clone)]
 pub enum DataKey {
     Admin,
+    PendingAdmin,
     FraudContract,
     NodeCount,
     NetworkStats,
@@ -283,6 +285,20 @@ impl PublisherNetworkContract {
             .instance()
             .get(&DataKey::NodeCount)
             .unwrap_or(0)
+    }
+
+    pub fn propose_admin(env: Env, current_admin: Address, new_admin: Address) {
+        pulsar_common_admin::propose_admin(
+            &env,
+            &DataKey::Admin,
+            &DataKey::PendingAdmin,
+            current_admin,
+            new_admin,
+        );
+    }
+
+    pub fn accept_admin(env: Env, new_admin: Address) {
+        pulsar_common_admin::accept_admin(&env, &DataKey::Admin, &DataKey::PendingAdmin, new_admin);
     }
 }
 

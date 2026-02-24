@@ -40,10 +40,12 @@ members = [
   "contracts/dispute-resolution",
   "contracts/budget-optimizer",
   "contracts/anomaly-detector",
+  "contracts/common-admin",
 ]
 
 [workspace.dependencies]
 soroban-sdk = "22.0.0"
+pulsar-common-admin = { path = "contracts/common-admin" }
 
 [profile.release]
 opt-level = "z"

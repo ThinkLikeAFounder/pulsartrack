@@ -4,6 +4,7 @@
 #![no_std]
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, token, Address, Env, String,
+    IntoVal, Symbol, Val, Vec as SdkVec,
 };
 
 // Define external contract interfaces for cross-contract calls
@@ -88,8 +89,10 @@ pub struct CampaignMetrics {
 // ============================================================
 
 #[contracttype]
+#[derive(Clone)]
 pub enum DataKey {
     Admin,
+    PendingAdmin,
     TokenAddress,
     MinCampaignAmount,
     PlatformFeePct,
@@ -758,6 +761,20 @@ impl CampaignOrchestratorContract {
                 PERSISTENT_BUMP_AMOUNT,
             );
         }
+    }
+
+    pub fn propose_admin(env: Env, current_admin: Address, new_admin: Address) {
+        pulsar_common_admin::propose_admin(
+            &env,
+            &DataKey::Admin,
+            &DataKey::PendingAdmin,
+            current_admin,
+            new_admin,
+        );
+    }
+
+    pub fn accept_admin(env: Env, new_admin: Address) {
+        pulsar_common_admin::accept_admin(&env, &DataKey::Admin, &DataKey::PendingAdmin, new_admin);
     }
 }
 

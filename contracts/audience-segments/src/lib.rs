@@ -28,8 +28,10 @@ pub struct SegmentMembership {
 }
 
 #[contracttype]
+#[derive(Clone)]
 pub enum DataKey {
     Admin,
+    PendingAdmin,
     SegmentCounter,
     Segment(u64),
     Membership(u64, Address), // segment_id, member
@@ -248,6 +250,20 @@ impl AudienceSegmentsContract {
             .persistent()
             .get(&DataKey::MemberCount(segment_id))
             .unwrap_or(0)
+    }
+
+    pub fn propose_admin(env: Env, current_admin: Address, new_admin: Address) {
+        pulsar_common_admin::propose_admin(
+            &env,
+            &DataKey::Admin,
+            &DataKey::PendingAdmin,
+            current_admin,
+            new_admin,
+        );
+    }
+
+    pub fn accept_admin(env: Env, new_admin: Address) {
+        pulsar_common_admin::accept_admin(&env, &DataKey::Admin, &DataKey::PendingAdmin, new_admin);
     }
 }
 

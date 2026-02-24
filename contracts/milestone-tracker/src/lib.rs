@@ -31,8 +31,10 @@ pub struct Milestone {
 }
 
 #[contracttype]
+#[derive(Clone)]
 pub enum DataKey {
     Admin,
+    PendingAdmin,
     OracleAddress,
     MilestoneCounter,
     Milestone(u64),
@@ -248,6 +250,20 @@ impl MilestoneTrackerContract {
             .persistent()
             .get(&DataKey::CampaignMilestoneCount(campaign_id))
             .unwrap_or(0)
+    }
+
+    pub fn propose_admin(env: Env, current_admin: Address, new_admin: Address) {
+        pulsar_common_admin::propose_admin(
+            &env,
+            &DataKey::Admin,
+            &DataKey::PendingAdmin,
+            current_admin,
+            new_admin,
+        );
+    }
+
+    pub fn accept_admin(env: Env, new_admin: Address) {
+        pulsar_common_admin::accept_admin(&env, &DataKey::Admin, &DataKey::PendingAdmin, new_admin);
     }
 }
 

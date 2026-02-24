@@ -218,3 +218,41 @@ fn test_set_flag_threshold_unauthorized() {
     let (c, _) = setup(&env);
     c.set_flag_threshold(&Address::generate(&env), &10u32);
 }
+#[test]
+fn test_admin_transfer_flow() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin) = setup(&env);
+    let new_admin = Address::generate(&env);
+
+    c.propose_admin(&admin, &new_admin);
+    c.accept_admin(&new_admin);
+
+    // Verify new admin can perform admin actions
+    c.set_flag_threshold(&new_admin, &99u32);
+}
+
+#[test]
+#[should_panic]
+fn test_propose_admin_unauthorized() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _) = setup(&env);
+    let stranger = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+
+    c.propose_admin(&stranger, &new_admin);
+}
+
+#[test]
+#[should_panic]
+fn test_accept_admin_unauthorized() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin) = setup(&env);
+    let new_admin = Address::generate(&env);
+    let stranger = Address::generate(&env);
+
+    c.propose_admin(&admin, &new_admin);
+    c.accept_admin(&stranger);
+}

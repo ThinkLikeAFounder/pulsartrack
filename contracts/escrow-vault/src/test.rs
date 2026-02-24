@@ -774,3 +774,42 @@ fn test_can_release_returns_true_when_conditions_met() {
     client.approve_release(&approver, &escrow_id);
     assert!(client.can_release(&escrow_id)); // now it can
 }
+#[test]
+fn test_admin_transfer_flow() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin, _, _) = setup(&env);
+    let new_admin = Address::generate(&env);
+
+    c.propose_admin(&admin, &new_admin);
+    c.accept_admin(&new_admin);
+
+    // Verify new admin can perform admin actions
+    let fraud = Address::generate(&env);
+    c.set_fraud_contract(&new_admin, &fraud);
+}
+
+#[test]
+#[should_panic]
+fn test_propose_admin_unauthorized() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _, _, _) = setup(&env);
+    let stranger = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+
+    c.propose_admin(&stranger, &new_admin);
+}
+
+#[test]
+#[should_panic]
+fn test_accept_admin_unauthorized() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin, _, _) = setup(&env);
+    let new_admin = Address::generate(&env);
+    let stranger = Address::generate(&env);
+
+    c.propose_admin(&admin, &new_admin);
+    c.accept_admin(&stranger);
+}

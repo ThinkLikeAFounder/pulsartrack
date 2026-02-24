@@ -44,8 +44,10 @@ pub struct VerificationCache {
 // ============================================================
 
 #[contracttype]
+#[derive(Clone)]
 pub enum DataKey {
     Admin,
+    PendingAdmin,
     CampaignLifecycle,
     PublisherNetwork,
     EscrowVault,
@@ -163,8 +165,6 @@ impl FraudPreventionContract {
             .instance()
             .get(&DataKey::MaxViewsPerPeriod)
             .unwrap_or(10);
-
-        let max_views: u64 = env.storage().instance().get(&DataKey::MaxViewsPerPeriod).unwrap_or(10);
         if view_count >= max_views {
             panic!("rate limit exceeded");
         }
@@ -266,7 +266,7 @@ impl FraudPreventionContract {
                 .instance()
                 .get::<DataKey, Address>(&DataKey::PublisherNetwork)
             {
-                let network_client = PublisherNetworkContractClient::new(&env, &network_addr);
+                let network_client = mocks::PublisherNetworkContractClient::new(&env, &network_addr);
                 network_client.suspend_publisher(&env.current_contract_address(), &publisher);
             }
         }
@@ -406,11 +406,25 @@ impl FraudPreventionContract {
                 .instance()
                 .get::<DataKey, Address>(&DataKey::CampaignLifecycle)
             {
-                let lifecycle_client = CampaignLifecycleContractClient::new(env, &lifecycle_addr);
+                let lifecycle_client = mocks::CampaignLifecycleContractClient::new(env, &lifecycle_addr);
                 lifecycle_client.pause_for_fraud(&env.current_contract_address(), &campaign_id);
             }
         }
         score
+    }
+
+    pub fn propose_admin(env: Env, current_admin: Address, new_admin: Address) {
+        pulsar_common_admin::propose_admin(
+            &env,
+            &DataKey::Admin,
+            &DataKey::PendingAdmin,
+            current_admin,
+            new_admin,
+        );
+    }
+
+    pub fn accept_admin(env: Env, new_admin: Address) {
+        pulsar_common_admin::accept_admin(&env, &DataKey::Admin, &DataKey::PendingAdmin, new_admin);
     }
 }
 
