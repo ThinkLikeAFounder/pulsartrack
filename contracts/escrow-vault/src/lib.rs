@@ -256,6 +256,11 @@ impl EscrowVaultContract {
             panic!("not a required approver");
         }
 
+        let approval_key = DataKey::Approval(escrow_id, approver.clone());
+        if env.storage().persistent().has(&approval_key) {
+            panic!("already approved");
+        }
+
         let escrow: Escrow = env
             .storage()
             .persistent()

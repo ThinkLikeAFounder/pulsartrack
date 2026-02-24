@@ -203,6 +203,35 @@ fn test_approve_release() {
 }
 
 #[test]
+#[should_panic(expected = "already approved")]
+fn test_approve_release_duplicate_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _admin, token_addr, _oracle) = setup(&env);
+    let _token_admin = Address::generate(&env); // Setup uses Address::generate but we need a way to mint or just use the setup's token
+
+    let depositor = Address::generate(&env);
+    let beneficiary = Address::generate(&env);
+    let approver = Address::generate(&env);
+    
+    // Use setup directly to avoid redundant boilerplate
+    let sac = StellarAssetClient::new(&env, &token_addr);
+    sac.mint(&depositor, &1_000_000);
+
+    let escrow_id = client.create_escrow(
+        &depositor, &1u64, &beneficiary, &100_000i128,
+        &0u64, &0u32, &86_400u64,
+        &vec![&env, approver.clone()],
+    );
+
+    client.approve_release(&approver, &escrow_id);
+    assert_eq!(client.get_approval_count(&escrow_id), 1);
+    
+    // Attempt second approval from same address
+    client.approve_release(&approver, &escrow_id); // should panic
+}
+
+#[test]
 #[should_panic(expected = "not a required approver")]
 fn test_approve_release_unauthorized() {
     let env = Env::default();
