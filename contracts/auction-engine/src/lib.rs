@@ -152,6 +152,20 @@ impl AuctionEngineContract {
             }
         }
 
+        // --- NEW ESCROW LOGIC ---
+        let token_addr: Address = env.storage().instance().get(&DataKey::TokenAddress).unwrap();
+        let token_client = token::Client::new(&env, &token_addr);
+
+        // Lock funds from new bidder
+        token_client.transfer(&bidder, &env.current_contract_address(), &amount);
+
+        // Refund previous highest bidder if exists
+        if let Some(prev_winner) = auction.winner.clone() {
+            let prev_amount = auction.winning_bid.unwrap();
+            token_client.transfer(&env.current_contract_address(), &prev_winner, &prev_amount);
+        }
+        // ------------------------
+
         let bid = Bid {
             bidder: bidder.clone(),
             amount,
@@ -204,17 +218,19 @@ impl AuctionEngineContract {
             panic!("auction still running");
         }
 
-        auction.status = if auction.winning_bid.is_some() {
-            let winning = auction.winning_bid.unwrap();
-            if winning >= auction.reserve_price {
-                // Transfer payment from winner to publisher
-                let token_addr: Address = env.storage().instance().get(&DataKey::TokenAddress).unwrap();
-                let token_client = token::Client::new(&env, &token_addr);
-                if let Some(winner) = auction.winner.clone() {
-                    token_client.transfer(&winner, &auction.publisher, &winning);
-                }
+        let token_addr: Address = env.storage().instance().get(&DataKey::TokenAddress).unwrap();
+        let token_client = token::Client::new(&env, &token_addr);
+
+        auction.status = if let Some(winning_amount) = auction.winning_bid {
+            if winning_amount >= auction.reserve_price {
+                // Release funds from contract to publisher
+                token_client.transfer(&env.current_contract_address(), &auction.publisher, &winning_amount);
                 AuctionStatus::Settled
             } else {
+                // Reserve not met, refund winner
+                if let Some(winner) = auction.winner.clone() {
+                    token_client.transfer(&env.current_contract_address(), &winner, &winning_amount);
+                }
                 AuctionStatus::Cancelled
             }
         } else {
