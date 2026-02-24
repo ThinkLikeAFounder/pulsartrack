@@ -133,17 +133,52 @@ fn test_set_threshold_too_high() {
     client.set_threshold(&admin, &101u32); // > 100
 }
 
+// ─── oracle management ───────────────────────────────────────────────────────
+
+#[test]
+fn test_add_oracle_admin() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin) = setup(&env);
+
+    let oracle = Address::generate(&env);
+    client.add_oracle(&admin, &oracle);
+}
+
+#[test]
+#[should_panic(expected = "unauthorized")]
+fn test_add_oracle_unauthorized_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _) = setup(&env);
+    let stranger = Address::generate(&env);
+    let oracle = Address::generate(&env);
+
+    client.add_oracle(&stranger, &oracle);
+}
+
+#[test]
+fn test_remove_oracle() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin) = setup(&env);
+
+    let oracle = Address::generate(&env);
+    client.add_oracle(&admin, &oracle);
+    client.remove_oracle(&admin, &oracle);
+}
+
 // ─── flag_suspicious ─────────────────────────────────────────────────────────
 
 #[test]
-fn test_flag_suspicious() {
+fn test_flag_suspicious_admin() {
     let env = Env::default();
     env.mock_all_auths();
     let (client, admin) = setup(&env);
 
     let publisher = Address::generate(&env);
 
-    client.flag_suspicious(&publisher);
+    client.flag_suspicious(&admin, &publisher);
 
     let status = client.get_suspicious_status(&publisher).unwrap();
     assert_eq!(status.suspicious_views, 1);
@@ -152,31 +187,90 @@ fn test_flag_suspicious() {
 }
 
 #[test]
-fn test_flag_suspicious_accumulates() {
+fn test_flag_suspicious_oracle() {
     let env = Env::default();
     env.mock_all_auths();
-    let (client, _) = setup(&env);
+    let (client, admin) = setup(&env);
 
+    let oracle = Address::generate(&env);
     let publisher = Address::generate(&env);
 
-    client.flag_suspicious(&publisher);
-    client.flag_suspicious(&publisher);
-    client.flag_suspicious(&publisher);
+    client.add_oracle(&admin, &oracle);
+    client.flag_suspicious(&oracle, &publisher);
 
     let status = client.get_suspicious_status(&publisher).unwrap();
-    assert_eq!(status.suspicious_views, 3);
-    assert_eq!(status.total_flags, 3);
+    assert_eq!(status.suspicious_views, 1);
     assert!(!status.suspended);
 }
 
 #[test]
-fn test_publisher_not_suspended_initially() {
+#[should_panic(expected = "unauthorized - only admin or oracle can flag publishers")]
+fn test_flag_suspicious_unauthorized_fails() {
     let env = Env::default();
     env.mock_all_auths();
     let (client, _) = setup(&env);
+    let stranger = Address::generate(&env);
     let publisher = Address::generate(&env);
 
-    assert!(!client.is_publisher_suspended(&publisher));
+    client.flag_suspicious(&stranger, &publisher);
+}
+
+#[test]
+fn test_flag_suspicious_accumulates() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin) = setup(&env);
+
+    let publisher = Address::generate(&env);
+
+    client.flag_suspicious(&admin, &publisher);
+    client.flag_suspicious(&admin, &publisher);
+    client.flag_suspicious(&admin, &publisher);
+
+    let status = client.get_suspicious_status(&publisher).unwrap();
+    assert_eq!(status.suspicious_views, 3);
+    assert_eq!(status.total_flags, 3);
+}
+
+// ─── suspend_publisher ───────────────────────────────────────────────────────
+
+#[test]
+fn test_suspend_publisher_admin() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin) = setup(&env);
+
+    let publisher = Address::generate(&env);
+    client.suspend_publisher(&admin, &publisher);
+
+    assert!(client.is_publisher_suspended(&publisher));
+}
+
+#[test]
+#[should_panic(expected = "unauthorized")]
+fn test_suspend_publisher_unauthorized_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _) = setup(&env);
+    let stranger = Address::generate(&env);
+    let publisher = Address::generate(&env);
+
+    client.suspend_publisher(&stranger, &publisher);
+}
+
+#[test]
+#[should_panic(expected = "unauthorized")]
+fn test_suspend_publisher_oracle_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin) = setup(&env);
+
+    let oracle = Address::generate(&env);
+    let publisher = Address::generate(&env);
+
+    client.add_oracle(&admin, &oracle);
+    // Oracle can flag, but cannot suspend
+    client.suspend_publisher(&oracle, &publisher);
 }
 
 // ─── clear_flag ──────────────────────────────────────────────────────────────
@@ -188,7 +282,7 @@ fn test_clear_flag() {
     let (client, admin) = setup(&env);
 
     let publisher = Address::generate(&env);
-    client.flag_suspicious(&publisher);
+    client.flag_suspicious(&admin, &publisher);
     assert!(client.get_suspicious_status(&publisher).is_some());
 
     client.clear_flag(&admin, &publisher);
@@ -200,11 +294,11 @@ fn test_clear_flag() {
 fn test_clear_flag_unauthorized() {
     let env = Env::default();
     env.mock_all_auths();
-    let (client, _) = setup(&env);
+    let (client, admin) = setup(&env);
     let stranger = Address::generate(&env);
     let publisher = Address::generate(&env);
 
-    client.flag_suspicious(&publisher);
+    client.flag_suspicious(&admin, &publisher);
     client.clear_flag(&stranger, &publisher);
 }
 
@@ -311,12 +405,5 @@ fn test_fraud_integration() {
     client.initialize(&admin);
     client.set_dependent_contracts(&admin, &lifecycle, &network, &vault);
 
-    // 1. Test scaling fraud flags -> Publisher suspension
-    // We'll set the threshold low for testing
-    client.set_threshold(&admin, &90); // Verification threshold
-
-    // Normally we'd call flag_suspicious multiple times
-    // For this test, let's just verify it can be called without panic
-    // (Actual cross-contract verification would require registering the other contracts too)
-    client.flag_suspicious(&publisher);
+    client.flag_suspicious(&admin, &publisher);
 }
