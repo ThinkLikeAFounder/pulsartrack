@@ -2,7 +2,10 @@
 //! Core governance parameters, roles, and access control on Stellar.
 
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env};
+use soroban_sdk::{
+    contract, contractimpl, contracttype, symbol_short,
+    Address, BytesN, Env, String, Vec,
+};
 
 #[contracttype]
 #[derive(Clone, PartialEq)]
@@ -80,16 +83,15 @@ impl GovernanceCoreContract {
             .set(&DataKey::ActiveProposalCount, &0u32);
     }
 
-    pub fn grant_role(
-        env: Env,
-        admin: Address,
-        account: Address,
-        role: Role,
-        expires_at: Option<u64>,
-    ) {
-        env.storage()
-            .instance()
-            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
+    }
+
+    pub fn grant_role(env: Env, admin: Address, account: Address, role: Role, expires_at: Option<u64>) {
+        env.storage().instance().extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
         admin.require_auth();
         let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         if admin != stored_admin {

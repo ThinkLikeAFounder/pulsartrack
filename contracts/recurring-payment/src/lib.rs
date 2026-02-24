@@ -2,7 +2,10 @@
 //! Automated recurring payment subscriptions for ad campaigns on Stellar.
 
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, token, Address, Env};
+use soroban_sdk::{
+    contract, contractimpl, contracttype, symbol_short,
+    token, Address, BytesN, Env,
+};
 
 #[contracttype]
 #[derive(Clone, PartialEq)]
@@ -61,6 +64,13 @@ impl RecurringPaymentContract {
         env.storage()
             .instance()
             .set(&DataKey::PaymentCounter, &0u64);
+    }
+
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
     }
 
     pub fn create_recurring(

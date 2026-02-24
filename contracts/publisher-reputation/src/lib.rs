@@ -2,7 +2,10 @@
 //! On-chain reputation scoring system for publishers on Stellar.
 
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env};
+use soroban_sdk::{
+    contract, contractimpl, contracttype, symbol_short,
+    Address, BytesN, Env,
+};
 
 #[contracttype]
 #[derive(Clone)]
@@ -62,6 +65,13 @@ impl PublisherReputationContract {
         env.storage()
             .instance()
             .set(&DataKey::ReputationOracle, &oracle);
+    }
+
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
     }
 
     pub fn init_publisher(env: Env, publisher: Address) {

@@ -74,6 +74,13 @@ impl TokenBridgeContract {
             .set(&DataKey::BridgeFeesBps, &50u32); // 0.5%
     }
 
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
+    }
+
     pub fn add_supported_chain(env: Env, admin: Address, chain: String, max_daily_limit: i128) {
         env.storage()
             .instance()

@@ -2,7 +2,10 @@
 //! Automated revenue distribution and settlement for the PulsarTrack ecosystem on Stellar.
 
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, token, Address, Env};
+use soroban_sdk::{
+    contract, contractimpl, contracttype, symbol_short,
+    token, Address, BytesN, Env,
+};
 
 #[contracttype]
 #[derive(Clone)]
@@ -96,16 +99,15 @@ impl RevenueSettlementContract {
         );
     }
 
-    pub fn record_revenue(
-        env: Env,
-        admin: Address,
-        campaign_id: u64,
-        amount: i128,
-        publisher: Address,
-    ) -> u64 {
-        env.storage()
-            .instance()
-            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
+    }
+
+    pub fn record_revenue(env: Env, admin: Address, campaign_id: u64, amount: i128, publisher: Address) -> u64 {
+        env.storage().instance().extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
         admin.require_auth();
         let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         if admin != stored_admin {

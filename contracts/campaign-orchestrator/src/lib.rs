@@ -3,8 +3,8 @@
 
 #![no_std]
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, token, Address, Env, String,
-    IntoVal, Symbol, Val, Vec as SdkVec,
+    contract, contractimpl, contracttype, symbol_short,
+    token, Address, BytesN, Env, IntoVal, String, Symbol, Val, Vec as SdkVec,
 };
 
 // Define external contract interfaces for cross-contract calls
@@ -160,6 +160,13 @@ impl CampaignOrchestratorContract {
         env.storage()
             .instance()
             .set(&DataKey::CampaignType(1), &default_type);
+    }
+
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
     }
 
     /// Set contract addresses for cross-contract validation (admin only)

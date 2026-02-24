@@ -7,7 +7,10 @@
 //! - ("campaign", "resume"): [campaign_id: u64, actor: Address]
 
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, String};
+use soroban_sdk::{
+    contract, contractimpl, contracttype, symbol_short,
+    Address, BytesN, Env, String,
+};
 
 #[contracttype]
 #[derive(Clone, PartialEq)]
@@ -89,6 +92,13 @@ impl CampaignLifecycleContract {
         env.storage()
             .instance()
             .set(&DataKey::LifecycleCounter, &0u64);
+    }
+
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
     }
 
     pub fn set_fraud_contract(env: Env, admin: Address, fraud_contract: Address) {

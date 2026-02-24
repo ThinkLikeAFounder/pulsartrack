@@ -2,7 +2,10 @@
 //! Privacy-preserving on-chain targeting configuration for ad campaigns on Stellar.
 
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, String};
+use soroban_sdk::{
+    contract, contractimpl, contracttype, symbol_short,
+    Address, BytesN, Env, String,
+};
 
 #[contracttype]
 #[derive(Clone)]
@@ -80,6 +83,13 @@ impl TargetingEngineContract {
         }
         admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &admin);
+    }
+
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
     }
 
     pub fn add_oracle(env: Env, admin: Address, oracle: Address) {
