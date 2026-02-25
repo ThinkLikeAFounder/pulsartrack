@@ -86,12 +86,12 @@
                 {
                   "vec": [
                     {
-                      "symbol": "Critical"
+                      "symbol": "High"
                     }
                   ]
                 },
                 {
-                  "string": "spike"
+                  "string": "click spike"
                 },
                 {
                   "string": "{}"
@@ -100,7 +100,7 @@
                   "bool": true
                 },
                 {
-                  "u64": 4000
+                  "u64": 2000
                 },
                 {
                   "u64": 200
@@ -112,7 +112,6 @@
         }
       ]
     ],
-    [],
     []
   ],
   "ledger": {
@@ -317,51 +316,6 @@
             "key": {
               "vec": [
                 {
-                  "symbol": "FlaggedPublisher"
-                },
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
-                }
-              ]
-            },
-            "durability": "persistent"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_data": {
-                "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
-                "key": {
-                  "vec": [
-                    {
-                      "symbol": "FlaggedPublisher"
-                    },
-                    {
-                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
-                    }
-                  ]
-                },
-                "durability": "persistent",
-                "val": {
-                  "bool": true
-                }
-              }
-            },
-            "ext": "v0"
-          },
-          259200
-        ]
-      ],
-      [
-        {
-          "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
-            "key": {
-              "vec": [
-                {
                   "symbol": "Report"
                 },
                 {
@@ -425,7 +379,7 @@
                         "symbol": "description"
                       },
                       "val": {
-                        "string": "spike"
+                        "string": "click spike"
                       }
                     },
                     {
@@ -481,7 +435,7 @@
                       "val": {
                         "vec": [
                           {
-                            "symbol": "Critical"
+                            "symbol": "High"
                           }
                         ]
                       }
