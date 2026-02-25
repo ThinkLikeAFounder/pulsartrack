@@ -237,22 +237,21 @@ impl PublisherVerificationContract {
             PERSISTENT_BUMP_AMOUNT,
         );
 
-        // Mark KYC as verified
-        if let Some(mut kyc) = env
+        // KYC submission is mandatory before verification (compliance requirement)
+        let mut kyc = env
             .storage()
             .persistent()
             .get::<DataKey, KycRecord>(&DataKey::KycRecord(publisher.clone()))
-        {
-            kyc.verified = true;
-            kyc.verified_at = Some(env.ledger().timestamp());
-            let _ttl_key = DataKey::KycRecord(publisher.clone());
-            env.storage().persistent().set(&_ttl_key, &kyc);
-            env.storage().persistent().extend_ttl(
-                &_ttl_key,
-                PERSISTENT_LIFETIME_THRESHOLD,
-                PERSISTENT_BUMP_AMOUNT,
-            );
-        }
+            .expect("KYC submission required before publisher verification");
+        kyc.verified = true;
+        kyc.verified_at = Some(env.ledger().timestamp());
+        let _ttl_key = DataKey::KycRecord(publisher.clone());
+        env.storage().persistent().set(&_ttl_key, &kyc);
+        env.storage().persistent().extend_ttl(
+            &_ttl_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
 
         env.events().publish(
             (symbol_short!("publisher"), symbol_short!("verified")),

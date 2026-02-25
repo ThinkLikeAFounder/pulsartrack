@@ -40,6 +40,7 @@ pub enum DataKey {
     DepositCounter,
     BridgeFeesBps,
     SupportedChain(String),
+    DailyVolume(String, u64), // (chain, day_number) -> tracks daily volume per chain
     Deposit(u64),
     RelayerAddress,
 }
@@ -105,17 +106,28 @@ impl TokenBridgeContract {
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
         sender.require_auth();
 
-        // Verify chain is supported
-        if !env
-            .storage()
-            .persistent()
-            .has(&DataKey::SupportedChain(recipient_chain.clone()))
-        {
-            panic!("chain not supported");
-        }
-
         if amount <= 0 {
             panic!("invalid amount");
+        }
+
+        // Verify chain is supported and read max daily limit
+        let max_daily_limit: i128 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::SupportedChain(recipient_chain.clone()))
+            .expect("chain not supported");
+
+        // Enforce daily transfer limit per chain
+        let current_day = env.ledger().timestamp() / 86_400;
+        let daily_volume_key = DataKey::DailyVolume(recipient_chain.clone(), current_day);
+        let current_daily_volume: i128 = env
+            .storage()
+            .persistent()
+            .get(&daily_volume_key)
+            .unwrap_or(0);
+
+        if current_daily_volume + amount > max_daily_limit {
+            panic!("daily transfer limit exceeded for chain");
         }
 
         let fee_bps: u32 = env
@@ -129,6 +141,17 @@ impl TokenBridgeContract {
         // Lock tokens in bridge contract
         let token_client = token::Client::new(&env, &token);
         token_client.transfer(&sender, &env.current_contract_address(), &amount);
+
+        // Update daily volume for this chain
+        let new_daily_volume = current_daily_volume + amount;
+        env.storage()
+            .persistent()
+            .set(&daily_volume_key, &new_daily_volume);
+        env.storage().persistent().extend_ttl(
+            &daily_volume_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
 
         let counter: u64 = env
             .storage()

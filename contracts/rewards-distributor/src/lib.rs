@@ -27,6 +27,8 @@ pub struct UserRewards {
     pub total_claimed: i128,
     pub pending: i128,
     pub last_earned: u64,
+    pub vesting_start: u64,     // timestamp when vesting begins
+    pub vesting_duration: u64,  // total vesting period in seconds
 }
 
 #[contracttype]
@@ -160,8 +162,10 @@ impl RewardsDistributorContract {
             PERSISTENT_BUMP_AMOUNT,
         );
 
-        // Update user rewards
+        // Update user rewards with vesting schedule
         let key = DataKey::UserRewards(recipient.clone());
+        let now = env.ledger().timestamp();
+        let vesting_duration = 365 * 24 * 3600; // 365 days in seconds
         let mut rewards: UserRewards =
             env.storage().persistent().get(&key).unwrap_or(UserRewards {
                 user: recipient.clone(),
@@ -169,11 +173,18 @@ impl RewardsDistributorContract {
                 total_claimed: 0,
                 pending: 0,
                 last_earned: 0,
+                vesting_start: now,
+                vesting_duration,
             });
 
+        // Initialize vesting_start on first distribution if not set
+        if rewards.total_earned == 0 {
+            rewards.vesting_start = now;
+            rewards.vesting_duration = vesting_duration;
+        }
+
         rewards.total_earned += amount;
-        rewards.pending += amount;
-        rewards.last_earned = env.ledger().timestamp();
+        rewards.last_earned = now;
         env.storage().persistent().set(&key, &rewards);
         env.storage().persistent().extend_ttl(
             &key,
@@ -196,17 +207,27 @@ impl RewardsDistributorContract {
         let key = DataKey::UserRewards(user.clone());
         let mut rewards: UserRewards = env.storage().persistent().get(&key).expect("no rewards");
 
-        let pending = rewards.pending;
-        if pending <= 0 {
-            panic!("no pending rewards");
+        if rewards.total_earned <= 0 {
+            panic!("no available rewards");
+        }
+
+        // Calculate vested amount based on linear vesting schedule
+        let now = env.ledger().timestamp();
+        let elapsed = now.saturating_sub(rewards.vesting_start);
+        let vesting_fraction = elapsed.min(rewards.vesting_duration);
+        let vested_total = (rewards.total_earned as u128 * vesting_fraction as u128
+            / rewards.vesting_duration as u128) as i128;
+        let claimable = vested_total.saturating_sub(rewards.total_claimed);
+
+        if claimable <= 0 {
+            panic!("no vested rewards available to claim");
         }
 
         let token: Address = env.storage().instance().get(&DataKey::RewardToken).unwrap();
         let token_client = token::Client::new(&env, &token);
-        token_client.transfer(&env.current_contract_address(), &user, &pending);
+        token_client.transfer(&env.current_contract_address(), &user, &claimable);
 
-        rewards.total_claimed += pending;
-        rewards.pending = 0;
+        rewards.total_claimed += claimable;
         env.storage().persistent().set(&key, &rewards);
         env.storage().persistent().extend_ttl(
             &key,
@@ -216,10 +237,10 @@ impl RewardsDistributorContract {
 
         env.events().publish(
             (symbol_short!("rewards"), symbol_short!("claimed")),
-            (user, pending),
+            (user, claimable),
         );
 
-        pending
+        claimable
     }
 
     pub fn get_program(env: Env, program_id: u32) -> Option<RewardProgram> {
