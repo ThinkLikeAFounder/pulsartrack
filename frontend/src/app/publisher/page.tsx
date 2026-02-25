@@ -70,17 +70,17 @@ export default function PublisherPage() {
       <div className="min-h-screen bg-gray-50">
         {/* Page Header */}
         <div className="bg-white border-b border-gray-200 px-4 sm:px-6 lg:px-8 py-6">
-          <div className="max-w-7xl mx-auto flex items-center justify-between">
-            <div>
+          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
               <h1 className="text-2xl font-bold text-gray-900">Publisher Dashboard</h1>
-              <p className="text-sm text-gray-500 mt-1 font-mono">{formatAddress(address || '')}</p>
+              <p className="text-sm text-gray-500 mt-1 font-mono truncate">{formatAddress(address || '')}</p>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1 px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-sm font-medium">
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-1 px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-sm font-medium whitespace-nowrap">
                 <Star className="w-3.5 h-3.5" />
                 Rep: {reputationScore}/1000
               </div>
-              <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">
+              <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium whitespace-nowrap">
                 Stellar Testnet
               </span>
             </div>
@@ -89,7 +89,7 @@ export default function PublisherPage() {
 
         {/* Stats */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             {[
               { icon: DollarSign, label: 'Total Earned', value: '0 XLM', color: 'green' },
               { icon: TrendingUp, label: 'Impressions Served', value: '0', color: 'blue' },
@@ -111,24 +111,40 @@ export default function PublisherPage() {
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit flex-wrap">
-            {[
-              { id: 'overview', label: 'Overview' },
-              { id: 'auctions', label: 'RTB Auctions' },
-              { id: 'earnings', label: 'Earnings' },
-              { id: 'subscription', label: 'Subscription Plans' },
-            ].map(({ id, label }) => (
-              <button
-                key={id}
-                onClick={() => setActiveTab(id as any)}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === id
-                    ? 'bg-white text-indigo-600 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
-                  }`}
+          <div className="mb-6">
+            {/* Mobile: Dropdown */}
+            <div className="md:hidden">
+              <select
+                value={activeTab}
+                onChange={(e) => setActiveTab(e.target.value as any)}
+                className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
               >
-                {label}
-              </button>
-            ))}
+                <option value="overview">Overview</option>
+                <option value="auctions">RTB Auctions</option>
+                <option value="earnings">Earnings</option>
+                <option value="subscription">Subscription Plans</option>
+              </select>
+            </div>
+            {/* Desktop: Tab Bar */}
+            <div className="hidden md:flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
+              {[
+                { id: 'overview', label: 'Overview' },
+                { id: 'auctions', label: 'RTB Auctions' },
+                { id: 'earnings', label: 'Earnings' },
+                { id: 'subscription', label: 'Subscription Plans' },
+              ].map(({ id, label }) => (
+                <button
+                  key={id}
+                  onClick={() => setActiveTab(id as any)}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === id
+                      ? 'bg-white text-indigo-600 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {activeTab === 'overview' && (
@@ -201,7 +217,7 @@ export default function PublisherPage() {
           {activeTab === 'subscription' && (
             <div>
               <h2 className="text-lg font-semibold text-gray-900 mb-6">Subscription Plans</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {SUBSCRIPTION_PLANS.map((plan) => (
                   <div
                     key={plan.name}
