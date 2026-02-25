@@ -209,12 +209,15 @@ impl BudgetOptimizerContract {
             .get(&DataKey::Allocation(campaign_id))
             .expect("allocation not found");
 
+        let current_day = env.ledger().timestamp() / 86_400;
+        let last_day = allocation.last_optimized / 86_400;
+        if current_day > last_day {
+            allocation.spent_today = 0;
+        }
+
         allocation.spent_today += amount;
         allocation.spent_total += amount;
-
-        // Reset daily spend if new day
-        let hour = env.ledger().timestamp() / 86_400;
-        let _ = hour; // Could be used for daily tracking
+        allocation.last_optimized = env.ledger().timestamp();
 
         let _ttl_key = DataKey::Allocation(campaign_id);
         env.storage().persistent().set(&_ttl_key, &allocation);
@@ -243,7 +246,15 @@ impl BudgetOptimizerContract {
             .persistent()
             .get::<DataKey, BudgetAllocation>(&DataKey::Allocation(campaign_id))
         {
-            alloc.spent_today + amount <= alloc.daily_budget
+            let current_day = env.ledger().timestamp() / 86_400;
+            let last_day = alloc.last_optimized / 86_400;
+            let effective_spent_today = if current_day > last_day {
+                0
+            } else {
+                alloc.spent_today
+            };
+
+            effective_spent_today + amount <= alloc.daily_budget
                 && alloc.spent_total + amount <= alloc.total_budget
         } else {
             false
