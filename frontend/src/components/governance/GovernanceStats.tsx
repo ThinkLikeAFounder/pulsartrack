@@ -1,6 +1,7 @@
 'use client';
 
 import { GovernanceProposal } from '@/types/contracts';
+import { formatPulsar } from '@/lib/display-utils';
 
 interface GovernanceStatsProps {
   proposals: GovernanceProposal[];
@@ -18,12 +19,7 @@ export function GovernanceStats({ proposals, tokenBalance = BigInt(0), votingPow
     BigInt(0)
   );
 
-  const formatPulsar = (amount: bigint) => {
-    return (Number(amount) / 1e7).toLocaleString(undefined, {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2,
-    });
-  };
+  // use global formatPulsar helper
 
   const stats = [
     { label: 'Active Proposals', value: String(active), color: 'text-green-400' },
@@ -42,13 +38,13 @@ export function GovernanceStats({ proposals, tokenBalance = BigInt(0), votingPow
               Your Voting Power
             </p>
             <p className="text-2xl font-bold text-white mt-1">
-              {formatPulsar(votingPower)} PULSAR
+              {formatPulsar(votingPower)}
             </p>
           </div>
           <div className="text-right">
             <p className="text-xs text-gray-400">Balance</p>
             <p className="text-sm text-gray-200 font-medium">
-              {formatPulsar(tokenBalance)} PULSAR
+              {formatPulsar(tokenBalance)}
             </p>
           </div>
         </div>

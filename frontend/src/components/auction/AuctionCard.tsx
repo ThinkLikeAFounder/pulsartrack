@@ -79,12 +79,12 @@ export function AuctionCard({ auction, onBid }: AuctionCardProps) {
         </div>
         <div className="flex justify-between">
           <span className="text-gray-400">Floor price</span>
-          <span className="text-gray-200">{floorXlm} XLM</span>
+          <span className="text-gray-200">{floorXlm}</span>
         </div>
         {winningBidXlm && (
           <div className="flex justify-between">
             <span className="text-gray-400">Current bid</span>
-            <span className="text-green-400 font-semibold">{winningBidXlm} XLM</span>
+            <span className="text-green-400 font-semibold">{winningBidXlm}</span>
           </div>
         )}
         <div className="flex justify-between">
