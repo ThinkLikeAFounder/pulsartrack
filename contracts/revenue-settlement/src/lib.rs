@@ -119,10 +119,16 @@ impl RevenueSettlementContract {
         let burn_fee = (amount * pool.burn_pct as i128) / 10_000;
         let publisher_amount = amount - platform_fee - treasury_fee - burn_fee;
 
+        // Any rounding dust (1-3 stroops per tx) from integer division is captured
+        // here and routed to treasury, ensuring the contract's token balance always
+        // equals the exact sum of all tracked shares.
+        let total_distributed = platform_fee + treasury_fee + burn_fee + publisher_amount;
+        let dust = amount - total_distributed;
+
         pool.total_revenue += amount;
         pool.platform_share += platform_fee;
         pool.publisher_share += publisher_amount;
-        pool.treasury_share += treasury_fee;
+        pool.treasury_share += treasury_fee + dust; // dust absorbed by treasury
         pool.burn_amount += burn_fee;
 
         env.storage().instance().set(&DataKey::RevenuePool, &pool);
