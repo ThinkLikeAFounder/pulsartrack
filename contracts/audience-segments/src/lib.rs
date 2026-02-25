@@ -2,7 +2,10 @@
 //! Privacy-preserving audience segmentation and targeting on Stellar.
 
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, String};
+use soroban_sdk::{
+    contract, contractimpl, contracttype, symbol_short,
+    Address, BytesN, Env, String, Vec,
+};
 
 #[contracttype]
 #[derive(Clone)]
@@ -60,6 +63,13 @@ impl AudienceSegmentsContract {
         env.storage()
             .instance()
             .set(&DataKey::SegmentCounter, &0u64);
+    }
+
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
     }
 
     pub fn create_segment(

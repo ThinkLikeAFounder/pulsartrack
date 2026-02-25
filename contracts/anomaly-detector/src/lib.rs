@@ -2,7 +2,10 @@
 //! On-chain anomaly detection for ad campaign traffic on Stellar.
 
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, String};
+use soroban_sdk::{
+    contract, contractimpl, contracttype, symbol_short,
+    Address, BytesN, Env, String,
+};
 
 #[contracttype]
 #[derive(Clone)]
@@ -89,6 +92,13 @@ impl AnomalyDetectorContract {
         env.storage()
             .instance()
             .set(&DataKey::SpikeThreshold, &300u32); // 300% = 3x normal
+    }
+
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
     }
 
     pub fn set_baseline(

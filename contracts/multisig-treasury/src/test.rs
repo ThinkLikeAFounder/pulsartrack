@@ -93,6 +93,29 @@ fn test_initialize_non_admin_fails() {
     client.initialize(&admin, &signers, &1u32);
 }
 
+// ─── upgrade ─────────────────────────────────────────────────────────────────
+
+#[test]
+#[should_panic] // Panics because WASM hash 0x0...0 does not exist
+fn test_upgrade_authorized_reaches_wasm_check() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _admin, _, _, _) = setup(&env);
+
+    let new_wasm_hash = BytesN::from_array(&env, &[0u8; 32]);
+    client.upgrade(&new_wasm_hash);
+}
+
+#[test]
+#[should_panic]
+fn test_upgrade_unauthorized() {
+    let env = Env::default();
+    let (client, _admin, _, _, _) = setup(&env);
+
+    let new_wasm_hash = BytesN::from_array(&env, &[0u8; 32]);
+    client.upgrade(&new_wasm_hash);
+}
+
 #[test]
 #[should_panic(expected = "invalid required signers")]
 fn test_initialize_zero_required() {
