@@ -44,7 +44,7 @@ members = [
 ]
 
 [workspace.dependencies]
-soroban-sdk = "22.0.0"
+soroban-sdk = "=22.0.0"
 pulsar-common-admin = { path = "contracts/common-admin" }
 
 [profile.release]
