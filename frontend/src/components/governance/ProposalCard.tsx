@@ -1,7 +1,7 @@
 'use client';
 
 import { GovernanceProposal } from '@/types/contracts';
-import { formatAddress } from '@/lib/display-utils';
+import { formatAddress, formatNumber } from '@/lib/display-utils';
 import { clsx } from 'clsx';
 
 interface ProposalCardProps {

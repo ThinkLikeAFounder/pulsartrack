@@ -8,7 +8,7 @@
 
 #![no_std]
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, token, Address, Env, String,
+    contract, contractimpl, contracttype, symbol_short, token, Address, Env, String, IntoVal,
 };
 
 // ============================================================
@@ -143,6 +143,7 @@ impl GovernanceDaoContract {
         env.storage()
             .instance()
             .set(&DataKey::ProposalCounter, &0u64);
+        env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage()
             .instance()
             .set(&DataKey::VotingPeriod, &voting_period);
@@ -170,6 +171,9 @@ impl GovernanceDaoContract {
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
         proposer.require_auth();
 
+        let core_address: Address = env.storage().instance().get(&DataKey::GovernanceCore).expect("core not set");
+        let core_params: GovernanceParams = env.invoke_contract(&core_address, &soroban_sdk::Symbol::new(&env, "get_params"), soroban_sdk::vec![&env]);
+
         // Enforce minimum token requirement for proposal creation from GovernanceCore
         let min_tokens = core_params.min_proposal_threshold;
         if min_tokens > 0 {
@@ -190,9 +194,6 @@ impl GovernanceDaoContract {
             .get(&DataKey::ProposalCounter)
             .unwrap_or(0);
         let proposal_id = counter + 1;
-
-        let core_address: Address = env.storage().instance().get(&DataKey::GovernanceCore).expect("core not set");
-        let core_params: GovernanceParams = env.invoke_contract(&core_address, &soroban_sdk::Symbol::new(&env, "get_params"), soroban_sdk::vec![&env]);
 
         let voting_period = core_params.voting_period_ledgers;
         let quorum_bps = core_params.quorum_pct * 100;
@@ -401,7 +402,7 @@ impl GovernanceDaoContract {
         let has_core_admin: bool = env.invoke_contract(
             &core_address,
             &soroban_sdk::Symbol::new(&env, "has_role"),
-            soroban_sdk::vec![&env, &caller, Role::Admin],
+            soroban_sdk::vec![&env, caller.into_val(&env), Role::Admin.into_val(&env)],
         );
 
         if caller != stored_admin && !has_core_admin {
@@ -442,7 +443,7 @@ impl GovernanceDaoContract {
         let has_core_admin: bool = env.invoke_contract(
             &core_address,
             &soroban_sdk::Symbol::new(&env, "has_role"),
-            soroban_sdk::vec![&env, &caller, Role::Admin],
+            soroban_sdk::vec![&env, caller.to_val(), Role::Admin.into_val(&env)],
         );
 
         let mut proposal: Proposal = env
