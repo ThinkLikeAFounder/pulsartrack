@@ -69,6 +69,12 @@ fn test_report_anomaly() {
     env.mock_all_auths();
     let (c, _, oracle) = setup(&env);
     let publisher = Address::generate(&env);
+    
+    // Set baseline first
+    c.set_baseline(&oracle, &1u64, &1000u64, &50u64, &300u32);
+    
+    // Report anomaly with metrics exceeding threshold (300% = 3x)
+    // 4000 impressions > 3000 threshold (1000 * 300%)
     c.report_anomaly(
         &oracle,
         &1u64,
@@ -78,6 +84,8 @@ fn test_report_anomaly() {
         &s(&env, "spike"),
         &s(&env, "{}"),
         &true,
+        &4000u64, // current_impressions_per_hour
+        &200u64,  // current_clicks_per_hour
     );
     assert_eq!(c.get_report_count(), 1);
     assert!(c.is_publisher_flagged(&publisher));
@@ -105,4 +113,83 @@ fn test_get_report_count_initial() {
     env.mock_all_auths();
     let (c, _, _) = setup(&env);
     assert_eq!(c.get_report_count(), 0);
+}
+
+#[test]
+#[should_panic(expected = "metrics do not exceed baseline thresholds")]
+fn test_report_anomaly_below_threshold() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _, oracle) = setup(&env);
+    let publisher = Address::generate(&env);
+    
+    // Set baseline
+    c.set_baseline(&oracle, &1u64, &1000u64, &50u64, &300u32);
+    
+    // Try to report anomaly with metrics NOT exceeding threshold
+    // 2000 impressions < 3000 threshold (1000 * 300%)
+    // 100 clicks < 150 threshold (50 * 300%)
+    c.report_anomaly(
+        &oracle,
+        &1u64,
+        &Some(publisher.clone()),
+        &AnomalyType::ClickFarming,
+        &AnomalySeverity::Critical,
+        &s(&env, "spike"),
+        &s(&env, "{}"),
+        &true,
+        &2000u64, // current_impressions_per_hour (below threshold)
+        &100u64,  // current_clicks_per_hour (below threshold)
+    );
+}
+
+#[test]
+fn test_report_anomaly_no_baseline() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _, oracle) = setup(&env);
+    let publisher = Address::generate(&env);
+    
+    // Report anomaly without setting baseline (should succeed)
+    c.report_anomaly(
+        &oracle,
+        &1u64,
+        &Some(publisher.clone()),
+        &AnomalyType::ClickFarming,
+        &AnomalySeverity::Critical,
+        &s(&env, "spike"),
+        &s(&env, "{}"),
+        &true,
+        &4000u64,
+        &200u64,
+    );
+    assert_eq!(c.get_report_count(), 1);
+}
+
+#[test]
+fn test_report_anomaly_clicks_exceed_threshold() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _, oracle) = setup(&env);
+    let publisher = Address::generate(&env);
+    
+    // Set baseline
+    c.set_baseline(&oracle, &1u64, &1000u64, &50u64, &300u32);
+    
+    // Report anomaly where only clicks exceed threshold
+    // 2000 impressions < 3000 threshold
+    // 200 clicks > 150 threshold (50 * 300%)
+    c.report_anomaly(
+        &oracle,
+        &1u64,
+        &Some(publisher.clone()),
+        &AnomalyType::ClickFarming,
+        &AnomalySeverity::High,
+        &s(&env, "click spike"),
+        &s(&env, "{}"),
+        &true,
+        &2000u64, // below threshold
+        &200u64,  // exceeds threshold
+    );
+    assert_eq!(c.get_report_count(), 1);
 }
