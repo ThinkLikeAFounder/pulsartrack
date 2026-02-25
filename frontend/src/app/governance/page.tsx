@@ -18,7 +18,7 @@ import {
   useCastVote,
   useCreateProposal,
 } from '@/hooks/useContract';
-import { stroopsToXlm } from '@/lib/stellar-config';
+import { formatXlm, formatCurrency } from '@/lib/display-utils';
 
 type ProposalStatus = 'Active' | 'Passed' | 'Rejected' | 'Executed';
 
@@ -94,14 +94,14 @@ export default function GovernancePage() {
                 label: 'Your PULSAR Balance',
                 value: balanceLoading
                   ? 'Loading...'
-                  : `${stroopsToXlm(balance || 0n).toFixed(2)} PULSAR`,
+                  : `${formatCurrency(balance || 0n, 'PULSAR', 2)}`,
                 icon: BarChart2,
               },
               {
                 label: 'Voting Power',
                 value: balanceLoading
                   ? 'Loading...'
-                  : stroopsToXlm(balance || 0n).toFixed(0),
+                  : formatCurrency(balance || 0n, 'PULSAR', 0).replace(' PULSAR', ''),
                 icon: Vote,
               },
               {
@@ -133,11 +133,10 @@ export default function GovernancePage() {
               <button
                 key={id}
                 onClick={() => setActiveTab(id as any)}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  activeTab === id
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === id
                     ? 'bg-white text-indigo-600 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
-                }`}
+                  }`}
               >
                 {label}
               </button>
@@ -187,11 +186,10 @@ export default function GovernancePage() {
                           </p>
                         </div>
                         <span
-                          className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            proposal.is_active
+                          className={`px-2 py-1 rounded-full text-xs font-medium ${proposal.is_active
                               ? STATUS_COLORS['Active']
                               : STATUS_COLORS['Passed']
-                          }`}
+                            }`}
                         >
                           {proposal.is_active ? 'Active' : 'Passed'}
                         </span>
