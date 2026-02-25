@@ -62,6 +62,7 @@ pub struct KycRecord {
 pub enum DataKey {
     Admin,
     PendingAdmin,
+    Orchestrator,
     PublisherCount,
     Publisher(Address),
     KycRecord(Address),
@@ -83,7 +84,7 @@ pub struct PublisherVerificationContract;
 #[contractimpl]
 impl PublisherVerificationContract {
     /// Initialize the contract
-    pub fn initialize(env: Env, admin: Address) {
+    pub fn initialize(env: Env, admin: Address, orchestrator: Address) {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -92,6 +93,9 @@ impl PublisherVerificationContract {
         }
         admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage()
+            .instance()
+            .set(&DataKey::Orchestrator, &orchestrator);
         env.storage()
             .instance()
             .set(&DataKey::PublisherCount, &0u64);
@@ -322,11 +326,20 @@ impl PublisherVerificationContract {
     }
 
     /// Record impression (called by campaign orchestrator)
-    pub fn record_impression(env: Env, _caller: Address, publisher: Address, earning: i128) {
+    pub fn record_impression(env: Env, caller: Address, publisher: Address, earning: i128) {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-        // In production, restrict to campaign orchestrator contract only
+        caller.require_auth();
+        let orchestrator: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Orchestrator)
+            .expect("orchestrator not configured");
+        if caller != orchestrator {
+            panic!("unauthorized");
+        }
+
         let mut pub_data: Publisher = env
             .storage()
             .persistent()
