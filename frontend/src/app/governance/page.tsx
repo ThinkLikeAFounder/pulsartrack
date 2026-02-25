@@ -378,9 +378,10 @@ export default function GovernancePage() {
                     {createLoading ? 'Creating...' : 'Submit Proposal'}
                   </button>
                   <p className="text-xs text-gray-500 text-center">
-                  Requires minimum PULSAR token balance to submit proposals.
-                </p>
-              </form>
+                    Requires minimum PULSAR token balance to submit proposals.
+                  </p>
+                </form>
+              )}
             </div>
           )}
 

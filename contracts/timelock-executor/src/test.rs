@@ -1,9 +1,18 @@
 #![cfg(test)]
 use super::*;
 use soroban_sdk::{
+    contract, contractimpl,
     testutils::{Address as _, Ledger},
-    Address, Env, String,
+    Address, Env, String, Symbol,
 };
+
+// Minimal target contract used by test_execute_entry so invoke_contract succeeds.
+#[contract]
+pub struct NoOpTarget;
+#[contractimpl]
+impl NoOpTarget {
+    pub fn upgrade(_env: Env) {}
+}
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -19,8 +28,8 @@ fn setup(env: &Env) -> (TimelockExecutorContractClient<'_>, Address, Address) {
     (client, admin, executor)
 }
 
-fn make_fn(env: &Env) -> String {
-    String::from_str(env, "upgrade")
+fn make_fn(env: &Env) -> Symbol {
+    Symbol::new(env, "upgrade")
 }
 
 fn make_desc(env: &Env) -> String {
@@ -151,7 +160,8 @@ fn test_execute_entry() {
     let env = Env::default();
     env.mock_all_auths();
     let (client, admin, executor) = setup(&env);
-    let target = Address::generate(&env);
+    // Register a real contract so invoke_contract inside execute() can succeed.
+    let target = env.register_contract(None, NoOpTarget);
 
     let entry_id = client.queue(&admin, &target, &make_fn(&env), &Vec::new(&env), &make_desc(&env), &500u64);
 
