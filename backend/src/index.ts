@@ -61,6 +61,40 @@ const server = createServer(app);
 // Attach WebSocket server
 setupWebSocketServer(server);
 
+function gracefulShutdown(signal: string) {
+  logger.info(`[${signal}] Shutting down gracefully...`);
+
+  // Force exit after 30 seconds
+  const timeout = setTimeout(() => {
+    logger.error("Shutdown timed out, forcing exit.");
+    process.exit(1);
+  }, 30_000);
+
+  server.close(async () => {
+    logger.info("HTTP server closed.");
+
+    try {
+      await prisma.$disconnect();
+      logger.info("[DB] Prisma disconnected.");
+    } catch (err) {
+      logger.error({ err }, "[DB] Error during Prisma disconnect.");
+    }
+
+    try {
+      await redisClient.quit();
+      logger.info("[Redis] Redis client closed.");
+    } catch (err) {
+      logger.error({ err }, "[Redis] Error during Redis disconnect.");
+    }
+
+    clearTimeout(timeout);
+    process.exit(0);
+  });
+}
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+
 // Start server
 async function start() {
   // Verify database connection — fail hard in production
