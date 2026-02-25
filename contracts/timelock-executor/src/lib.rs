@@ -2,7 +2,7 @@
 //! Time-locked execution of governance decisions on Stellar.
 
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, String};
+use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, String, Symbol, Vec, Val};
 
 #[contracttype]
 #[derive(Clone, PartialEq)]
@@ -19,10 +19,11 @@ pub struct TimelockEntry {
     pub entry_id: u64,
     pub proposer: Address,
     pub target_contract: Address,
-    pub function_name: String,
+    pub function_name: Symbol,
     pub description: String,
     pub eta: u64,          // Earliest time of execution (timestamp)
     pub grace_period: u64, // How long after ETA it can still be executed
+    pub args: Vec<Val>,
     pub status: TimelockStatus,
     pub queued_at: u64,
     pub executed_at: Option<u64>,
@@ -85,7 +86,8 @@ impl TimelockExecutorContract {
         env: Env,
         proposer: Address,
         target_contract: Address,
-        function_name: String,
+        function_name: Symbol,
+        args: Vec<Val>,
         description: String,
         delay_secs: u64,
     ) -> u64 {
@@ -129,6 +131,7 @@ impl TimelockExecutorContract {
             proposer: proposer.clone(),
             target_contract,
             function_name,
+            args,
             description,
             eta: now + delay_secs,
             grace_period: grace,
@@ -198,6 +201,9 @@ impl TimelockExecutorContract {
             );
             panic!("grace period expired");
         }
+
+        // Perform the actual cross-contract invocation
+        let _: Val = env.invoke_contract(&entry.target_contract, &entry.function_name, entry.args.clone());
 
         entry.status = TimelockStatus::Executed;
         entry.executed_at = Some(now);

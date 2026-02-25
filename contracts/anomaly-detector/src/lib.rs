@@ -139,6 +139,8 @@ impl AnomalyDetectorContract {
         description: String,
         metrics_snapshot: String,
         auto_action: bool,
+        current_impressions_per_hour: u64,
+        current_clicks_per_hour: u64,
     ) -> u64 {
         env.storage()
             .instance()
@@ -151,6 +153,33 @@ impl AnomalyDetectorContract {
             .unwrap();
         if oracle != stored_oracle {
             panic!("unauthorized");
+        }
+
+        // Validate against baseline if it exists
+        let baseline: Option<TrafficBaseline> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Baseline(campaign_id));
+        
+        if let Some(b) = baseline {
+            // Calculate threshold multiplier (e.g., 300% = 3.0x)
+            let threshold_multiplier = b.spike_threshold_pct as u64;
+            
+            // Check if current metrics exceed baseline thresholds
+            let impressions_threshold = b.avg_impressions_per_hour
+                .saturating_mul(threshold_multiplier)
+                .saturating_div(100);
+            let clicks_threshold = b.avg_clicks_per_hour
+                .saturating_mul(threshold_multiplier)
+                .saturating_div(100);
+            
+            // Validate that at least one metric exceeds the threshold
+            let impressions_exceeded = current_impressions_per_hour > impressions_threshold;
+            let clicks_exceeded = current_clicks_per_hour > clicks_threshold;
+            
+            if !impressions_exceeded && !clicks_exceeded {
+                panic!("metrics do not exceed baseline thresholds");
+            }
         }
 
         let counter: u64 = env

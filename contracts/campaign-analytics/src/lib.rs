@@ -57,6 +57,11 @@ const INSTANCE_BUMP_AMOUNT: u32 = 86_400;
 const PERSISTENT_LIFETIME_THRESHOLD: u32 = 120_960;
 const PERSISTENT_BUMP_AMOUNT: u32 = 1_051_200;
 
+/// Maximum number of snapshots stored per campaign. Uses a ring buffer to
+/// overwrite the oldest entry once the cap is reached, preventing unbounded
+/// storage growth. 720 slots ≈ 30 days of hourly snapshots.
+const MAX_SNAPSHOTS: u32 = 720;
+
 #[contract]
 pub struct CampaignAnalyticsContract;
 
@@ -115,17 +120,21 @@ impl CampaignAnalyticsContract {
             .persistent()
             .get(&DataKey::SnapshotCount(campaign_id))
             .unwrap_or(0);
-        let _ttl_key = DataKey::Snapshot(campaign_id, count);
-        env.storage().persistent().set(&_ttl_key, &snapshot);
+
+        // Ring buffer: overwrite oldest snapshot once MAX_SNAPSHOTS is reached,
+        // keeping storage bounded to MAX_SNAPSHOTS entries per campaign.
+        let index = count % MAX_SNAPSHOTS;
+        let snapshot_key = DataKey::Snapshot(campaign_id, index);
+        env.storage().persistent().set(&snapshot_key, &snapshot);
         env.storage().persistent().extend_ttl(
-            &_ttl_key,
+            &snapshot_key,
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
         );
-        let _ttl_key = DataKey::SnapshotCount(campaign_id);
-        env.storage().persistent().set(&_ttl_key, &(count + 1));
+        let count_key = DataKey::SnapshotCount(campaign_id);
+        env.storage().persistent().set(&count_key, &(count + 1));
         env.storage().persistent().extend_ttl(
-            &_ttl_key,
+            &count_key,
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
         );
@@ -232,6 +241,29 @@ impl CampaignAnalyticsContract {
             .persistent()
             .get(&DataKey::SnapshotCount(campaign_id))
             .unwrap_or(0)
+    }
+
+    /// Returns the number of snapshots currently stored for a campaign,
+    /// capped at MAX_SNAPSHOTS. Useful for iterating available snapshots.
+    pub fn get_stored_snapshot_count(env: Env, campaign_id: u64) -> u32 {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        let count: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::SnapshotCount(campaign_id))
+            .unwrap_or(0);
+        if count < MAX_SNAPSHOTS {
+            count
+        } else {
+            MAX_SNAPSHOTS
+        }
+    }
+
+    /// Returns the maximum number of snapshots stored per campaign.
+    pub fn get_max_snapshots(_env: Env) -> u32 {
+        MAX_SNAPSHOTS
     }
 
     pub fn get_funnel(env: Env, campaign_id: u64) -> Option<ConversionFunnel> {

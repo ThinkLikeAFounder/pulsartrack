@@ -71,19 +71,6 @@ pub enum DataKey {
 }
 
 // ============================================================
-// Error Codes
-// ============================================================
-
-/// Subscriber already has an active subscription. Use `change_tier()` or `renew()`.
-pub const ERR_ALREADY_ACTIVE: u32 = 1;
-/// No active subscription found for this address.
-pub const ERR_NO_ACTIVE_SUB: u32 = 2;
-/// Cannot downgrade while a subscription is active.
-pub const ERR_DOWNGRADE_BLOCKED: u32 = 3;
-/// New tier is the same as the current tier. Use `renew()` instead.
-pub const ERR_SAME_TIER: u32 = 4;
-
-// ============================================================
 // TTL Constants
 // ============================================================
 
@@ -241,8 +228,8 @@ impl SubscriptionManagerContract {
 
     /// Create a **new** subscription.
     ///
-    /// Panics with `ERR_ALREADY_ACTIVE` if the subscriber already has an active
-    /// subscription. Use `change_tier()` to upgrade, or `renew()` to extend.
+    /// Panics if the subscriber already has an active subscription.
+    /// Use `change_tier()` to upgrade, or `renew()` to extend.
     pub fn subscribe(
         env: Env,
         subscriber: Address,
@@ -301,9 +288,9 @@ impl SubscriptionManagerContract {
     /// - Resets the billing period from now for the new tier.
     ///
     /// Panics:
-    /// - `ERR_NO_ACTIVE_SUB`     — no active subscription exists.
-    /// - `ERR_DOWNGRADE_BLOCKED` — `new_tier` has a lower rank than the current tier.
-    /// - `ERR_SAME_TIER`         — `new_tier` is identical; use `renew()`.
+    /// - no active subscription exists.
+    /// - `new_tier` has a lower rank than the current tier (downgrade blocked).
+    /// - `new_tier` is identical to the current tier; use `renew()` instead.
     pub fn change_tier(
         env: Env,
         subscriber: Address,

@@ -413,9 +413,9 @@ impl PublisherVerificationContract {
     fn _score_to_tier(score: u32) -> PublisherTier {
         if score >= 800 {
             PublisherTier::Platinum
-        } else if score >= 500 {
+        } else if score >= 600 {
             PublisherTier::Gold
-        } else if score >= 200 {
+        } else if score >= 400 {
             PublisherTier::Silver
         } else {
             PublisherTier::Bronze

@@ -379,6 +379,7 @@ export default function GovernancePage() {
                     Requires minimum PULSAR token balance to submit proposals.
                   </p>
                 </form>
+              )}
             </div>
           )}
 

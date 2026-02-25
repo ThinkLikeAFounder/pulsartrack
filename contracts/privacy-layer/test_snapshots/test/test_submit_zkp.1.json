@@ -104,7 +104,7 @@
                   "symbol": "Proof"
                 },
                 {
-                  "bytes": "c1cda26362828b69266512052b97cb3729e3b052e4ade47c0a1e3383defe73c7"
+                  "bytes": "314a14441e14730a69cfd4c7ecb8766fc3fde3cb4462672386f7efd8ae91b9df"
                 }
               ]
             },
@@ -124,7 +124,7 @@
                       "symbol": "Proof"
                     },
                     {
-                      "bytes": "c1cda26362828b69266512052b97cb3729e3b052e4ade47c0a1e3383defe73c7"
+                      "bytes": "314a14441e14730a69cfd4c7ecb8766fc3fde3cb4462672386f7efd8ae91b9df"
                     }
                   ]
                 },
@@ -144,7 +144,7 @@
                         "symbol": "proof_id"
                       },
                       "val": {
-                        "bytes": "c1cda26362828b69266512052b97cb3729e3b052e4ade47c0a1e3383defe73c7"
+                        "bytes": "314a14441e14730a69cfd4c7ecb8766fc3fde3cb4462672386f7efd8ae91b9df"
                       }
                     },
                     {
