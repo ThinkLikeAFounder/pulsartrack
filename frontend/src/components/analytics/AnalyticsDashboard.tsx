@@ -32,7 +32,7 @@ export function AnalyticsDashboard({
       : "0";
 
   const days = timeframe === "7d" ? 7 : timeframe === "30d" ? 30 : 90;
-  const campaignIds = campaigns.map(c => c.campaign_id);
+  const campaignIds = campaigns.map(c => c.campaign_id.toString());
   const { data: timeseries, loading, error } = useAnalyticsTimeseries({ campaignIds, timeframe: days === 7 ? "7d" : "30d" });
 
   return (
@@ -45,11 +45,10 @@ export function AnalyticsDashboard({
               <button
                 key={tf}
                 onClick={() => onTimeframeChange(tf)}
-                className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-                  timeframe === tf
+                className={`px-3 py-1 rounded text-xs font-medium transition-colors ${timeframe === tf
                     ? "bg-indigo-600 text-white"
                     : "text-gray-400 hover:text-white"
-                }`}
+                  }`}
               >
                 {tf}
               </button>
@@ -97,10 +96,10 @@ export function AnalyticsDashboard({
         <ImpressionChart data={
           !loading && timeseries && timeseries.length > 0
             ? timeseries.map((point) => ({
-                label: point.date,
-                impressions: point.impressions,
-                clicks: point.clicks,
-              }))
+              label: point.date,
+              impressions: point.impressions,
+              clicks: point.clicks,
+            }))
             : []
         } height={180} />
       </div>
@@ -126,9 +125,9 @@ export function AnalyticsDashboard({
                 const campaignCtr =
                   c.impressions > 0
                     ? (
-                        (Number(c.clicks) / Number(c.impressions)) *
-                        100
-                      ).toFixed(2)
+                      (Number(c.clicks) / Number(c.impressions)) *
+                      100
+                    ).toFixed(2)
                     : "0.00";
                 return (
                   <tr

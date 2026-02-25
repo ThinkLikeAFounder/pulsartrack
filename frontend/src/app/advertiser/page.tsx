@@ -25,6 +25,13 @@ const EMPTY_FORM: CampaignForm = {
 
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
+const COLOR_MAP = {
+  blue: { bg: 'bg-blue-100', text: 'text-blue-600' },
+  green: { bg: 'bg-green-100', text: 'text-green-600' },
+  purple: { bg: 'bg-purple-100', text: 'text-purple-600' },
+  orange: { bg: 'bg-orange-100', text: 'text-orange-600' },
+};
+
 export default function AdvertiserPage() {
   const { address, isConnected } = useWalletStore();
   const { createCampaign, isPending, isSuccess, isError } = useCreateCampaign();
@@ -82,116 +89,100 @@ export default function AdvertiserPage() {
           </div>
         </div>
 
-      {/* Stats Overview */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {isStatsLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            {[1, 2, 3, 4].map(idx => (
-              <div key={idx} className="bg-white p-4 rounded-xl border border-gray-200 animate-pulse">
-                <div className="h-5 bg-gray-200 rounded w-1/2 mb-2"></div>
-                <div className="h-8 bg-gray-200 rounded w-1/4"></div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            {[
-              { icon: BarChart3, label: 'Active Campaigns', value: stats?.active_campaigns?.toString() || '0', color: 'blue' },
-              { icon: Eye, label: 'Total Impressions', value: stats?.total_views?.toString() || '0', color: 'green' },
-              { icon: MousePointer, label: 'Total Clicks', value: '0', color: 'purple' },
-              { icon: TrendingUp, label: 'Total Spent', value: stats ? formatXlm(stats.total_spent) : '0 XLM', color: 'orange' },
-            ].map(({ icon: Icon, label, value, color }) => (
-              <div key={label} className="bg-white p-4 rounded-xl border border-gray-200">
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 bg-${color}-100 rounded-lg flex items-center justify-center`}>
-                    <Icon className={`w-5 h-5 text-${color}-600`} />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">{label}</p>
-                    <p className="text-xl font-bold text-gray-900">{value}</p>
-                  </div>
+        {/* Stats Overview */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          {isStatsLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+              {[1, 2, 3, 4].map(idx => (
+                <div key={idx} className="bg-white p-4 rounded-xl border border-gray-200 animate-pulse">
+                  <div className="h-5 bg-gray-200 rounded w-1/2 mb-2"></div>
+                  <div className="h-8 bg-gray-200 rounded w-1/4"></div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Tabs */}
-        <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit">
-          {[
-            { id: 'campaigns', label: 'My Campaigns', icon: BarChart3 },
-            { id: 'create', label: 'Create Campaign', icon: PlusCircle },
-            { id: 'analytics', label: 'Analytics', icon: TrendingUp },
-          ].map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              onClick={() => setActiveTab(id as any)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === id
-                ? 'bg-white text-indigo-600 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-                }`}
-            >
-              <Icon className="w-4 h-4" />
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {/* Tab Content */}
-        {activeTab === 'campaigns' && (
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Active Campaigns</h2>
-
-            {isCampaignsLoading ? (
-              <div className="animate-pulse flex space-x-4 p-4 border rounded-lg bg-gray-50">
-                <div className="flex-1 space-y-4 py-1">
-                  <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-                  <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-                </div>
-              </div>
-            ) : campaigns && campaigns.length > 0 ? (
-              <div className="space-y-4">
-                {campaigns.map((camp: any) => (
-                  <div key={camp.id} className="p-4 border border-gray-200 rounded-lg flex justify-between items-center">
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+              {[
+                { icon: BarChart3, label: 'Active Campaigns', value: stats?.active_campaigns?.toString() || '0', color: 'blue' as const },
+                { icon: Eye, label: 'Total Impressions', value: stats?.total_views?.toString() || '0', color: 'green' as const },
+                { icon: MousePointer, label: 'Total Clicks', value: '0', color: 'purple' as const },
+                { icon: TrendingUp, label: 'Total Spent', value: stats ? formatXlm(stats.total_spent) : '0 XLM', color: 'orange' as const },
+              ].map(({ icon: Icon, label, value, color }) => (
+                <div key={label} className="bg-white p-4 rounded-xl border border-gray-200">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 ${COLOR_MAP[color].bg} rounded-lg flex items-center justify-center`}>
+                      <Icon className={`w-5 h-5 ${COLOR_MAP[color].text}`} />
+                    </div>
                     <div>
-                      <h3 className="font-semibold">Campaign #{camp.id}</h3>
-                      <p className="text-sm text-gray-500">Status: {Object.keys(camp.status || {})[0] || 'Unknown'}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-medium">{formatXlm(camp.budget)}</p>
-                      <p className="text-xs text-gray-500">{camp.current_views?.toString() || 0} / {camp.target_views?.toString() || 0} Views</p>
+                      <p className="text-sm text-gray-600">{label}</p>
+                      <p className="text-xl font-bold text-gray-900">{value}</p>
                     </div>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-12 text-gray-500">
-                <BarChart3 className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                <p>No campaigns yet. Create your first campaign to get started.</p>
-                <button
-                  onClick={() => setActiveTab('create')}
-                  className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm"
-                >
-                  Create Campaign
-                </button>
-              </div>
-            )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Tabs */}
+          <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit">
+            {[
+              { id: 'campaigns', label: 'My Campaigns', icon: BarChart3 },
+              { id: 'create', label: 'Create Campaign', icon: PlusCircle },
+              { id: 'analytics', label: 'Analytics', icon: TrendingUp },
+            ].map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                onClick={() => setActiveTab(id as any)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === id
+                  ? 'bg-white text-indigo-600 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+                  }`}
+              >
+                <Icon className="w-4 h-4" />
+                {label}
+              </button>
+            ))}
           </div>
 
           {/* Tab Content */}
           {activeTab === 'campaigns' && (
             <div className="bg-white rounded-xl border border-gray-200 p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Active Campaigns</h2>
-              <div className="text-center py-12 text-gray-500">
-                <BarChart3 className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                <p>No campaigns yet. Create your first campaign to get started.</p>
-                <button
-                  onClick={() => setActiveTab('create')}
-                  className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm"
-                >
-                  Create Campaign
-                </button>
-              </div>
+
+              {isCampaignsLoading ? (
+                <div className="animate-pulse flex space-x-4 p-4 border rounded-lg bg-gray-50">
+                  <div className="flex-1 space-y-4 py-1">
+                    <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                    <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+                  </div>
+                </div>
+              ) : campaigns && campaigns.length > 0 ? (
+                <div className="space-y-4">
+                  {campaigns.map((camp: any) => (
+                    <div key={camp.id} className="p-4 border border-gray-200 rounded-lg flex justify-between items-center">
+                      <div>
+                        <h3 className="font-semibold">Campaign #{camp.id}</h3>
+                        <p className="text-sm text-gray-500">Status: {Object.keys(camp.status || {})[0] || 'Unknown'}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-medium">{formatXlm(camp.budget)}</p>
+                        <p className="text-xs text-gray-500">{camp.current_views?.toString() || 0} / {camp.target_views?.toString() || 0} Views</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12 text-gray-500">
+                  <BarChart3 className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                  <p>No campaigns yet. Create your first campaign to get started.</p>
+                  <button
+                    onClick={() => setActiveTab('create')}
+                    className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm"
+                  >
+                    Create Campaign
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
