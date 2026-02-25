@@ -66,13 +66,8 @@ function validateContractIds() {
     .map(([name]) => name);
 
   if (missing.length > 0) {
-    const message = `Deployment Error: Missing contract IDs: ${missing.join(', ')}. Ensure they are set in .env.local`;
-
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error(message);
-    } else {
-      console.warn(message);
-    }
+    const message = `Deployment Warning: Missing contract IDs: ${missing.join(', ')}. Ensure they are set in .env.local for full functionality.`;
+    console.warn(message);
   }
 }
 
