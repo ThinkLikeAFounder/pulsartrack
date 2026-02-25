@@ -16,6 +16,17 @@ use soroban_sdk::{
 // ============================================================
 
 #[contracttype]
+#[derive(Clone)]
+pub struct GovernanceParams {
+    pub min_proposal_threshold: i128,
+    pub voting_period_ledgers: u32,
+    pub quorum_pct: u32,
+    pub pass_threshold_pct: u32,
+    pub timelock_ledgers: u32,
+    pub max_active_proposals: u32,
+}
+
+#[contracttype]
 #[derive(Clone, PartialEq)]
 pub enum ProposalStatus {
     Active,
@@ -24,6 +35,15 @@ pub enum ProposalStatus {
     Executed,
     Cancelled,
     Expired,
+}
+
+#[contracttype]
+#[derive(Clone, PartialEq)]
+pub enum Role {
+    Admin,
+    Moderator,
+    Oracle,
+    Operator,
 }
 
 #[contracttype]
@@ -76,6 +96,7 @@ pub enum DataKey {
     QuorumBps,
     PassThreshold,
     ProposerMinTokens,
+    GovernanceCore,
     Proposal(u64),
     Vote(u64, Address),
     HasVoted(u64, Address),
@@ -100,6 +121,7 @@ impl GovernanceDaoContract {
         env: Env,
         admin: Address,
         governance_token: Address,
+        governance_core: Address,
         voting_period: u32,  // in ledgers
         quorum_bps: u32,     // basis points (e.g., 1000 = 10%)
         pass_threshold: u32, // percentage (e.g., 51)
@@ -112,10 +134,12 @@ impl GovernanceDaoContract {
             panic!("already initialized");
         }
         admin.require_auth();
-        env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage()
             .instance()
             .set(&DataKey::GovernanceToken, &governance_token);
+        env.storage()
+            .instance()
+            .set(&DataKey::GovernanceCore, &governance_core);
         env.storage()
             .instance()
             .set(&DataKey::ProposalCounter, &0u64);
@@ -146,12 +170,8 @@ impl GovernanceDaoContract {
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
         proposer.require_auth();
 
-        // Enforce minimum token requirement for proposal creation
-        let min_tokens: i128 = env
-            .storage()
-            .instance()
-            .get(&DataKey::ProposerMinTokens)
-            .unwrap_or(0);
+        // Enforce minimum token requirement for proposal creation from GovernanceCore
+        let min_tokens = core_params.min_proposal_threshold;
         if min_tokens > 0 {
             let gov_token: Address = env
                 .storage()
@@ -171,21 +191,12 @@ impl GovernanceDaoContract {
             .unwrap_or(0);
         let proposal_id = counter + 1;
 
-        let voting_period: u32 = env
-            .storage()
-            .instance()
-            .get(&DataKey::VotingPeriod)
-            .unwrap_or(1_000);
-        let quorum_bps: u32 = env
-            .storage()
-            .instance()
-            .get(&DataKey::QuorumBps)
-            .unwrap_or(0);
-        let threshold: u32 = env
-            .storage()
-            .instance()
-            .get(&DataKey::PassThreshold)
-            .unwrap_or(51);
+        let core_address: Address = env.storage().instance().get(&DataKey::GovernanceCore).expect("core not set");
+        let core_params: GovernanceParams = env.invoke_contract(&core_address, &soroban_sdk::Symbol::new(&env, "get_params"), soroban_sdk::vec![&env]);
+
+        let voting_period = core_params.voting_period_ledgers;
+        let quorum_bps = core_params.quorum_pct * 100;
+        let threshold = core_params.pass_threshold_pct;
 
         let start = env.ledger().sequence();
         let proposal = Proposal {
@@ -340,9 +351,15 @@ impl GovernanceDaoContract {
             soroban_sdk::vec![&env],
         );
 
+        let core_address: Address = env.storage().instance().get(&DataKey::GovernanceCore).unwrap();
+        let core_params: GovernanceParams = env.invoke_contract(&core_address, &soroban_sdk::Symbol::new(&env, "get_params"), soroban_sdk::vec![&env]);
+        
+        let quorum_bps = core_params.quorum_pct * 100;
+        let threshold_pct = core_params.pass_threshold_pct;
+
         let total_votes = proposal.votes_for + proposal.votes_against;
 
-        let quorum_met = (total_votes * 10_000) >= (total_supply * (proposal.quorum_bps as i128));
+        let quorum_met = (total_votes * 10_000) >= (total_supply * (quorum_bps as i128));
 
         let for_pct = if total_votes > 0 {
             (proposal.votes_for * 100) / total_votes
@@ -350,7 +367,7 @@ impl GovernanceDaoContract {
             0
         };
 
-        proposal.status = if quorum_met && for_pct as u32 >= proposal.threshold_pct {
+        proposal.status = if quorum_met && for_pct as u32 >= threshold_pct {
             ProposalStatus::Passed
         } else if !quorum_met {
             ProposalStatus::Rejected
@@ -373,13 +390,21 @@ impl GovernanceDaoContract {
     }
 
     /// Mark proposal as executed (admin only)
-    pub fn execute_proposal(env: Env, admin: Address, proposal_id: u64) {
+    pub fn execute_proposal(env: Env, caller: Address, proposal_id: u64) {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-        admin.require_auth();
+        caller.require_auth();
         let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
-        if admin != stored_admin {
+        
+        let core_address: Address = env.storage().instance().get(&DataKey::GovernanceCore).unwrap();
+        let has_core_admin: bool = env.invoke_contract(
+            &core_address,
+            &soroban_sdk::Symbol::new(&env, "has_role"),
+            soroban_sdk::vec![&env, &caller, Role::Admin],
+        );
+
+        if caller != stored_admin && !has_core_admin {
             panic!("unauthorized");
         }
 
@@ -412,14 +437,21 @@ impl GovernanceDaoContract {
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
         caller.require_auth();
 
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        let core_address: Address = env.storage().instance().get(&DataKey::GovernanceCore).unwrap();
+        let has_core_admin: bool = env.invoke_contract(
+            &core_address,
+            &soroban_sdk::Symbol::new(&env, "has_role"),
+            soroban_sdk::vec![&env, &caller, Role::Admin],
+        );
+
         let mut proposal: Proposal = env
             .storage()
             .persistent()
             .get(&DataKey::Proposal(proposal_id))
             .expect("proposal not found");
 
-        if caller != proposal.proposer && caller != admin {
+        if caller != proposal.proposer && caller != stored_admin && !has_core_admin {
             panic!("unauthorized");
         }
 
