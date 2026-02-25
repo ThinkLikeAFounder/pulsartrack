@@ -197,11 +197,13 @@ fn test_distribute_platform_revenue() {
     let tc = TokenClient::new(&env, &token_addr);
     assert_eq!(tc.balance(&platform), 2_500); // platform share
     assert_eq!(tc.balance(&treasury), 5_000); // treasury share
+    assert_eq!(tc.balance(&contract_id), 9_990_000); // includes 2_500 burn from 10_000_000 funding
 
-    // Pool should be reset for platform and treasury
+    // Pool should be reset for platform, treasury, and burn
     let pool = client.get_revenue_pool();
     assert_eq!(pool.platform_share, 0);
     assert_eq!(pool.treasury_share, 0);
+    assert_eq!(pool.burn_amount, 0);
     assert_eq!(pool.last_settlement, 1000);
 }
 

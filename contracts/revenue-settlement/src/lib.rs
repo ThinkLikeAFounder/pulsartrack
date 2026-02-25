@@ -222,6 +222,11 @@ impl RevenueSettlementContract {
             pool.treasury_share = 0;
         }
 
+        if pool.burn_amount > 0 {
+            token_client.burn(&env.current_contract_address(), &pool.burn_amount);
+            pool.burn_amount = 0;
+        }
+
         pool.last_settlement = env.ledger().timestamp();
         env.storage().instance().set(&DataKey::RevenuePool, &pool);
     }
