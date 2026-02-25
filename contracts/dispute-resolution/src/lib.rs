@@ -29,6 +29,32 @@ pub enum DisputeOutcome {
 }
 
 #[contracttype]
+#[derive(Clone, PartialEq)]
+pub enum AppealStatus {
+    Pending,
+    UnderReview,
+    Upheld,
+    Overturned,
+    Dismissed,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct DisputeAppeal {
+    pub appeal_id: u64,
+    pub dispute_id: u64,
+    pub appellant: Address,
+    pub reason: String,
+    pub evidence_hash: String,
+    pub status: AppealStatus,
+    pub filed_at: u64,
+    pub resolved_at: Option<u64>,
+    pub new_arbitrator: Option<Address>,
+    pub original_outcome: DisputeOutcome,
+    pub final_outcome: DisputeOutcome,
+}
+
+#[contracttype]
 #[derive(Clone)]
 pub struct Dispute {
     pub dispute_id: u64,
@@ -54,9 +80,12 @@ pub enum DataKey {
     PendingAdmin,
     ArbitratorPool,
     DisputeCounter,
+    AppealCounter,
     FilingFee,
+    AppealFee,
     TokenAddress,
     Dispute(u64),
+    Appeal(u64),
     ArbitratorApproved(Address),
 }
 
@@ -70,7 +99,7 @@ pub struct DisputeResolutionContract;
 
 #[contractimpl]
 impl DisputeResolutionContract {
-    pub fn initialize(env: Env, admin: Address, token: Address, filing_fee: i128) {
+    pub fn initialize(env: Env, admin: Address, token: Address, filing_fee: i128, appeal_fee: i128) {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -85,7 +114,13 @@ impl DisputeResolutionContract {
             .set(&DataKey::FilingFee, &filing_fee);
         env.storage()
             .instance()
+            .set(&DataKey::AppealFee, &appeal_fee);
+        env.storage()
+            .instance()
             .set(&DataKey::DisputeCounter, &0u64);
+        env.storage()
+            .instance()
+            .set(&DataKey::AppealCounter, &0u64);
     }
 
     pub fn authorize_arbitrator(env: Env, admin: Address, arbitrator: Address) {
@@ -120,7 +155,7 @@ impl DisputeResolutionContract {
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
         claimant.require_auth();
 
-        // Collect filing fee
+        // Collect filing fee into escrow
         let fee: i128 = env
             .storage()
             .instance()
@@ -132,9 +167,8 @@ impl DisputeResolutionContract {
                 .instance()
                 .get(&DataKey::TokenAddress)
                 .unwrap();
-            let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
             let token_client = token::Client::new(&env, &token_addr);
-            token_client.transfer(&claimant, &admin, &fee);
+            token_client.transfer(&claimant, &env.current_contract_address(), &fee);
         }
 
         let counter: u64 = env
@@ -248,10 +282,39 @@ impl DisputeResolutionContract {
             panic!("not assigned arbitrator");
         }
 
-        dispute.outcome = outcome;
+        dispute.outcome = outcome.clone();
         dispute.resolution_notes = notes;
         dispute.status = DisputeStatus::Resolved;
         dispute.resolved_at = Some(env.ledger().timestamp());
+
+        // Distribute filing fee based on outcome
+        let fee: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::FilingFee)
+            .unwrap_or(0);
+        if fee > 0 {
+            let token_client = token::Client::new(&env, &dispute.token);
+            match outcome {
+                DisputeOutcome::Claimant => {
+                    // Refund filing fee to claimant
+                    token_client.transfer(
+                        &env.current_contract_address(),
+                        &dispute.claimant,
+                        &fee,
+                    );
+                }
+                _ => {
+                    // Send filing fee to admin (treasury)
+                    let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+                    token_client.transfer(
+                        &env.current_contract_address(),
+                        &admin,
+                        &fee,
+                    );
+                }
+            }
+        }
 
         let _ttl_key = DataKey::Dispute(dispute_id);
         env.storage().persistent().set(&_ttl_key, &dispute);
@@ -267,6 +330,150 @@ impl DisputeResolutionContract {
         );
     }
 
+    pub fn appeal_dispute(
+        env: Env,
+        appellant: Address,
+        dispute_id: u64,
+        reason: String,
+        evidence_hash: String,
+    ) -> u64 {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        appellant.require_auth();
+
+        let dispute: Dispute = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Dispute(dispute_id))
+            .expect("dispute not found");
+
+        if dispute.status != DisputeStatus::Resolved {
+            panic!("can only appeal resolved disputes");
+        }
+
+        if appellant != dispute.claimant && appellant != dispute.respondent {
+            panic!("only claimant or respondent can appeal");
+        }
+
+        // Collect appeal fee into escrow
+        let appeal_fee: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::AppealFee)
+            .unwrap_or(0);
+        if appeal_fee > 0 {
+            let token_addr: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::TokenAddress)
+                .unwrap();
+            let token_client = token::Client::new(&env, &token_addr);
+            token_client.transfer(&appellant, &env.current_contract_address(), &appeal_fee);
+        }
+
+        let counter: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::AppealCounter)
+            .unwrap_or(0);
+        let appeal_id = counter + 1;
+
+        let appeal = DisputeAppeal {
+            appeal_id,
+            dispute_id,
+            appellant: appellant.clone(),
+            reason,
+            evidence_hash,
+            status: AppealStatus::Pending,
+            filed_at: env.ledger().timestamp(),
+            resolved_at: None,
+            new_arbitrator: None,
+            original_outcome: dispute.outcome.clone(),
+            final_outcome: DisputeOutcome::Pending,
+        };
+
+        let _ttl_key = DataKey::Appeal(appeal_id);
+        env.storage().persistent().set(&_ttl_key, &appeal);
+        env.storage().persistent().extend_ttl(
+            &_ttl_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+        env.storage()
+            .instance()
+            .set(&DataKey::AppealCounter, &appeal_id);
+
+        env.events().publish(
+            (symbol_short!("dispute"), symbol_short!("appeal")),
+            (appeal_id, dispute_id, appellant),
+        );
+
+        appeal_id
+    }
+
+    pub fn resolve_appeal(
+        env: Env,
+        admin: Address,
+        appeal_id: u64,
+        new_arbitrator: Address,
+        final_outcome: DisputeOutcome,
+    ) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+
+        let mut appeal: DisputeAppeal = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Appeal(appeal_id))
+            .expect("appeal not found");
+
+        if appeal.status != AppealStatus::Pending {
+            panic!("appeal not pending");
+        }
+
+        appeal.status = AppealStatus::Upheld;
+        appeal.new_arbitrator = Some(new_arbitrator);
+        appeal.final_outcome = final_outcome.clone();
+        appeal.resolved_at = Some(env.ledger().timestamp());
+
+        // Update the original dispute with new outcome
+        let mut dispute: Dispute = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Dispute(appeal.dispute_id))
+            .expect("dispute not found");
+        dispute.outcome = final_outcome;
+        dispute.arbitrator = Some(new_arbitrator);
+
+        let dispute_ttl_key = DataKey::Dispute(appeal.dispute_id);
+        env.storage().persistent().set(&dispute_ttl_key, &dispute);
+        env.storage().persistent().extend_ttl(
+            &dispute_ttl_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+
+        let appeal_ttl_key = DataKey::Appeal(appeal_id);
+        env.storage().persistent().set(&appeal_ttl_key, &appeal);
+        env.storage().persistent().extend_ttl(
+            &appeal_ttl_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+
+        env.events().publish(
+            (symbol_short!("dispute"), symbol_short!("appeal_resolved")),
+            appeal_id,
+        );
+    }
+
     pub fn get_dispute(env: Env, dispute_id: u64) -> Option<Dispute> {
         env.storage()
             .instance()
@@ -274,6 +481,15 @@ impl DisputeResolutionContract {
         env.storage()
             .persistent()
             .get(&DataKey::Dispute(dispute_id))
+    }
+
+    pub fn get_appeal(env: Env, appeal_id: u64) -> Option<DisputeAppeal> {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        env.storage()
+            .persistent()
+            .get(&DataKey::Appeal(appeal_id))
     }
 
     pub fn get_dispute_count(env: Env) -> u64 {

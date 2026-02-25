@@ -7,6 +7,27 @@ import { validate } from '../middleware/validate';
 
 const router = Router();
 
+/**
+ * @openapi
+ * /api/campaigns/stats:
+ *   get:
+ *     summary: Get aggregated campaign stats
+ *     tags: [Campaigns]
+ *     responses:
+ *       200:
+ *         description: Campaign statistics
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/CampaignStatsResponse"
+ *       500:
+ *         description: Failed to fetch campaign stats
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/ErrorResponse"
+ */
+
 router.get('/stats', async (_req: Request, res: Response) => {
   try {
     const { rows } = await pool.query(`
@@ -45,6 +66,46 @@ router.get('/stats', async (_req: Request, res: Response) => {
   }
 });
 
+/**
+ * @openapi
+ * /api/campaigns:
+ *   post:
+ *     summary: Create a new campaign
+ *     tags: [Campaigns]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: "#/components/schemas/CampaignCreateRequest"
+ *     responses:
+ *       201:
+ *         description: Campaign created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *       400:
+ *         description: Validation failed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/ErrorResponse"
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/ErrorResponse"
+ *       500:
+ *         description: Failed to create campaign
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/ErrorResponse"
+ */
 router.post('/', requireAuth, validate({
   body: {
     title: { type: 'string', required: true, minLength: 1, maxLength: 200 },

@@ -7,6 +7,46 @@ import { validate } from "../middleware/validate";
 
 const router = Router();
 
+/**
+ * @openapi
+ * /api/auctions:
+ *   get:
+ *     summary: List auctions
+ *     tags: [Auctions]
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *       - in: query
+ *         name: status
+ *         required: false
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Auctions list
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/AuctionListResponse"
+ *       400:
+ *         description: Validation failed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/ErrorResponse"
+ *       500:
+ *         description: Failed to fetch auctions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/ErrorResponse"
+ */
+
 router.get(
   "/",
   validate({
@@ -76,6 +116,52 @@ router.get(
   },
 );
 
+/**
+ * @openapi
+ * /api/auctions/{auctionId}/bid:
+ *   post:
+ *     summary: Submit a bid for an auction
+ *     tags: [Auctions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: auctionId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: "#/components/schemas/BidRequest"
+ *     responses:
+ *       201:
+ *         description: Bid created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *       400:
+ *         description: Validation failed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/ErrorResponse"
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/ErrorResponse"
+ *       500:
+ *         description: Failed to submit bid
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/ErrorResponse"
+ */
 router.post(
   "/:auctionId/bid",
   requireAuth,

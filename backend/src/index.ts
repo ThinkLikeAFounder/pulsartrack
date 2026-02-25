@@ -8,6 +8,7 @@ import pinoHttp from "pino-http";
 import { logger } from "./lib/logger";
 import { createServer } from "http";
 import apiRoutes from "./api/routes";
+import { swaggerSpec, swaggerUi } from "./api/swagger";
 import {
   errorHandler,
   rateLimit,
@@ -45,6 +46,7 @@ app.use(express.json({ limit: "10mb" }));
 app.use(rateLimit());
 
 // API routes
+app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.use("/api", apiRoutes);
 
 // 404 handler
