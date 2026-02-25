@@ -15,6 +15,8 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   const [eventHistory, setEventHistory] = useState<PulsarEvent[]>([]);
   const unsubscribeRefs = useRef<Array<() => void>>([]);
 
+  const eventsKey = events?.join(',') ?? 'all';
+
   useEffect(() => {
     const ws = getPulsarWebSocket();
 
