@@ -20,9 +20,9 @@ export function BidForm({ auction, campaignId, onSuccess, onCancel }: BidFormPro
   const [submitError, setSubmitError] = useState<string | null>(null);
   const { placeBid, isPending } = usePlaceBid();
 
-  const floorXlm = Number(formatXlm(BigInt(auction.floor_price)));
+  const floorXlm = parseFloat(formatXlm(BigInt(auction.floor_price), 7, false));
   const currentBidXlm = auction.winning_bid
-    ? Number(formatXlm(BigInt(auction.winning_bid)))
+    ? parseFloat(formatXlm(BigInt(auction.winning_bid), 7, false))
     : null;
   const minBid = currentBidXlm ? currentBidXlm * 1.05 : floorXlm;
 
@@ -65,14 +65,14 @@ export function BidForm({ auction, campaignId, onSuccess, onCancel }: BidFormPro
       <div className="grid grid-cols-2 gap-3 mb-4 text-sm">
         <div className="bg-gray-700/50 rounded-lg p-3">
           <p className="text-gray-400 text-xs">Floor Price</p>
-          <p className="text-white font-medium">{floorXlm} XLM</p>
+          <p className="text-white font-medium">{formatXlm(BigInt(auction.floor_price))}</p>
         </div>
         <div className="bg-gray-700/50 rounded-lg p-3">
           <p className="text-gray-400 text-xs">
             {currentBidXlm ? 'Current Bid' : 'No bids yet'}
           </p>
           <p className="text-green-400 font-medium">
-            {currentBidXlm ? `${currentBidXlm.toFixed(4)} XLM` : '—'}
+            {currentBidXlm ? formatXlm(BigInt(auction.winning_bid || 0), 4) : '—'}
           </p>
         </div>
       </div>

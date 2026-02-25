@@ -3,9 +3,13 @@ import { stroopsToXlm, STROOPS_PER_XLM } from './stellar-config';
 /**
  * Format XLM amount from stroops
  */
-export function formatXlm(stroops: bigint | number, decimals = 2): string {
-  const xlm = stroopsToXlm(stroops);
-  return `${xlm.toFixed(decimals)} XLM`;
+export function formatXlm(stroops: bigint | number, decimals = 2, suffix = true): string {
+  const bStroops = BigInt(stroops);
+  const wholePart = bStroops / BigInt(STROOPS_PER_XLM);
+  const remainder = bStroops % BigInt(STROOPS_PER_XLM);
+  const fracStr = remainder.toString().padStart(7, '0').slice(0, decimals);
+  const formattedWhole = wholePart.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return `${formattedWhole}.${fracStr}${suffix ? ' XLM' : ''}`;
 }
 
 /**
@@ -16,16 +20,22 @@ export function formatCurrency(
   currency = 'XLM',
   decimals = 2
 ): string {
-  const num = Number(amount) / STROOPS_PER_XLM;
-  return `${num.toLocaleString(undefined, { maximumFractionDigits: decimals })} ${currency}`;
+  const bAmount = BigInt(amount);
+  const divisor = currency === 'PULSAR' ? BigInt(1e7) : BigInt(STROOPS_PER_XLM);
+  const wholePart = bAmount / divisor;
+  const remainder = bAmount % divisor;
+  const precision = 7;
+  const fracStr = remainder.toString().padStart(precision, '0').slice(0, decimals);
+
+  const formattedWhole = wholePart.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return `${formattedWhole}.${fracStr} ${currency}`;
 }
 
 /**
  * Format a Stellar address for display (truncated)
  */
 export function formatAddress(address: string, chars = 4): string {
-  if (!address || address.length < chars * 2 + 3) return address || '';
-  return `${address.slice(0, chars + 1)}...${address.slice(-chars)}`;
+  return `${address.slice(0, chars)}...${address.slice(-chars)}`;
 }
 
 /**
@@ -50,6 +60,9 @@ export function formatScore(score: number): string {
  * Format a number with thousands separators
  */
 export function formatNumber(num: number | bigint, decimals = 0): string {
+  if (decimals === 0) {
+    return BigInt(num).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
   return Number(num).toLocaleString(undefined, { maximumFractionDigits: decimals });
 }
 
@@ -69,8 +82,12 @@ export function formatDuration(seconds: number | bigint): string {
  * Format PULSAR token amount (7 decimal places)
  */
 export function formatPulsar(amount: bigint | number, decimals = 2): string {
-  const num = Number(amount) / 1e7;
-  return `${num.toFixed(decimals)} PULSAR`;
+  const bAmount = BigInt(amount);
+  const divisor = BigInt(1e7);
+  const wholePart = bAmount / divisor;
+  const remainder = bAmount % divisor;
+  const fracStr = remainder.toString().padStart(7, '0').slice(0, decimals);
+  return `${wholePart}.${fracStr} PULSAR`;
 }
 
 /**

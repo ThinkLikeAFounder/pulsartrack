@@ -20,8 +20,8 @@ export function CampaignStats({ campaigns }: CampaignStatsProps) {
 
   const stats = [
     { label: 'Active Campaigns', value: String(active), sub: `of ${campaigns.length} total` },
-    { label: 'Total Budget', value: `${formatXlm(totalBudget)} XLM`, sub: 'allocated' },
-    { label: 'Total Spent', value: `${formatXlm(totalSpent)} XLM`, sub: 'across all campaigns' },
+    { label: 'Total Budget', value: formatXlm(totalBudget), sub: 'allocated' },
+    { label: 'Total Spent', value: formatXlm(totalSpent), sub: 'across all campaigns' },
     { label: 'Impressions', value: formatNumber(Number(totalImpressions)), sub: 'total served' },
     { label: 'Clicks', value: formatNumber(Number(totalClicks)), sub: `${ctr}% CTR` },
   ];
