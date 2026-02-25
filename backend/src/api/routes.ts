@@ -14,7 +14,26 @@ const router = Router();
 
 import { runAllChecks } from "../services/health";
 
-// Health check
+/**
+ * @openapi
+ * /api/health:
+ *   get:
+ *     summary: Health check for API, DB, Redis, and RPC dependencies
+ *     tags: [System]
+ *     responses:
+ *       200:
+ *         description: Service is healthy
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/HealthResponse"
+ *       503:
+ *         description: One or more dependencies are unhealthy
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/HealthResponse"
+ */
 router.get("/health", async (_req: Request, res: Response) => {
   try {
     const checks = await runAllChecks();
@@ -41,7 +60,26 @@ router.get("/health", async (_req: Request, res: Response) => {
   }
 });
 
-// Stellar network info
+/**
+ * @openapi
+ * /api/network:
+ *   get:
+ *     summary: Get Stellar network configuration and fee stats
+ *     tags: [Stellar]
+ *     responses:
+ *       200:
+ *         description: Network configuration
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/NetworkResponse"
+ *       500:
+ *         description: Failed to fetch fee stats
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/ErrorResponse"
+ */
 router.get("/network", async (_req: Request, res: Response) => {
   try {
     const fees = await getFeeStats();
@@ -56,7 +94,38 @@ router.get("/network", async (_req: Request, res: Response) => {
   }
 });
 
-// Account details
+/**
+ * @openapi
+ * /api/account/{address}:
+ *   get:
+ *     summary: Get account details from Horizon
+ *     tags: [Stellar]
+ *     parameters:
+ *       - in: path
+ *         name: address
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Account details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/AccountResponse"
+ *       404:
+ *         description: Account not found or not funded
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/ErrorResponse"
+ *       500:
+ *         description: Failed to fetch account
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/ErrorResponse"
+ */
 router.get("/account/:address", async (req: Request, res: Response) => {
   try {
     const { address } = req.params;
@@ -70,7 +139,39 @@ router.get("/account/:address", async (req: Request, res: Response) => {
   }
 });
 
-// Account transaction history
+/**
+ * @openapi
+ * /api/account/{address}/transactions:
+ *   get:
+ *     summary: Get account transaction history
+ *     tags: [Stellar]
+ *     parameters:
+ *       - in: path
+ *         name: address
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: limit
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 200
+ *     responses:
+ *       200:
+ *         description: Transaction list
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/AccountTransactionsResponse"
+ *       500:
+ *         description: Failed to fetch transactions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/ErrorResponse"
+ */
 router.get(
   "/account/:address/transactions",
   async (req: Request, res: Response) => {
@@ -85,7 +186,20 @@ router.get(
   },
 );
 
-// List deployed contract IDs
+/**
+ * @openapi
+ * /api/contracts:
+ *   get:
+ *     summary: List deployed contract IDs
+ *     tags: [System]
+ *     responses:
+ *       200:
+ *         description: Contract ID map
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/ContractsResponse"
+ */
 router.get("/contracts", (_req: Request, res: Response) => {
   res.json({ contracts: CONTRACT_IDS });
 });

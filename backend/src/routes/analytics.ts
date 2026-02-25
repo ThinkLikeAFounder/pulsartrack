@@ -6,6 +6,46 @@ import { validate } from '../middleware/validate';
 
 const router = Router();
 
+/**
+ * @openapi
+ * /api/governance/proposals:
+ *   get:
+ *     summary: List governance proposals
+ *     tags: [Governance]
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *       - in: query
+ *         name: status
+ *         required: false
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Governance proposals list
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/GovernanceProposalsResponse"
+ *       400:
+ *         description: Validation failed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/ErrorResponse"
+ *       500:
+ *         description: Failed to fetch proposals
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/ErrorResponse"
+ */
+
 router.get('/proposals', validate({
   query: {
     limit: { type: 'number', integer: true, min: 1, max: 100 },

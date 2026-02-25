@@ -7,6 +7,41 @@ import { validate } from '../middleware/validate';
 
 const router = Router();
 
+/**
+ * @openapi
+ * /api/publishers/leaderboard:
+ *   get:
+ *     summary: Get publisher leaderboard
+ *     tags: [Publishers]
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *     responses:
+ *       200:
+ *         description: Publisher leaderboard
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/PublisherLeaderboardResponse"
+ *       400:
+ *         description: Validation failed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/ErrorResponse"
+ *       500:
+ *         description: Failed to fetch leaderboard
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/ErrorResponse"
+ */
+
 router.get('/leaderboard', validate({
   query: {
     limit: { type: 'number', integer: true, min: 1, max: 100 },
@@ -56,6 +91,46 @@ router.get('/leaderboard', validate({
   }
 });
 
+/**
+ * @openapi
+ * /api/publishers/register:
+ *   post:
+ *     summary: Register a new publisher
+ *     tags: [Publishers]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: "#/components/schemas/PublisherRegisterRequest"
+ *     responses:
+ *       201:
+ *         description: Publisher registered
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *       400:
+ *         description: Validation failed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/ErrorResponse"
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/ErrorResponse"
+ *       500:
+ *         description: Failed to register publisher
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/ErrorResponse"
+ */
 router.post('/register', requireAuth, validate({
   body: {
     displayName: { type: 'string', required: true, minLength: 1, maxLength: 100 },
