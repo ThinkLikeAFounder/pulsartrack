@@ -86,6 +86,9 @@ CREATE TABLE IF NOT EXISTS bids (
 
 CREATE INDEX IF NOT EXISTS idx_bids_auction ON bids(auction_id);
 CREATE INDEX IF NOT EXISTS idx_bids_bidder ON bids(bidder);
+CREATE INDEX IF NOT EXISTS idx_bids_amount ON bids(amount_stroops);
+CREATE INDEX IF NOT EXISTS idx_bids_timestamp ON bids(timestamp);
+CREATE INDEX IF NOT EXISTS idx_bids_auction_amount ON bids(auction_id, amount_stroops DESC);
 
 -- ============================================================
 -- Impressions (recorded events)
@@ -104,6 +107,8 @@ CREATE TABLE IF NOT EXISTS impressions (
 CREATE INDEX IF NOT EXISTS idx_impressions_campaign ON impressions(campaign_id);
 CREATE INDEX IF NOT EXISTS idx_impressions_publisher ON impressions(publisher);
 CREATE INDEX IF NOT EXISTS idx_impressions_timestamp ON impressions(timestamp);
+CREATE INDEX IF NOT EXISTS idx_impressions_verified ON impressions(verified);
+CREATE INDEX IF NOT EXISTS idx_impressions_campaign_time ON impressions(campaign_id, timestamp);
 
 -- ============================================================
 -- Subscriptions (indexed from on-chain events)
@@ -121,6 +126,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_subscriptions_subscriber ON subscriptions(subscriber);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_expires ON subscriptions(expires_at);
 
 -- ============================================================
 -- Governance Proposals (indexed from on-chain events)
@@ -140,6 +146,9 @@ CREATE TABLE IF NOT EXISTS governance_proposals (
   executed_at TIMESTAMPTZ
 );
 
+CREATE INDEX IF NOT EXISTS idx_proposals_status ON governance_proposals(status);
+CREATE INDEX IF NOT EXISTS idx_proposals_voting_end ON governance_proposals(voting_ends_at);
+
 -- ============================================================
 -- Ledger Events (raw event log)
 -- ============================================================
@@ -156,3 +165,4 @@ CREATE TABLE IF NOT EXISTS ledger_events (
 CREATE INDEX IF NOT EXISTS idx_events_contract ON ledger_events(contract_id);
 CREATE INDEX IF NOT EXISTS idx_events_type ON ledger_events(event_type);
 CREATE INDEX IF NOT EXISTS idx_events_ledger ON ledger_events(ledger_sequence);
+CREATE INDEX IF NOT EXISTS idx_events_indexed_at ON ledger_events(indexed_at);
