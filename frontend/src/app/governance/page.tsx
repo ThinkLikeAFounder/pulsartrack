@@ -88,7 +88,7 @@ export default function GovernancePage() {
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           {/* Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-6">
             {[
               { label: 'Your PULSAR Balance', value: '0 PULSAR', icon: BarChart2 },
               { label: 'Voting Power', value: '0', icon: Vote },
@@ -105,23 +105,38 @@ export default function GovernancePage() {
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit">
-            {[
-              { id: 'proposals', label: 'Proposals' },
-              { id: 'create', label: 'Create Proposal' },
-              { id: 'my_votes', label: 'My Votes' },
-            ].map(({ id, label }) => (
-              <button
-                key={id}
-                onClick={() => setActiveTab(id as any)}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === id
-                    ? 'bg-white text-indigo-600 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
-                  }`}
+          <div className="mb-6">
+            {/* Mobile: Dropdown */}
+            <div className="md:hidden">
+              <select
+                value={activeTab}
+                onChange={(e) => setActiveTab(e.target.value as any)}
+                className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
               >
-                {label}
-              </button>
-            ))}
+                <option value="proposals">Proposals</option>
+                <option value="create">Create Proposal</option>
+                <option value="my_votes">My Votes</option>
+              </select>
+            </div>
+            {/* Desktop: Tab Bar */}
+            <div className="hidden md:flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
+              {[
+                { id: 'proposals', label: 'Proposals' },
+                { id: 'create', label: 'Create Proposal' },
+                { id: 'my_votes', label: 'My Votes' },
+              ].map(({ id, label }) => (
+                <button
+                  key={id}
+                  onClick={() => setActiveTab(id as any)}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === id
+                      ? 'bg-white text-indigo-600 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {activeTab === 'proposals' && (

@@ -5,7 +5,7 @@ import { PlusCircle, BarChart3, Settings, DollarSign, TrendingUp, Eye, MousePoin
 import { useWalletStore } from '@/store/wallet-store';
 import { WalletConnectButton } from '@/components/wallet/WalletModal';
 import { useCreateCampaign, useCampaignCount, useAdvertiserCampaigns, useAdvertiserStats } from '@/hooks/useContract';
-import { formatXlm, formatNumber } from '@/lib/display-utils';
+import { formatXlm, formatNumber, formatAddress } from '@/lib/display-utils';
 
 interface CampaignForm {
   title: string;
@@ -76,13 +76,13 @@ export default function AdvertiserPage() {
       <div className="min-h-screen bg-gray-50">
         {/* Page Header */}
         <div className="bg-white border-b border-gray-200 px-4 sm:px-6 lg:px-8 py-6">
-          <div className="max-w-7xl mx-auto flex items-center justify-between">
-            <div>
+          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
               <h1 className="text-2xl font-bold text-gray-900">Advertiser Dashboard</h1>
-              <p className="text-sm text-gray-500 mt-1 font-mono">{address}</p>
+              <p className="text-sm text-gray-500 mt-1 font-mono truncate">{formatAddress(address || '')}</p>
             </div>
             <div className="flex items-center gap-3">
-              <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">
+              <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium whitespace-nowrap">
                 Stellar Testnet
               </span>
             </div>
@@ -92,7 +92,7 @@ export default function AdvertiserPage() {
         {/* Stats Overview */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           {isStatsLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
               {[1, 2, 3, 4].map(idx => (
                 <div key={idx} className="bg-white p-4 rounded-xl border border-gray-200 animate-pulse">
                   <div className="h-5 bg-gray-200 rounded w-1/2 mb-2"></div>
@@ -101,7 +101,7 @@ export default function AdvertiserPage() {
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
               {[
                 { icon: BarChart3, label: 'Active Campaigns', value: stats?.active_campaigns?.toString() || '0', color: 'blue' as const },
                 { icon: Eye, label: 'Total Impressions', value: stats?.total_views?.toString() || '0', color: 'green' as const },
@@ -124,24 +124,39 @@ export default function AdvertiserPage() {
           )}
 
           {/* Tabs */}
-          <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit">
-            {[
-              { id: 'campaigns', label: 'My Campaigns', icon: BarChart3 },
-              { id: 'create', label: 'Create Campaign', icon: PlusCircle },
-              { id: 'analytics', label: 'Analytics', icon: TrendingUp },
-            ].map(({ id, label, icon: Icon }) => (
-              <button
-                key={id}
-                onClick={() => setActiveTab(id as any)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === id
-                  ? 'bg-white text-indigo-600 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-                  }`}
+          <div className="mb-6">
+            {/* Mobile: Dropdown */}
+            <div className="md:hidden">
+              <select
+                value={activeTab}
+                onChange={(e) => setActiveTab(e.target.value as any)}
+                className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
               >
-                <Icon className="w-4 h-4" />
-                {label}
-              </button>
-            ))}
+                <option value="campaigns">My Campaigns</option>
+                <option value="create">Create Campaign</option>
+                <option value="analytics">Analytics</option>
+              </select>
+            </div>
+            {/* Desktop: Tab Bar */}
+            <div className="hidden md:flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
+              {[
+                { id: 'campaigns', label: 'My Campaigns', icon: BarChart3 },
+                { id: 'create', label: 'Create Campaign', icon: PlusCircle },
+                { id: 'analytics', label: 'Analytics', icon: TrendingUp },
+              ].map(({ id, label, icon: Icon }) => (
+                <button
+                  key={id}
+                  onClick={() => setActiveTab(id as any)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === id
+                    ? 'bg-white text-indigo-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                >
+                  <Icon className="w-4 h-4" />
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Tab Content */}
