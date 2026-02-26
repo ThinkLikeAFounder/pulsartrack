@@ -166,6 +166,10 @@ impl KycRegistryContract {
             .get(&DataKey::KycRecord(account.clone()))
             .expect("kyc not submitted");
 
+        if record.provider != provider_data.name {
+            panic!("provider mismatch");
+        }
+
         let now = env.ledger().timestamp();
         record.verified = true;
         record.verified_at = Some(now);
