@@ -1,5 +1,19 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { TrendingUp, Users, Shield, Zap, Radio, Lock, BarChart3, Globe } from "lucide-react";
+
+export const metadata: Metadata = {
+  title: "PulsarTrack - Decentralized Ad Tracking on Stellar",
+  description: "Privacy-preserving, blockchain-powered advertising platform on the Stellar network. Real-time bidding, on-chain reputation, and instant XLM settlements.",
+  openGraph: {
+    title: "PulsarTrack - Decentralized Ad Tracking on Stellar",
+    description: "Privacy-preserving, blockchain-powered advertising platform on the Stellar network. Real-time bidding, on-chain reputation, and instant XLM settlements.",
+  },
+  twitter: {
+    title: "PulsarTrack - Decentralized Ad Tracking on Stellar",
+    description: "Privacy-preserving, blockchain-powered advertising platform on the Stellar network. Real-time bidding, on-chain reputation, and instant XLM settlements.",
+  },
+};
 
 export default function Home() {
   return (
