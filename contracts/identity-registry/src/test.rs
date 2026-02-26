@@ -14,6 +14,24 @@ fn s(env: &Env, v: &str) -> String {
     String::from_str(env, v)
 }
 
+#[contract]
+pub struct MockKycRegistry;
+
+#[contractimpl]
+impl MockKycRegistry {
+    pub fn is_kyc_valid(env: Env, account: Address) -> bool {
+        env.storage().instance().has(&account)
+    }
+
+    pub fn set_kyc_status(env: Env, account: Address, valid: bool) {
+        if valid {
+            env.storage().instance().set(&account, &true);
+        } else {
+            env.storage().instance().remove(&account);
+        }
+    }
+}
+
 #[test]
 fn test_initialize() {
     let env = Env::default();
@@ -140,6 +158,90 @@ fn test_verify_identity_unauthorized() {
         &s(&env, "QmMeta"),
     );
     c.verify_identity(&Address::generate(&env), &account, &s(&env, "CredHash"));
+}
+
+#[test]
+fn test_verify_identity_with_kyc() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin) = setup(&env);
+    let account = Address::generate(&env);
+    
+    // Register mock KYC contract
+    let kyc_id = env.register_contract(None, MockKycRegistry);
+    let _kyc_client = MockKycRegistryClient::new(&env, &kyc_id);
+    
+    // Configure identity registry to use mock KYC
+    c.set_kyc_registry(&admin, &kyc_id);
+    
+    c.register(
+        &account,
+        &IdentityType::Advertiser,
+        &s(&env, "Alice"),
+        &s(&env, "QmMeta"),
+    );
+
+    // Initial state: KYC not set (invalid)
+    // verify_identity should fail
+}
+
+#[test]
+#[should_panic(expected = "kyc verification required")]
+fn test_verify_identity_fails_without_kyc() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin) = setup(&env);
+    let account = Address::generate(&env);
+    
+    let kyc_id = env.register_contract(None, MockKycRegistry);
+    c.set_kyc_registry(&admin, &kyc_id);
+    
+    c.register(
+        &account,
+        &IdentityType::Advertiser,
+        &s(&env, "Alice"),
+        &s(&env, "QmMeta"),
+    );
+
+    c.verify_identity(&admin, &account, &s(&env, "CredHash"));
+}
+
+#[test]
+fn test_verify_identity_success_with_kyc() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin) = setup(&env);
+    let account = Address::generate(&env);
+    
+    let kyc_id = env.register_contract(None, MockKycRegistry);
+    let kyc_client = MockKycRegistryClient::new(&env, &kyc_id);
+    c.set_kyc_registry(&admin, &kyc_id);
+    
+    c.register(
+        &account,
+        &IdentityType::Advertiser,
+        &s(&env, "Alice"),
+        &s(&env, "QmMeta"),
+    );
+
+    // Set KYC to valid
+    kyc_client.set_kyc_status(&account, &true);
+
+    c.verify_identity(&admin, &account, &s(&env, "CredHash"));
+    
+    let id = c.get_identity(&account).unwrap();
+    assert!(matches!(id.status, IdentityStatus::Verified));
+}
+
+#[test]
+fn test_set_kyc_registry_unauthorized() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _) = setup(&env);
+    let kyc_id = env.register_contract(None, MockKycRegistry);
+    
+    let res = c.try_set_kyc_registry(&Address::generate(&env), &kyc_id);
+    assert!(res.is_err());
 }
 
 #[test]
