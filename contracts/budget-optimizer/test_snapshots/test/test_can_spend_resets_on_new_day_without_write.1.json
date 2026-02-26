@@ -1,11 +1,9 @@
 {
   "generators": {
-    "address": 6,
+    "address": 4,
     "nonce": 0
   },
   "auth": [
-    [],
-    [],
     [],
     [
       [
@@ -21,21 +19,6 @@
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                },
-                {
-                  "u32": 100
-                },
-                {
-                  "u32": 1000
-                },
-                {
-                  "u32": 51
-                },
-                {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 0
-                  }
                 }
               ]
             }
@@ -46,23 +29,47 @@
     ],
     [
       [
-        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM",
+        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4",
         {
           "function": {
             "contract_fn": {
               "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
-              "function_name": "create_proposal",
+              "function_name": "set_budget_allocation",
               "args": [
                 {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
                 },
                 {
-                  "string": "Increase treasury allocation"
+                  "u64": 1
                 },
                 {
-                  "string": "Proposal to increase budget by 10%"
+                  "i128": {
+                    "hi": 0,
+                    "lo": 100000
+                  }
                 },
-                "void"
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 10000
+                  }
+                },
+                {
+                  "vec": [
+                    {
+                      "symbol": "ManualCpc"
+                    }
+                  ]
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 500
+                  }
+                },
+                {
+                  "u32": 100
+                }
               ]
             }
           },
@@ -70,12 +77,41 @@
         }
       ]
     ],
+    [
+      [
+        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+        {
+          "function": {
+            "contract_fn": {
+              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+              "function_name": "record_spend",
+              "args": [
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
+                },
+                {
+                  "u64": 1
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 10000
+                  }
+                }
+              ]
+            }
+          },
+          "sub_invocations": []
+        }
+      ]
+    ],
+    [],
     []
   ],
   "ledger": {
     "protocol_version": 22,
-    "sequence_number": 200,
-    "timestamp": 0,
+    "sequence_number": 0,
+    "timestamp": 86400,
     "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
     "base_reserve": 0,
     "min_persistent_entry_ttl": 4096,
@@ -118,9 +154,13 @@
       [
         {
           "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
-            "key": "ledger_key_contract_instance",
-            "durability": "persistent"
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": {
+              "ledger_key_nonce": {
+                "nonce": 1033654523790656264
+              }
+            },
+            "durability": "temporary"
           }
         },
         [
@@ -129,34 +169,19 @@
             "data": {
               "contract_data": {
                 "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
-                "key": "ledger_key_contract_instance",
-                "durability": "persistent",
-                "val": {
-                  "contract_instance": {
-                    "executable": {
-                      "wasm": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-                    },
-                    "storage": [
-                      {
-                        "key": {
-                          "u32": 0
-                        },
-                        "val": {
-                          "i128": {
-                            "hi": 0,
-                            "lo": 10000000
-                          }
-                        }
-                      }
-                    ]
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": {
+                  "ledger_key_nonce": {
+                    "nonce": 1033654523790656264
                   }
-                }
+                },
+                "durability": "temporary",
+                "val": "void"
               }
             },
             "ext": "v0"
           },
-          4095
+          6311999
         ]
       ],
       [
@@ -166,7 +191,7 @@
             "key": {
               "vec": [
                 {
-                  "symbol": "Proposal"
+                  "symbol": "Allocation"
                 },
                 {
                   "u64": 1
@@ -186,7 +211,7 @@
                 "key": {
                   "vec": [
                     {
-                      "symbol": "Proposal"
+                      "symbol": "Allocation"
                     },
                     {
                       "u64": 1
@@ -198,7 +223,37 @@
                   "map": [
                     {
                       "key": {
-                        "symbol": "created_at"
+                        "symbol": "campaign_id"
+                      },
+                      "val": {
+                        "u64": 1
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "daily_budget"
+                      },
+                      "val": {
+                        "i128": {
+                          "hi": 0,
+                          "lo": 10000
+                        }
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "hourly_budget"
+                      },
+                      "val": {
+                        "i128": {
+                          "hi": 0,
+                          "lo": 416
+                        }
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "last_optimized"
                       },
                       "val": {
                         "u64": 0
@@ -206,15 +261,52 @@
                     },
                     {
                       "key": {
-                        "symbol": "description"
+                        "symbol": "optimization_mode"
                       },
                       "val": {
-                        "string": "Proposal to increase budget by 10%"
+                        "vec": [
+                          {
+                            "symbol": "ManualCpc"
+                          }
+                        ]
                       }
                     },
                     {
                       "key": {
-                        "symbol": "end_ledger"
+                        "symbol": "spent_today"
+                      },
+                      "val": {
+                        "i128": {
+                          "hi": 0,
+                          "lo": 10000
+                        }
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "spent_total"
+                      },
+                      "val": {
+                        "i128": {
+                          "hi": 0,
+                          "lo": 10000
+                        }
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "target_cpa"
+                      },
+                      "val": {
+                        "i128": {
+                          "hi": 0,
+                          "lo": 500
+                        }
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "target_ctr"
                       },
                       "val": {
                         "u32": 100
@@ -222,98 +314,12 @@
                     },
                     {
                       "key": {
-                        "symbol": "executed_at"
-                      },
-                      "val": "void"
-                    },
-                    {
-                      "key": {
-                        "symbol": "proposer"
-                      },
-                      "val": {
-                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "quorum_bps"
-                      },
-                      "val": {
-                        "u32": 1000
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "start_ledger"
-                      },
-                      "val": {
-                        "u32": 0
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "status"
-                      },
-                      "val": {
-                        "vec": [
-                          {
-                            "symbol": "Active"
-                          }
-                        ]
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "target_contract"
-                      },
-                      "val": "void"
-                    },
-                    {
-                      "key": {
-                        "symbol": "threshold_pct"
-                      },
-                      "val": {
-                        "u32": 51
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "title"
-                      },
-                      "val": {
-                        "string": "Increase treasury allocation"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "votes_abstain"
+                        "symbol": "total_budget"
                       },
                       "val": {
                         "i128": {
                           "hi": 0,
-                          "lo": 0
-                        }
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "votes_against"
-                      },
-                      "val": {
-                        "i128": {
-                          "hi": 0,
-                          "lo": 0
-                        }
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "votes_for"
-                      },
-                      "val": {
-                        "i128": {
-                          "hi": 0,
-                          "lo": 0
+                          "lo": 100000
                         }
                       }
                     }
@@ -323,7 +329,7 @@
             },
             "ext": "v0"
           },
-          259200
+          1051200
         ]
       ],
       [
@@ -365,75 +371,12 @@
                         "key": {
                           "vec": [
                             {
-                              "symbol": "GovernanceToken"
+                              "symbol": "OracleAddress"
                             }
                           ]
                         },
                         "val": {
                           "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                        }
-                      },
-                      {
-                        "key": {
-                          "vec": [
-                            {
-                              "symbol": "PassThreshold"
-                            }
-                          ]
-                        },
-                        "val": {
-                          "u32": 51
-                        }
-                      },
-                      {
-                        "key": {
-                          "vec": [
-                            {
-                              "symbol": "ProposalCounter"
-                            }
-                          ]
-                        },
-                        "val": {
-                          "u64": 1
-                        }
-                      },
-                      {
-                        "key": {
-                          "vec": [
-                            {
-                              "symbol": "ProposerMinTokens"
-                            }
-                          ]
-                        },
-                        "val": {
-                          "i128": {
-                            "hi": 0,
-                            "lo": 0
-                          }
-                        }
-                      },
-                      {
-                        "key": {
-                          "vec": [
-                            {
-                              "symbol": "QuorumBps"
-                            }
-                          ]
-                        },
-                        "val": {
-                          "u32": 1000
-                        }
-                      },
-                      {
-                        "key": {
-                          "vec": [
-                            {
-                              "symbol": "VotingPeriod"
-                            }
-                          ]
-                        },
-                        "val": {
-                          "u32": 100
                         }
                       }
                     ]
@@ -449,7 +392,7 @@
       [
         {
           "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM",
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4",
             "key": {
               "ledger_key_nonce": {
                 "nonce": 5541220902715666415
@@ -464,7 +407,7 @@
             "data": {
               "contract_data": {
                 "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4",
                 "key": {
                   "ledger_key_nonce": {
                     "nonce": 5541220902715666415

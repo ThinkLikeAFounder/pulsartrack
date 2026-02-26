@@ -46,36 +46,6 @@
         }
       ]
     ],
-    [
-      [
-        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-        {
-          "function": {
-            "contract_fn": {
-              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
-              "function_name": "verify_publisher",
-              "args": [
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
-                },
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                },
-                {
-                  "vec": [
-                    {
-                      "symbol": "Gold"
-                    }
-                  ]
-                }
-              ]
-            }
-          },
-          "sub_invocations": []
-        }
-      ]
-    ],
-    [],
     []
   ],
   "ledger": {
@@ -110,39 +80,6 @@
                 "key": {
                   "ledger_key_nonce": {
                     "nonce": 801925984706572462
-                  }
-                },
-                "durability": "temporary",
-                "val": "void"
-              }
-            },
-            "ext": "v0"
-          },
-          6311999
-        ]
-      ],
-      [
-        {
-          "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-            "key": {
-              "ledger_key_nonce": {
-                "nonce": 1033654523790656264
-              }
-            },
-            "durability": "temporary"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_data": {
-                "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-                "key": {
-                  "ledger_key_nonce": {
-                    "nonce": 1033654523790656264
                   }
                 },
                 "durability": "temporary",
@@ -273,7 +210,7 @@
                         "symbol": "reputation_score"
                       },
                       "val": {
-                        "u32": 100
+                        "u32": 0
                       }
                     },
                     {
@@ -283,7 +220,7 @@
                       "val": {
                         "vec": [
                           {
-                            "symbol": "Verified"
+                            "symbol": "Pending"
                           }
                         ]
                       }
@@ -295,7 +232,7 @@
                       "val": {
                         "vec": [
                           {
-                            "symbol": "Gold"
+                            "symbol": "Bronze"
                           }
                         ]
                       }
@@ -307,7 +244,7 @@
                       "val": {
                         "i128": {
                           "hi": 0,
-                          "lo": 1000
+                          "lo": 0
                         }
                       }
                     },
@@ -316,16 +253,14 @@
                         "symbol": "total_impressions"
                       },
                       "val": {
-                        "u64": 1
+                        "u64": 0
                       }
                     },
                     {
                       "key": {
                         "symbol": "verified_at"
                       },
-                      "val": {
-                        "u64": 0
-                      }
+                      "val": "void"
                     }
                   ]
                 }

@@ -112,6 +112,14 @@
                   "map": [
                     {
                       "key": {
+                        "symbol": "last_slash_ledger"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
                         "symbol": "last_updated"
                       },
                       "val": {
