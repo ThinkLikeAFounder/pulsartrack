@@ -38,6 +38,7 @@ pub enum DataKey {
     WrappedToken(String), // symbol
     WrapRecord(u64),
     UserBalance(String, Address), // symbol, user
+    ProcessedTx(String), // source transaction ID
 }
 
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17_280;
@@ -127,6 +128,12 @@ impl WrappedTokenContract {
             panic!("unauthorized relayer");
         }
 
+        // Check for replay attack - ensure source_tx hasn't been processed
+        let tx_key = DataKey::ProcessedTx(source_tx.clone());
+        if env.storage().persistent().has(&tx_key) {
+            panic!("source transaction already processed");
+        }
+
         let mut wrapped: WrappedToken = env
             .storage()
             .persistent()
@@ -168,9 +175,9 @@ impl WrappedTokenContract {
         let record = WrapRecord {
             record_id,
             user: recipient.clone(),
-            token: symbol,
+            token: symbol.clone(),
             amount,
-            source_tx,
+            source_tx: source_tx.clone(),
             wrapped_at: env.ledger().timestamp(),
         };
 
@@ -184,6 +191,14 @@ impl WrappedTokenContract {
         env.storage()
             .instance()
             .set(&DataKey::WrapRecordCounter, &record_id);
+
+        // Mark source transaction as processed to prevent replay attacks
+        env.storage().persistent().set(&tx_key, &true);
+        env.storage().persistent().extend_ttl(
+            &tx_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
 
         env.events().publish(
             (symbol_short!("wrapped"), symbol_short!("minted")),

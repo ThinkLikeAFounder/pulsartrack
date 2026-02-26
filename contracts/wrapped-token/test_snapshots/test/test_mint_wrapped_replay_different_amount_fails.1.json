@@ -89,7 +89,7 @@
                   }
                 },
                 {
-                  "string": "0xTxHash"
+                  "string": "0xTxHashABC"
                 }
               ]
             }
@@ -219,7 +219,7 @@
                   "symbol": "ProcessedTx"
                 },
                 {
-                  "string": "0xTxHash"
+                  "string": "0xTxHashABC"
                 }
               ]
             },
@@ -239,7 +239,7 @@
                       "symbol": "ProcessedTx"
                     },
                     {
-                      "string": "0xTxHash"
+                      "string": "0xTxHashABC"
                     }
                   ]
                 },
@@ -369,7 +369,7 @@
                         "symbol": "source_tx"
                       },
                       "val": {
-                        "string": "0xTxHash"
+                        "string": "0xTxHashABC"
                       }
                     },
                     {
