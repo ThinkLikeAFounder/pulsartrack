@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://pulsartrack.io'), // Placeholder URL, update as needed
+  metadataBase: new URL('https://pulsartrack.io'),
   title: {
     default: "PulsarTrack - Decentralized Ad Tracking on Stellar",
     template: "%s | PulsarTrack"
@@ -23,6 +23,10 @@ export const metadata: Metadata = {
   description: "Privacy-preserving, blockchain-powered advertising platform on the Stellar network. Real-time bidding, on-chain reputation, and instant XLM settlements.",
   keywords: ["Stellar", "Blockchain", "Ad Tracking", "RTB", "DeFi", "Privacy-preserving", "Soroban"],
   authors: [{ name: "PulsarTrack Team" }],
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/og-image.png",
+  },
   openGraph: {
     type: "website",
     locale: "en_US",
