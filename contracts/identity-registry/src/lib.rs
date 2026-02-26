@@ -45,12 +45,18 @@ pub enum DataKey {
     IdentityCount,
     Identity(Address),
     NameOwner(String),
+    KycRegistry,
 }
 
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17_280;
 const INSTANCE_BUMP_AMOUNT: u32 = 86_400;
 const PERSISTENT_LIFETIME_THRESHOLD: u32 = 120_960;
 const PERSISTENT_BUMP_AMOUNT: u32 = 1_051_200;
+
+#[soroban_sdk::contractclient(name = "KycRegistryClient")]
+pub trait KycRegistryInterface {
+    fn is_kyc_valid(env: Env, account: Address) -> bool;
+}
 
 #[contract]
 pub struct IdentityRegistryContract;
@@ -139,6 +145,20 @@ impl IdentityRegistryContract {
         );
     }
 
+    pub fn set_kyc_registry(env: Env, admin: Address, kyc_registry: Address) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::KycRegistry, &kyc_registry);
+    }
+
     pub fn verify_identity(env: Env, admin: Address, account: Address, credentials_hash: String) {
         env.storage()
             .instance()
@@ -154,6 +174,18 @@ impl IdentityRegistryContract {
             .persistent()
             .get(&DataKey::Identity(account.clone()))
             .expect("identity not found");
+
+        // Check KYC status if registry is configured
+        if let Some(kyc_registry_addr) = env
+            .storage()
+            .instance()
+            .get::<DataKey, Address>(&DataKey::KycRegistry)
+        {
+            let client = KycRegistryClient::new(&env, &kyc_registry_addr);
+            if !client.is_kyc_valid(&account) {
+                panic!("kyc verification required");
+            }
+        }
 
         identity.status = IdentityStatus::Verified;
         identity.credentials_hash = credentials_hash;
