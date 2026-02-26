@@ -159,7 +159,7 @@ fn test_execute_payout() {
         li.timestamp = 200;
     });
 
-    client.execute_payout(&payout_id);
+    client.execute_payout(&admin, &payout_id);
 
     let payout = client.get_payout(&payout_id).unwrap();
     assert!(matches!(payout.status, PayoutStatus::Completed));
@@ -196,7 +196,7 @@ fn test_execute_payout_too_early() {
     );
 
     // ledger timestamp is still 0 → too early
-    client.execute_payout(&payout_id);
+    client.execute_payout(&admin, &payout_id);
 }
 
 #[test]
@@ -218,8 +218,31 @@ fn test_execute_payout_twice() {
     let recipient = Address::generate(&env);
     let payout_id = client.schedule_payout(&admin, &recipient, &1_000_000i128, &0u64, &None);
 
-    client.execute_payout(&payout_id);
-    client.execute_payout(&payout_id); // second attempt → "payout not scheduled"
+    client.execute_payout(&admin, &payout_id);
+    client.execute_payout(&admin, &payout_id); // second attempt → "payout not scheduled"
+}
+
+#[test]
+#[should_panic(expected = "unauthorized")]
+fn test_execute_payout_unauthorized() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_addr = deploy_token(&env, &token_admin);
+
+    let contract_id = env.register_contract(None, PayoutAutomationContract);
+    let client = PayoutAutomationContractClient::new(&env, &contract_id);
+    client.initialize(&admin, &token_addr);
+
+    mint(&env, &token_addr, &contract_id, 10_000_000);
+
+    let recipient = Address::generate(&env);
+    let payout_id = client.schedule_payout(&admin, &recipient, &1_000_000i128, &0u64, &None);
+
+    let stranger = Address::generate(&env);
+    client.execute_payout(&stranger, &payout_id);
 }
 
 // ─── publisher earnings ───────────────────────────────────────────────────────
@@ -290,7 +313,7 @@ fn test_publisher_earnings_updated_after_payout() {
         li.timestamp = 1_000;
     });
 
-    client.execute_payout(&payout_id);
+    client.execute_payout(&admin, &payout_id);
 
     let earnings = client.get_publisher_earnings(&publisher).unwrap();
     assert_eq!(earnings.total_paid, 1_000_000);

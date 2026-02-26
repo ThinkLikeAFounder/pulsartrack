@@ -42,6 +42,7 @@ pub enum DataKey {
     Attestation(u64, Address), // campaign_id, attester
     AttestationCount(u64),     // campaign_id
     Consensus(u64),            // campaign_id
+    CampaignAttesterIndex(u64, u32), // campaign_id, index -> Address
 }
 
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17_280;
@@ -134,7 +135,7 @@ impl PerformanceOracleContract {
             ledger_sequence: env.ledger().sequence(),
         };
 
-        let _ttl_key = DataKey::Attestation(campaign_id, attester);
+        let _ttl_key = DataKey::Attestation(campaign_id, attester.clone());
         env.storage().persistent().set(&_ttl_key, &attestation);
         env.storage().persistent().extend_ttl(
             &_ttl_key,
@@ -147,6 +148,16 @@ impl PerformanceOracleContract {
             .persistent()
             .get(&DataKey::AttestationCount(campaign_id))
             .unwrap_or(0);
+
+        // Store attester address in indexed list for consensus calculation
+        let _ttl_key = DataKey::CampaignAttesterIndex(campaign_id, count);
+        env.storage().persistent().set(&_ttl_key, &attester);
+        env.storage().persistent().extend_ttl(
+            &_ttl_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+
         let _ttl_key = DataKey::AttestationCount(campaign_id);
         env.storage().persistent().set(&_ttl_key, &(count + 1));
         env.storage().persistent().extend_ttl(
@@ -155,16 +166,8 @@ impl PerformanceOracleContract {
             PERSISTENT_BUMP_AMOUNT,
         );
 
-        // Attempt to build consensus
-        Self::_try_build_consensus(
-            &env,
-            campaign_id,
-            impressions,
-            clicks,
-            fraud_rate,
-            quality_score,
-            count + 1,
-        );
+        // Attempt to build consensus with actual averaging
+        Self::_try_build_consensus(&env, campaign_id, count + 1);
 
         env.events().publish(
             (symbol_short!("oracle"), symbol_short!("attested")),
@@ -204,15 +207,7 @@ impl PerformanceOracleContract {
             .unwrap_or(0)
     }
 
-    fn _try_build_consensus(
-        env: &Env,
-        campaign_id: u64,
-        impressions: u64,
-        clicks: u64,
-        fraud_rate: u32,
-        quality_score: u32,
-        total_attesters: u32,
-    ) {
+    fn _try_build_consensus(env: &Env, campaign_id: u64, total_attesters: u32) {
         let min_attesters: u32 = env
             .storage()
             .instance()
@@ -223,14 +218,44 @@ impl PerformanceOracleContract {
             return;
         }
 
-        // Build simple average consensus
+        // Compute actual averages by reading all attestations
+        let mut sum_impressions: u64 = 0;
+        let mut sum_clicks: u64 = 0;
+        let mut sum_fraud_rate: u64 = 0;
+        let mut sum_quality_score: u64 = 0;
+
+        for i in 0..total_attesters {
+            let attester: Address = env
+                .storage()
+                .persistent()
+                .get(&DataKey::CampaignAttesterIndex(campaign_id, i))
+                .expect("attester index not found");
+
+            let attestation: PerformanceAttestation = env
+                .storage()
+                .persistent()
+                .get(&DataKey::Attestation(campaign_id, attester))
+                .expect("attestation not found");
+
+            sum_impressions += attestation.impressions_verified;
+            sum_clicks += attestation.clicks_verified;
+            sum_fraud_rate += attestation.fraud_rate as u64;
+            sum_quality_score += attestation.quality_score as u64;
+        }
+
+        // Calculate averages
+        let avg_impressions = sum_impressions / (total_attesters as u64);
+        let avg_clicks = sum_clicks / (total_attesters as u64);
+        let avg_fraud_rate = (sum_fraud_rate / (total_attesters as u64)) as u32;
+        let avg_quality_score = (sum_quality_score / (total_attesters as u64)) as u32;
+
         let consensus = OracleConsensus {
             campaign_id,
             total_attesters,
-            avg_impressions: impressions,
-            avg_clicks: clicks,
-            avg_fraud_rate: fraud_rate,
-            avg_quality_score: quality_score,
+            avg_impressions,
+            avg_clicks,
+            avg_fraud_rate,
+            avg_quality_score,
             consensus_reached: true,
             last_updated: env.ledger().timestamp(),
         };

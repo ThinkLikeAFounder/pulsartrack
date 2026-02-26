@@ -61,6 +61,7 @@ pub enum DataKey {
     PlatformFeeBps,
     Listing(u64),
     License(u64, Address), // listing_id, licensee
+    ContentOwner(String),  // content_hash -> tracks exclusive licenses
 }
 
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17_280;
@@ -109,6 +110,15 @@ impl CreativeMarketplaceContract {
             panic!("invalid price");
         }
 
+        // Check for duplicate content hash with exclusive license
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::ContentOwner(content_hash.clone()))
+        {
+            panic!("content already listed - check for exclusive licenses");
+        }
+
         let counter: u64 = env
             .storage()
             .instance()
@@ -119,11 +129,11 @@ impl CreativeMarketplaceContract {
         let listing = CreativeListing {
             listing_id,
             creator: creator.clone(),
-            content_hash,
+            content_hash: content_hash.clone(),
             title,
             description,
             price,
-            license_type,
+            license_type: license_type.clone(),
             status: ListingStatus::Active,
             sale_count: 0,
             created_at: env.ledger().timestamp(),
@@ -140,6 +150,17 @@ impl CreativeMarketplaceContract {
         env.storage()
             .instance()
             .set(&DataKey::ListingCounter, &listing_id);
+
+        // If this is an exclusive license, mark content as owned
+        if matches!(license_type, LicenseType::Exclusive) {
+            let content_key = DataKey::ContentOwner(content_hash);
+            env.storage().persistent().set(&content_key, &listing_id);
+            env.storage().persistent().extend_ttl(
+                &content_key,
+                PERSISTENT_LIFETIME_THRESHOLD,
+                PERSISTENT_BUMP_AMOUNT,
+            );
+        }
 
         env.events().publish(
             (symbol_short!("listing"), symbol_short!("created")),
@@ -259,6 +280,14 @@ impl CreativeMarketplaceContract {
 
         if listing.creator != creator {
             panic!("unauthorized");
+        }
+
+        // If this was an exclusive license, clear the content owner
+        if matches!(listing.license_type, LicenseType::Exclusive) {
+            let content_key = DataKey::ContentOwner(listing.content_hash.clone());
+            if env.storage().persistent().has(&content_key) {
+                env.storage().persistent().remove(&content_key);
+            }
         }
 
         listing.status = ListingStatus::Removed;
