@@ -85,7 +85,7 @@ export function ProposalCard({ proposal, onVote, isVoting, userVote }: ProposalC
           <h3 className="text-white font-semibold text-sm leading-snug">{proposal.title}</h3>
         </div>
         {isActive && daysLeft >= 0 && (
-          <div className="flex-shrink-0 text-right">
+          <div className="shrink-0 text-right">
             <p className="text-xs text-gray-500">Ends in</p>
             <p className="text-xs font-medium text-cyan-400">{daysLeft}d</p>
           </div>

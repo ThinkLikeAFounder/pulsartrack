@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Menu, X, Zap, History, AlertTriangle } from "lucide-react";
 import { useWalletStore } from "../store/wallet-store";
 import { useTransactionStore } from "../store/tx-store";
@@ -61,41 +62,41 @@ export function Header() {
           <div className="flex h-16 items-center justify-between">
             {/* Logo */}
             <div className="flex items-center gap-8">
-              <a href="/" className="flex items-center gap-2">
+              <Link href="/" className="flex items-center gap-2">
                 <div className="w-8 h-8 bg-gradient-to-br from-indigo-600 to-cyan-500 rounded-lg flex items-center justify-center">
                   <Zap className="w-5 h-5 text-white" />
                 </div>
                 <h1 className="text-2xl font-bold text-gray-900">
                   PulsarTrack
                 </h1>
-              </a>
+              </Link>
 
               {/* Desktop Navigation */}
               <nav className="hidden md:flex items-center space-x-6">
-                <a
+                <Link
                   href="/"
                   className="text-gray-700 hover:text-indigo-600 transition-colors font-medium"
                 >
                   Home
-                </a>
-                <a
+                </Link>
+                <Link
                   href="/advertiser"
                   className="text-gray-700 hover:text-indigo-600 transition-colors font-medium"
                 >
                   Advertiser
-                </a>
-                <a
+                </Link>
+                <Link
                   href="/publisher"
                   className="text-gray-700 hover:text-indigo-600 transition-colors font-medium"
                 >
                   Publisher
-                </a>
-                <a
+                </Link>
+                <Link
                   href="/governance"
                   className="text-gray-700 hover:text-indigo-600 transition-colors font-medium"
                 >
                   Governance
-                </a>
+                </Link>
               </nav>
             </div>
 
@@ -147,14 +148,14 @@ export function Header() {
                   { href: "/publisher", label: "Publisher" },
                   { href: "/governance", label: "Governance" },
                 ].map(({ href, label }) => (
-                  <a
+                  <Link
                     key={href}
                     href={href}
                     className="text-gray-700 hover:text-indigo-600 transition-colors font-medium px-2 py-1"
                     onClick={() => setMobileMenuOpen(false)}
                   >
                     {label}
-                  </a>
+                  </Link>
                 ))}
 
                 <div className="pt-4 border-t border-gray-200">
