@@ -120,7 +120,7 @@ impl AudienceSegmentsContract {
         admin.require_auth();
         let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
 
-        let segment: Segment = env
+        let mut segment: Segment = env
             .storage()
             .persistent()
             .get(&DataKey::Segment(segment_id))
@@ -159,8 +159,22 @@ impl AudienceSegmentsContract {
             .persistent()
             .get(&DataKey::MemberCount(segment_id))
             .unwrap_or(0);
+        let new_count = count + 1;
+
         let _ttl_key = DataKey::MemberCount(segment_id);
-        env.storage().persistent().set(&_ttl_key, &(count + 1));
+        env.storage().persistent().set(&_ttl_key, &new_count);
+        env.storage().persistent().extend_ttl(
+            &_ttl_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+
+        // Update the segment's member_count field to keep it in sync
+        segment.member_count = new_count;
+        segment.last_updated = env.ledger().timestamp();
+
+        let _ttl_key = DataKey::Segment(segment_id);
+        env.storage().persistent().set(&_ttl_key, &segment);
         env.storage().persistent().extend_ttl(
             &_ttl_key,
             PERSISTENT_LIFETIME_THRESHOLD,
@@ -175,7 +189,7 @@ impl AudienceSegmentsContract {
         admin.require_auth();
         let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
 
-        let segment: Segment = env
+        let mut segment: Segment = env
             .storage()
             .persistent()
             .get(&DataKey::Segment(segment_id))
@@ -194,9 +208,23 @@ impl AudienceSegmentsContract {
             .persistent()
             .get(&DataKey::MemberCount(segment_id))
             .unwrap_or(0);
+
         if count > 0 {
+            let new_count = count - 1;
             let _ttl_key = DataKey::MemberCount(segment_id);
-            env.storage().persistent().set(&_ttl_key, &(count - 1));
+            env.storage().persistent().set(&_ttl_key, &new_count);
+            env.storage().persistent().extend_ttl(
+                &_ttl_key,
+                PERSISTENT_LIFETIME_THRESHOLD,
+                PERSISTENT_BUMP_AMOUNT,
+            );
+
+            // Update the segment's member_count field to keep it in sync
+            segment.member_count = new_count;
+            segment.last_updated = env.ledger().timestamp();
+
+            let _ttl_key = DataKey::Segment(segment_id);
+            env.storage().persistent().set(&_ttl_key, &segment);
             env.storage().persistent().extend_ttl(
                 &_ttl_key,
                 PERSISTENT_LIFETIME_THRESHOLD,

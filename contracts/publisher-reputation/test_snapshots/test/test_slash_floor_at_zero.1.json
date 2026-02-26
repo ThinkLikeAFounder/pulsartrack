@@ -57,7 +57,7 @@
   ],
   "ledger": {
     "protocol_version": 22,
-    "sequence_number": 0,
+    "sequence_number": 105,
     "timestamp": 0,
     "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
     "base_reserve": 0,
@@ -128,7 +128,7 @@
             },
             "ext": "v0"
           },
-          6311999
+          6312104
         ]
       ],
       [
@@ -168,6 +168,14 @@
                 "durability": "persistent",
                 "val": {
                   "map": [
+                    {
+                      "key": {
+                        "symbol": "last_slash_ledger"
+                      },
+                      "val": {
+                        "u32": 105
+                      }
+                    },
                     {
                       "key": {
                         "symbol": "last_updated"
@@ -213,7 +221,7 @@
                         "symbol": "score"
                       },
                       "val": {
-                        "u32": 0
+                        "u32": 400
                       }
                     },
                     {
