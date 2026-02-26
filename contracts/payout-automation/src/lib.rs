@@ -140,10 +140,15 @@ impl PayoutAutomationContract {
         payout_id
     }
 
-    pub fn execute_payout(env: Env, payout_id: u64) {
+    pub fn execute_payout(env: Env, caller: Address, payout_id: u64) {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        caller.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if caller != stored_admin {
+            panic!("unauthorized");
+        }
         let mut payout: ScheduledPayout = env
             .storage()
             .persistent()
