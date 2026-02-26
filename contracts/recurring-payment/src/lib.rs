@@ -121,15 +121,30 @@ impl RecurringPaymentContract {
         payment_id
     }
 
-    pub fn execute_payment(env: Env, payment_id: u64) {
+    pub fn execute_payment(env: Env, caller: Address, payment_id: u64) {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+
+        caller.require_auth();
+
         let mut recurring: RecurringPayment = env
             .storage()
             .persistent()
             .get(&DataKey::Payment(payment_id))
             .expect("payment not found");
+
+        // Only payer, recipient, or admin can execute
+        if caller != recurring.payer && caller != recurring.recipient {
+            let admin: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::Admin)
+                .expect("admin not found");
+            if caller != admin {
+                panic!("unauthorized");
+            }
+        }
 
         if recurring.status != RecurringStatus::Active {
             panic!("payment not active");
@@ -154,6 +169,11 @@ impl RecurringPaymentContract {
             }
         }
 
+        // Require payer's auth for the transfer (unless caller is the payer)
+        if caller != recurring.payer {
+            recurring.payer.require_auth();
+        }
+
         let token_client = token::Client::new(&env, &recurring.token);
         token_client.transfer(&recurring.payer, &recurring.recipient, &recurring.amount);
 
@@ -166,8 +186,7 @@ impl RecurringPaymentContract {
         env.storage().persistent().extend_ttl(
             &_ttl_key,
             PERSISTENT_LIFETIME_THRESHOLD,
-            PERSISTENT_BUMP_AMOUNT,
-        );
+            PERSISTENT_BUMP_AMOUNT);
 
         env.events().publish(
             (symbol_short!("recurring"), symbol_short!("paid")),
