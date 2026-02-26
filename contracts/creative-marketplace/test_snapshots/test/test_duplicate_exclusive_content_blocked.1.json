@@ -59,24 +59,24 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
                 },
                 {
-                  "string": "QmHash"
+                  "string": "QmExclusiveContent123"
                 },
                 {
-                  "string": "Banner Ad"
+                  "string": "Exclusive Banner"
                 },
                 {
-                  "string": "A beautiful banner"
+                  "string": "First listing"
                 },
                 {
                   "i128": {
                     "hi": 0,
-                    "lo": 10000
+                    "lo": 50000
                   }
                 },
                 {
                   "vec": [
                     {
-                      "symbol": "OneTime"
+                      "symbol": "Exclusive"
                     }
                   ]
                 }
@@ -200,6 +200,51 @@
             "key": {
               "vec": [
                 {
+                  "symbol": "ContentOwner"
+                },
+                {
+                  "string": "QmExclusiveContent123"
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "ContentOwner"
+                    },
+                    {
+                      "string": "QmExclusiveContent123"
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "u64": 1
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          1051200
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4",
+            "key": {
+              "vec": [
+                {
                   "symbol": "Listing"
                 },
                 {
@@ -235,7 +280,7 @@
                         "symbol": "content_hash"
                       },
                       "val": {
-                        "string": "QmHash"
+                        "string": "QmExclusiveContent123"
                       }
                     },
                     {
@@ -259,7 +304,7 @@
                         "symbol": "description"
                       },
                       "val": {
-                        "string": "A beautiful banner"
+                        "string": "First listing"
                       }
                     },
                     {
@@ -277,7 +322,7 @@
                       "val": {
                         "vec": [
                           {
-                            "symbol": "OneTime"
+                            "symbol": "Exclusive"
                           }
                         ]
                       }
@@ -297,7 +342,7 @@
                       "val": {
                         "i128": {
                           "hi": 0,
-                          "lo": 10000
+                          "lo": 50000
                         }
                       }
                     },
@@ -326,7 +371,7 @@
                         "symbol": "title"
                       },
                       "val": {
-                        "string": "Banner Ad"
+                        "string": "Exclusive Banner"
                       }
                     }
                   ]

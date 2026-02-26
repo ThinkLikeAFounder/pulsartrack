@@ -84,13 +84,13 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
                 },
                 {
+                  "string": "QmHash"
+                },
+                {
                   "string": "Banner"
                 },
                 {
                   "string": "Desc"
-                },
-                {
-                  "string": "QmHash"
                 },
                 {
                   "i128": {
@@ -473,7 +473,7 @@
                         "symbol": "content_hash"
                       },
                       "val": {
-                        "string": "Banner"
+                        "string": "QmHash"
                       }
                     },
                     {
@@ -497,7 +497,7 @@
                         "symbol": "description"
                       },
                       "val": {
-                        "string": "QmHash"
+                        "string": "Desc"
                       }
                     },
                     {
@@ -564,7 +564,7 @@
                         "symbol": "title"
                       },
                       "val": {
-                        "string": "Desc"
+                        "string": "Banner"
                       }
                     }
                   ]
