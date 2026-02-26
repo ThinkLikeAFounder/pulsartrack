@@ -25,9 +25,9 @@ pub struct Milestone {
     pub current_value: u64,
     pub reward_amount: i128,
     pub status: MilestoneStatus,
-    pub deadline_ledger: u32,
-    pub achieved_at: Option<u64>,
-    pub created_at: u64,
+    pub deadline: u64,           // Unix timestamp (changed from deadline_ledger: u32)
+    pub achieved_at: Option<u64>, // Unix timestamp
+    pub created_at: u64,          // Unix timestamp
 }
 
 #[contracttype]
@@ -76,7 +76,7 @@ impl MilestoneTrackerContract {
         target_metric: String,
         target_value: u64,
         reward_amount: i128,
-        deadline_ledger: u32,
+        deadline: u64,
     ) -> u64 {
         env.storage()
             .instance()
@@ -99,7 +99,7 @@ impl MilestoneTrackerContract {
             current_value: 0,
             reward_amount,
             status: MilestoneStatus::Pending,
-            deadline_ledger,
+            deadline,
             achieved_at: None,
             created_at: env.ledger().timestamp(),
         };
@@ -165,7 +165,7 @@ impl MilestoneTrackerContract {
                 (symbol_short!("milestone"), symbol_short!("achieved")),
                 (milestone_id, milestone.campaign_id),
             );
-        } else if env.ledger().sequence() > milestone.deadline_ledger {
+        } else if env.ledger().timestamp() > milestone.deadline {
             milestone.status = MilestoneStatus::Missed;
         } else {
             milestone.status = MilestoneStatus::InProgress;
