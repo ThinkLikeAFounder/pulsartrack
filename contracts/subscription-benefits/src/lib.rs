@@ -11,6 +11,8 @@ pub struct Benefit {
     pub name: String,
     pub description: String,
     pub min_tier: u32, // 0=Starter, 1=Growth, 2=Business, 3=Enterprise
+    pub max_uses_per_period: u32,
+    pub period_secs: u64,
     pub is_active: bool,
 }
 
@@ -65,6 +67,8 @@ impl SubscriptionBenefitsContract {
         name: String,
         description: String,
         min_tier: u32,
+        max_uses_per_period: u32,
+        period_secs: u64,
     ) -> u32 {
         env.storage()
             .instance()
@@ -87,6 +91,8 @@ impl SubscriptionBenefitsContract {
             name,
             description,
             min_tier,
+            max_uses_per_period,
+            period_secs,
             is_active: true,
         };
 
@@ -130,13 +136,18 @@ impl SubscriptionBenefitsContract {
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
         subscriber.require_auth();
 
-        if !Self::check_benefit_access(env.clone(), subscriber.clone(), benefit_id, subscriber_tier)
-        {
+        let benefit: Benefit = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Benefit(benefit_id))
+            .expect("benefit not found");
+
+        if !benefit.is_active || subscriber_tier < benefit.min_tier {
             panic!("access denied");
         }
 
         let now = env.ledger().timestamp();
-        let period_secs = 30 * 24 * 3600u64;
+        let period_secs = benefit.period_secs;
 
         let key = DataKey::BenefitUsage(subscriber.clone(), benefit_id);
         let mut usage: BenefitUsage =
@@ -147,7 +158,7 @@ impl SubscriptionBenefitsContract {
                     subscriber: subscriber.clone(),
                     benefit_id,
                     uses_this_period: 0,
-                    max_uses_per_period: 100,
+                    max_uses_per_period: benefit.max_uses_per_period,
                     period_reset_at: now + period_secs,
                 });
 
@@ -155,6 +166,8 @@ impl SubscriptionBenefitsContract {
         if now > usage.period_reset_at {
             usage.uses_this_period = 0;
             usage.period_reset_at = now + period_secs;
+            // Refresh limit from benefit definition
+            usage.max_uses_per_period = benefit.max_uses_per_period;
         }
 
         if usage.uses_this_period >= usage.max_uses_per_period {
@@ -186,6 +199,33 @@ impl SubscriptionBenefitsContract {
         env.storage()
             .persistent()
             .get(&DataKey::BenefitUsage(subscriber, benefit_id))
+    }
+
+    pub fn update_benefit(
+        env: Env,
+        admin: Address,
+        benefit_id: u32,
+        max_uses_per_period: u32,
+        period_secs: u64,
+        is_active: bool,
+    ) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+
+        let key = DataKey::Benefit(benefit_id);
+        let mut benefit: Benefit = env.storage().persistent().get(&key).expect("benefit not found");
+
+        benefit.max_uses_per_period = max_uses_per_period;
+        benefit.period_secs = period_secs;
+        benefit.is_active = is_active;
+
+        env.storage().persistent().set(&key, &benefit);
     }
 
     pub fn propose_admin(env: Env, current_admin: Address, new_admin: Address) {

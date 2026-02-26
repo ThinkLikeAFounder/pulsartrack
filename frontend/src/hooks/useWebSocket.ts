@@ -43,7 +43,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
       unsubscribeRefs.current.forEach((unsub) => unsub());
       unsubscribeRefs.current = [];
     };
-  }, [autoConnect]);
+  }, [autoConnect, events?.join(',')]);
 
   const clearHistory = useCallback(() => {
     setEventHistory([]);

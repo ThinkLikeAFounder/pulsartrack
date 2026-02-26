@@ -1,7 +1,7 @@
 'use client';
 
 import { GovernanceProposal } from '@/types/contracts';
-import { formatAddress } from '@/lib/display-utils';
+import { formatAddress, formatNumber } from '@/lib/display-utils';
 import { clsx } from 'clsx';
 
 interface ProposalCardProps {
@@ -105,7 +105,7 @@ export function ProposalCard({ proposal, onVote, isVoting, userVote }: ProposalC
       <div className="flex justify-between text-xs text-gray-500 mt-1.5 mb-4">
         <span className="text-green-400">{forPct}% For</span>
         <span className="text-gray-400">
-          {Number(total).toLocaleString()} votes total
+          {formatNumber(total)} votes total
         </span>
         <span className="text-red-400">
           {total > BigInt(0)

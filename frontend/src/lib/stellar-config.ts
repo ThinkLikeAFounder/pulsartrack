@@ -93,11 +93,13 @@ export const APP_DETAILS = {
 
 /**
  * Stellar Lumens Conversion (1 XLM = 10,000,000 stroops)
+ * WARNING: Conversion to Number causes precision loss for values > 2^53 stroops (~900M XLM).
+ * Use BigInt arithmetic and display-utils for accurate formatting.
  */
 export const STROOPS_PER_XLM = 10_000_000;
 
 export function stroopsToXlm(stroops: bigint | number): number {
-  return Number(stroops) / STROOPS_PER_XLM;
+  return Number(BigInt(stroops)) / STROOPS_PER_XLM;
 }
 
 export function xlmToStroops(xlm: number): bigint {

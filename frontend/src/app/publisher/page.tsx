@@ -21,8 +21,7 @@ import {
   usePublisherAuctions,
   useSubscribe,
 } from '@/hooks/useContract';
-import { formatAddress, formatScore } from '@/lib/display-utils';
-import { stroopsToXlm } from '@/lib/stellar-config';
+import { formatAddress, formatScore, formatXlm } from '@/lib/display-utils';
 
 const SUBSCRIPTION_PLANS = [
   {
@@ -165,7 +164,7 @@ export default function PublisherPage() {
                 label: 'Total Earned',
                 value: earningsLoading
                   ? 'Loading...'
-                  : `${stroopsToXlm(earnings || 0n).toFixed(2)} XLM`,
+                  : formatXlm(earnings || 0n, 2),
                 bgClass: 'bg-green-100',
                 iconClass: 'text-green-600',
               },
@@ -223,11 +222,10 @@ export default function PublisherPage() {
               <button
                 key={id}
                 onClick={() => setActiveTab(id as any)}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  activeTab === id
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === id
                     ? 'bg-white text-indigo-600 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
-                }`}
+                  }`}
               >
                 {label}
               </button>
@@ -265,22 +263,20 @@ export default function PublisherPage() {
                   ].map(({ label, done }) => (
                     <div key={label} className="flex items-center gap-3">
                       <CheckCircle
-                        className={`w-5 h-5 ${
-                          done === null
+                        className={`w-5 h-5 ${done === null
                             ? 'text-gray-300'
                             : done
                               ? 'text-green-500'
                               : 'text-gray-300'
-                        }`}
+                          }`}
                       />
                       <span
-                        className={`text-sm ${
-                          done === null
+                        className={`text-sm ${done === null
                             ? 'text-gray-500'
                             : done
                               ? 'text-gray-900'
                               : 'text-gray-500'
-                        }`}
+                          }`}
                       >
                         {done === null && 'Loading... '}
                         {label}
@@ -303,11 +299,10 @@ export default function PublisherPage() {
                   ].map(({ tier, min, max, color }) => (
                     <div
                       key={tier}
-                      className={`flex items-center justify-between px-3 py-2 rounded-lg ${
-                        reputationScore >= min && reputationScore <= max
+                      className={`flex items-center justify-between px-3 py-2 rounded-lg ${reputationScore >= min && reputationScore <= max
                           ? 'bg-indigo-50 border border-indigo-200'
                           : 'bg-gray-50'
-                      }`}
+                        }`}
                     >
                       <span className="text-sm font-medium text-gray-900">
                         {tier}
@@ -348,7 +343,7 @@ export default function PublisherPage() {
                       </div>
                       <p className="text-sm text-gray-600 mb-2">
                         Current Bid:{' '}
-                        {stroopsToXlm(auction.current_bid || 0n).toFixed(4)} XLM
+                        {formatXlm(auction.current_bid || 0n, 4)}
                       </p>
                       <p className="text-sm text-gray-500">
                         Ends:{' '}
@@ -390,7 +385,7 @@ export default function PublisherPage() {
                       Available Balance
                     </p>
                     <p className="text-3xl font-bold text-green-600">
-                      {stroopsToXlm(earnings || 0n).toFixed(2)} XLM
+                      {formatXlm(earnings || 0n, 2)}
                     </p>
                   </div>
                   <button className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium">
@@ -419,9 +414,8 @@ export default function PublisherPage() {
                   return (
                     <div
                       key={plan.name}
-                      className={`bg-white rounded-xl border-2 p-6 relative ${
-                        plan.popular ? 'border-indigo-500' : 'border-gray-200'
-                      }`}
+                      className={`bg-white rounded-xl border-2 p-6 relative ${plan.popular ? 'border-indigo-500' : 'border-gray-200'
+                        }`}
                     >
                       {plan.popular && (
                         <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-indigo-600 text-white text-xs rounded-full">
