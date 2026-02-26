@@ -185,15 +185,21 @@ impl RefundProcessorContract {
         );
     }
 
-    pub fn process_refund(env: Env, refund_id: u64) {
+    pub fn process_refund(env: Env, caller: Address, refund_id: u64) {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        caller.require_auth();
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         let mut refund: RefundRequest = env
             .storage()
             .persistent()
             .get(&DataKey::Refund(refund_id))
             .expect("refund not found");
+
+        if caller != admin && caller != refund.requester {
+            panic!("unauthorized");
+        }
 
         if refund.status != RefundStatus::Approved {
             panic!("refund not approved");
