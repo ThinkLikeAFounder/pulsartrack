@@ -1,6 +1,10 @@
 #![cfg(test)]
 use super::*;
-use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, Env, String};
+use soroban_sdk::{
+    testutils::Address as _,
+    token::{Client as TokenClient, StellarAssetClient},
+    Address, Env, String,
+};
 
 fn deploy_token(env: &Env, admin: &Address) -> Address {
     env.register_stellar_asset_contract_v2(admin.clone())
@@ -120,6 +124,13 @@ fn test_purchase_license() {
     assert!(c.has_license(&listing_id, &buyer));
     let license = c.get_license(&listing_id, &buyer).unwrap();
     assert_eq!(license.listing_id, listing_id);
+
+    let listing = c.get_listing(&listing_id).unwrap();
+    assert_eq!(listing.sale_count, 1);
+
+    let token_client = TokenClient::new(&env, &token);
+    assert_eq!(token_client.balance(&creator), 9_750);
+    assert_eq!(token_client.balance(&buyer), 990_000);
 }
 
 #[test]
