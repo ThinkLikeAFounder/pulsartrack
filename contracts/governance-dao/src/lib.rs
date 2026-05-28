@@ -315,7 +315,8 @@ impl GovernanceDaoContract {
             PERSISTENT_BUMP_AMOUNT,
         );
 
-        // Lock tokens after recording the vote guard.
+        // Lock tokens after all vote effects are committed so re-entrant
+        // callbacks cannot observe the voter as still eligible to vote.
         token_client.transfer(&voter, &env.current_contract_address(), &power);
 
         env.events().publish(
