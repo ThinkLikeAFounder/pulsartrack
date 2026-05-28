@@ -1,6 +1,10 @@
 #![cfg(test)]
 use super::*;
-use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, Env, String};
+use soroban_sdk::{
+    testutils::Address as _,
+    token::{Client as TokenClient, StellarAssetClient},
+    Address, Env, String,
+};
 
 fn deploy_token(env: &Env, admin: &Address) -> Address {
     env.register_stellar_asset_contract_v2(admin.clone())
@@ -112,6 +116,29 @@ fn test_reject_already_processed_refund_fails() {
 
     // Attempting to reject a Processed refund must panic
     c.reject_refund(&admin, &id);
+}
+
+#[test]
+#[should_panic(expected = "refund not approved")]
+fn test_process_refund_cannot_be_replayed() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin, _, token) = setup(&env);
+    let requester = Address::generate(&env);
+    setup_campaign(&env, &c.address, 1, 100_000);
+
+    let id = c.request_refund(&requester, &1u64, &50_000i128, &s(&env, "reason"));
+    c.approve_refund(&admin, &id, &50_000i128);
+    mint(&env, &token, &c.address, 100_000);
+
+    c.process_refund(&admin, &id);
+
+    let refund = c.get_refund(&id).unwrap();
+    assert!(matches!(refund.status, RefundStatus::Processed));
+    let token_client = TokenClient::new(&env, &token);
+    assert_eq!(token_client.balance(&requester), 50_000);
+
+    c.process_refund(&admin, &id);
 }
 
 #[test]
