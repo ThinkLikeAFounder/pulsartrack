@@ -421,6 +421,32 @@ fn test_reject_transaction() {
 }
 
 #[test]
+fn test_reject_transaction_accounts_for_proposer_exclusion() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _, signers, _, token_addr) = setup(&env);
+
+    let proposer = signers.get(0).unwrap();
+    let signer2 = signers.get(1).unwrap();
+    let recipient = Address::generate(&env);
+
+    let tx_id = client.propose_transaction(
+        &proposer,
+        &recipient,
+        &token_addr,
+        &10_000i128,
+        &make_desc(&env),
+        &86_400u64,
+    );
+
+    client.reject_transaction(&signer2, &tx_id);
+
+    let tx = client.get_transaction(&tx_id).unwrap();
+    assert_eq!(tx.rejections, 1);
+    assert!(matches!(tx.status, TxStatus::Rejected));
+}
+
+#[test]
 #[should_panic(expected = "not a signer")]
 fn test_reject_by_non_signer() {
     let env = Env::default();

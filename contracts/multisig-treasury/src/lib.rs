@@ -307,13 +307,25 @@ impl MultisigTreasuryContract {
 
         tx.rejections += 1;
 
-        let total_signers = signers.len() as u32;
         let required: u32 = env
             .storage()
             .instance()
             .get(&DataKey::RequiredSigners)
             .unwrap();
-        let max_possible_approvals = total_signers - tx.rejections;
+        let mut max_possible_approvals = 0u32;
+        for possible_approver in signers.iter() {
+            if possible_approver == tx.proposer {
+                continue;
+            }
+            let has_rejected = possible_approver == signer
+                || env
+                    .storage()
+                    .persistent()
+                    .has(&DataKey::TxRejection(tx_id, possible_approver));
+            if !has_rejected {
+                max_possible_approvals += 1;
+            }
+        }
 
         if max_possible_approvals < required {
             tx.status = TxStatus::Rejected;
@@ -323,13 +335,11 @@ impl MultisigTreasuryContract {
         env.storage()
             .persistent()
             .set(&DataKey::TxRejection(tx_id, signer.clone()), &true);
-        env.storage()
-            .persistent()
-            .extend_ttl(
-                &DataKey::TxRejection(tx_id, signer),
-                PERSISTENT_LIFETIME_THRESHOLD,
-                PERSISTENT_BUMP_AMOUNT,
-            );
+        env.storage().persistent().extend_ttl(
+            &DataKey::TxRejection(tx_id, signer),
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
 
         let _ttl_key = DataKey::Tx(tx_id);
         env.storage().persistent().set(&_ttl_key, &tx);
