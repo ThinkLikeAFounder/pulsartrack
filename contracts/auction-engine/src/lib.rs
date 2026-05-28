@@ -193,13 +193,8 @@ impl AuctionEngineContract {
             .unwrap();
         let token_client = token::Client::new(&env, &token_addr);
 
-        let prev_bid = if let Some(prev_winner) = &auction.winner {
-            auction
-                .winning_bid
-                .map(|prev_amount| (prev_winner.clone(), prev_amount))
-        } else {
-            None
-        };
+        let previous_winner = auction.winner.clone();
+        let previous_bid = auction.winning_bid;
 
         let bid = Bid {
             bidder: bidder.clone(),
@@ -241,6 +236,11 @@ impl AuctionEngineContract {
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
         );
+        if let Some(prev_winner) = previous_winner.clone() {
+            env.storage()
+                .persistent()
+                .remove(&DataKey::BidderBid(auction_id, prev_winner));
+        }
 
         auction.bid_count += 1;
         auction.winning_bid = Some(amount);
@@ -253,18 +253,12 @@ impl AuctionEngineContract {
             PERSISTENT_BUMP_AMOUNT,
         );
 
-        // Refund the previous highest bidder if they exist
-        if let Some((prev_winner, prev_amount)) = prev_bid {
-            // Clear previous bidder's deposit record as they are now refunded
-            env.storage()
-                .persistent()
-                .remove(&DataKey::BidderBid(auction_id, prev_winner.clone()));
-            token_client.transfer(&env.current_contract_address(), &prev_winner, &prev_amount);
-        }
-
-        // Transfer the new bid into the contract
         token_client.transfer(&bidder, &env.current_contract_address(), &amount);
-
+        if let Some(prev_winner) = previous_winner {
+            if let Some(prev_amount) = previous_bid {
+                token_client.transfer(&env.current_contract_address(), &prev_winner, &prev_amount);
+            }
+        }
         env.events().publish(
             (symbol_short!("bid"), symbol_short!("placed")),
             (auction_id, bidder, amount),
@@ -396,6 +390,15 @@ impl AuctionEngineContract {
         env.storage()
             .persistent()
             .get(&DataKey::HighestBid(auction_id))
+    }
+
+    pub fn get_bidder_bid(env: Env, auction_id: u64, bidder: Address) -> Option<i128> {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        env.storage()
+            .persistent()
+            .get(&DataKey::BidderBid(auction_id, bidder))
     }
 
     pub fn propose_admin(env: Env, current_admin: Address, new_admin: Address) {

@@ -154,6 +154,7 @@ fn test_place_bid() {
 
     assert_eq!(client.get_bid_count(&auction_id), 1);
     assert_eq!(client.get_highest_bid(&auction_id), Some(2_000));
+    assert_eq!(client.get_bidder_bid(&auction_id, &bidder), Some(2_000));
 }
 
 #[test]
@@ -179,6 +180,8 @@ fn test_multiple_bids_highest_wins() {
     assert_eq!(auction.winning_bid, Some(4_000));
     assert_eq!(auction.bid_count, 2);
     assert_eq!(client.get_highest_bid(&auction_id), Some(4_000));
+    assert_eq!(client.get_bidder_bid(&auction_id, &bidder1), None);
+    assert_eq!(client.get_bidder_bid(&auction_id, &bidder2), Some(4_000));
 
     let tc = TokenClient::new(&env, &token_addr);
     assert_eq!(tc.balance(&bidder1), 10_000); // Refunded
