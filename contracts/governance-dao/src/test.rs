@@ -53,15 +53,27 @@ impl MockGovToken {
         if from_bal < amount {
             panic!("insufficient balance");
         }
-        env.storage()
-            .persistent()
-            .set(&from, &(from_bal - amount));
+        env.storage().persistent().set(&from, &(from_bal - amount));
         let to_bal = env
             .storage()
             .persistent()
             .get::<Address, i128>(&to)
             .unwrap_or(0);
         env.storage().persistent().set(&to, &(to_bal + amount));
+    }
+}
+
+#[soroban_contract]
+pub struct GovernanceExecutionTarget;
+
+#[soroban_contractimpl]
+impl GovernanceExecutionTarget {
+    pub fn execute_governance(env: Env, proposal_id: u64) {
+        env.storage().instance().set(&0u32, &proposal_id);
+    }
+
+    pub fn last_executed(env: Env) -> Option<u64> {
+        env.storage().instance().get(&0u32)
     }
 }
 
@@ -540,7 +552,12 @@ fn test_finalize_proposal_passes_at_51_pct_exact() {
     let proposal_id = client.create_proposal(&proposer, &make_title(&env), &make_desc(&env), &None);
 
     client.cast_vote(&voter_for, &proposal_id, &VoteChoice::For, &510_000i128);
-    client.cast_vote(&voter_against, &proposal_id, &VoteChoice::Against, &490_000i128);
+    client.cast_vote(
+        &voter_against,
+        &proposal_id,
+        &VoteChoice::Against,
+        &490_000i128,
+    );
 
     env.ledger().with_mut(|li| {
         li.sequence_number = 200;
@@ -572,7 +589,12 @@ fn test_finalize_proposal_passes_at_51_1_pct() {
     let proposal_id = client.create_proposal(&proposer, &make_title(&env), &make_desc(&env), &None);
 
     client.cast_vote(&voter_for, &proposal_id, &VoteChoice::For, &511_000i128);
-    client.cast_vote(&voter_against, &proposal_id, &VoteChoice::Against, &489_000i128);
+    client.cast_vote(
+        &voter_against,
+        &proposal_id,
+        &VoteChoice::Against,
+        &489_000i128,
+    );
 
     env.ledger().with_mut(|li| {
         li.sequence_number = 200;
@@ -601,7 +623,12 @@ fn test_finalize_proposal_rejected_at_50_99_pct_with_bps() {
     let proposal_id = client.create_proposal(&proposer, &make_title(&env), &make_desc(&env), &None);
 
     client.cast_vote(&voter_for, &proposal_id, &VoteChoice::For, &5_099i128);
-    client.cast_vote(&voter_against, &proposal_id, &VoteChoice::Against, &4_901i128);
+    client.cast_vote(
+        &voter_against,
+        &proposal_id,
+        &VoteChoice::Against,
+        &4_901i128,
+    );
 
     env.ledger().with_mut(|li| {
         li.sequence_number = 200;
@@ -627,7 +654,12 @@ fn test_finalize_proposal_rejected_at_exactly_50_pct() {
     let proposal_id = client.create_proposal(&proposer, &make_title(&env), &make_desc(&env), &None);
 
     client.cast_vote(&voter_for, &proposal_id, &VoteChoice::For, &500_000i128);
-    client.cast_vote(&voter_against, &proposal_id, &VoteChoice::Against, &500_000i128);
+    client.cast_vote(
+        &voter_against,
+        &proposal_id,
+        &VoteChoice::Against,
+        &500_000i128,
+    );
 
     env.ledger().with_mut(|li| {
         li.sequence_number = 200;
@@ -650,7 +682,7 @@ fn test_execute_proposal_emits_executed_event() {
 
     let proposer = Address::generate(&env);
     let voter = Address::generate(&env);
-    let target = Address::generate(&env);
+    let target = env.register_contract(None, GovernanceExecutionTarget);
     let proposal_id = client.create_proposal(
         &proposer,
         &make_title(&env),
@@ -671,6 +703,38 @@ fn test_execute_proposal_emits_executed_event() {
     assert!(matches!(p.status, ProposalStatus::Executed));
     // target_contract is preserved on the proposal
     assert_eq!(p.target_contract, Some(target));
+}
+
+#[test]
+fn test_execute_proposal_invokes_target_contract() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, admin, _) = setup_with_mock_token(&env, 1_000);
+    let target = env.register_contract(None, GovernanceExecutionTarget);
+    let target_client = GovernanceExecutionTargetClient::new(&env, &target);
+
+    let proposer = Address::generate(&env);
+    let voter = Address::generate(&env);
+    let proposal_id = client.create_proposal(
+        &proposer,
+        &make_title(&env),
+        &make_desc(&env),
+        &Some(target.clone()),
+    );
+
+    client.cast_vote(&voter, &proposal_id, &VoteChoice::For, &200i128);
+
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 200;
+    });
+
+    client.finalize_proposal(&proposal_id);
+    client.execute_proposal(&admin, &proposal_id);
+
+    let proposal = client.get_proposal(&proposal_id).unwrap();
+    assert!(matches!(proposal.status, ProposalStatus::Executed));
+    assert_eq!(target_client.last_executed(), Some(proposal_id));
 }
 
 #[test]
@@ -862,8 +926,7 @@ fn test_double_vote_after_ttl_window_rejected() {
     let proposer = Address::generate(&env);
     let voter = Address::generate(&env);
 
-    let proposal_id =
-        client.create_proposal(&proposer, &make_title(&env), &make_desc(&env), &None);
+    let proposal_id = client.create_proposal(&proposer, &make_title(&env), &make_desc(&env), &None);
 
     // Voter A casts their vote at ledger 0
     client.cast_vote(&voter, &proposal_id, &VoteChoice::For, &1_000i128);

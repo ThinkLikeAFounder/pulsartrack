@@ -8,7 +8,8 @@
 
 #![no_std]
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, token, Address, Env, String,
+    contract, contractimpl, contracttype, symbol_short, token, Address, Env, IntoVal, String,
+    Symbol,
 };
 
 // ============================================================
@@ -420,9 +421,14 @@ impl GovernanceDaoContract {
             PERSISTENT_BUMP_AMOUNT,
         );
 
-        // Any execution side effects (e.g. calling proposal.target_contract)
-        // must be placed here — after the status has been committed — so they
-        // cannot be replayed if they succeed but the status write were to fail.
+        if let Some(ref target) = proposal.target_contract {
+            env.invoke_contract::<()>(
+                target,
+                &Symbol::new(&env, "execute_governance"),
+                soroban_sdk::vec![&env, proposal_id.into_val(&env)],
+            );
+        }
+
         env.events().publish(
             (symbol_short!("proposal"), symbol_short!("executed")),
             (proposal_id, proposal.target_contract),
