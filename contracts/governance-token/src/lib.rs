@@ -407,6 +407,10 @@ impl GovernanceTokenContract {
             panic!("unauthorized");
         }
 
+        if amount <= 0 {
+            panic!("invalid amount");
+        }
+
         let current_supply: i128 = env
             .storage()
             .instance()

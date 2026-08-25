@@ -229,3 +229,23 @@ fn test_mint_supply_overflow_panics() {
     c.mint(&admin, &user, &MAX_SUPPLY);
     c.mint(&admin, &user, &i128::MAX);
 }
+
+#[test]
+#[should_panic(expected = "invalid amount")]
+fn test_mint_zero_amount_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin) = setup(&env);
+    let user = Address::generate(&env);
+    c.mint(&admin, &user, &0i128);
+}
+
+#[test]
+#[should_panic(expected = "invalid amount")]
+fn test_mint_negative_amount_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin) = setup(&env);
+    let user = Address::generate(&env);
+    c.mint(&admin, &user, &-1i128);
+}
