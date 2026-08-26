@@ -60,8 +60,12 @@ export const useWalletStore = create<WalletStore>()(
             freighterNetwork: freighterLabel,
             networkMismatch: !isNetworkCorrect && !!connected,
           });
-        } catch {
-          // ignore errors during autoReconnect
+        } catch (error) {
+          // Issue #790 — don't silently swallow. A background reconnect failure
+          // shouldn't interrupt the user with a toast, but it must leave a
+          // diagnostic trail and not leave a half-connected state lingering.
+          console.error("Wallet auto-reconnect failed:", error);
+          set({ address: null, isConnected: false, networkMismatch: false, freighterNetwork: null });
         }
       },
     }),
