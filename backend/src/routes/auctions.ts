@@ -73,24 +73,22 @@ router.get(
       req.log?.error({ err }, "Failed to fetch auctions");
       const details =
         process.env.NODE_ENV === "development" ? err.message : undefined;
-      res
-        .status(500)
-        .json({
-          error: "Failed to fetch auctions",
-          ...(details && { details }),
-        });
+      res.status(500).json({
+        error: "Failed to fetch auctions",
+        ...(details && { details }),
+      });
     }
   },
 );
 
 router.post(
-	"/:auctionId/bid",
-	requireAuth,
-	rateLimitWrite(),
-	validate({
-	  params: {
-	    auctionId: { type: "number", required: true, integer: true, min: 1 },
-	  },
+  "/:auctionId/bid",
+  requireAuth,
+  rateLimitWrite(),
+  validate({
+    params: {
+      auctionId: { type: "number", required: true, integer: true, min: 1 },
+    },
     body: {
       campaignId: { type: "number", required: true, integer: true, min: 1 },
       amountStroops: { type: "number", required: true, integer: true, min: 1 },
@@ -103,16 +101,20 @@ router.post(
       const auctionId = parseInt(req.params.auctionId as string);
       const { campaignId, amountStroops } = req.body;
 
-      // Verify auction exists and is open
+      await client.query("BEGIN");
+
+      // Lock the auction row and verify it exists and is open
       const auctionResult = await client.query(
-        `SELECT publisher, floor_price_stroops, status FROM auctions WHERE auction_id = $1`,
+        `SELECT publisher, floor_price_stroops, status FROM auctions WHERE auction_id = $1 FOR UPDATE`,
         [auctionId],
       );
       if (auctionResult.rows.length === 0) {
+        await client.query("ROLLBACK");
         return res.status(404).json({ error: "Auction not found" });
       }
       const auction = auctionResult.rows[0];
       if (auction.status !== "Open") {
+        await client.query("ROLLBACK");
         return res
           .status(400)
           .json({ error: "Auction is not open for bidding" });
@@ -120,6 +122,7 @@ router.post(
 
       // Prevent self-bidding
       if (auction.publisher === address) {
+        await client.query("ROLLBACK");
         return res
           .status(403)
           .json({ error: "Cannot bid on your own auction" });
@@ -127,6 +130,7 @@ router.post(
 
       // Verify bid meets floor price
       if (amountStroops < Number(auction.floor_price_stroops)) {
+        await client.query("ROLLBACK");
         return res.status(400).json({ error: "Bid below floor price" });
       }
 
@@ -136,15 +140,15 @@ router.post(
         [campaignId],
       );
       if (campaignResult.rows.length === 0) {
+        await client.query("ROLLBACK");
         return res.status(404).json({ error: "Campaign not found" });
       }
       if (campaignResult.rows[0].advertiser !== address) {
+        await client.query("ROLLBACK");
         return res
           .status(403)
           .json({ error: "Campaign does not belong to you" });
       }
-
-      await client.query("BEGIN");
 
       const { rows } = await client.query(
         `INSERT INTO bids (auction_id, bidder, campaign_id, amount_stroops)
