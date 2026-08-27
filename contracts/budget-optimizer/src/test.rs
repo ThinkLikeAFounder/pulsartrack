@@ -49,15 +49,15 @@ fn test_set_budget_allocation() {
     env.mock_all_auths();
     let (c, _, _) = setup(&env);
     let advertiser = Address::generate(&env);
-    c.set_budget_allocation(
-        &advertiser,
-        &1u64,
-        &100_000i128,
-        &10_000i128,
-        &OptimizationMode::ManualCpc,
-        &500i128,
-        &100u32,
-    );
+    c.set_budget_allocation(&SetBudgetAllocationArgs {
+        advertiser: advertiser.clone(),
+        campaign_id: 1u64,
+        total_budget: 100_000i128,
+        daily_budget: 10_000i128,
+        optimization_mode: OptimizationMode::ManualCpc,
+        target_cpa: 500i128,
+        target_ctr: 100u32,
+    });
     let alloc = c.get_allocation(&1u64).unwrap();
     assert_eq!(alloc.total_budget, 100_000);
     assert_eq!(alloc.daily_budget, 10_000);
@@ -69,15 +69,15 @@ fn test_record_spend() {
     env.mock_all_auths();
     let (c, admin, _) = setup(&env);
     let advertiser = Address::generate(&env);
-    c.set_budget_allocation(
-        &advertiser,
-        &1u64,
-        &100_000i128,
-        &10_000i128,
-        &OptimizationMode::ManualCpc,
-        &500i128,
-        &100u32,
-    );
+    c.set_budget_allocation(&SetBudgetAllocationArgs {
+        advertiser: advertiser.clone(),
+        campaign_id: 1u64,
+        total_budget: 100_000i128,
+        daily_budget: 10_000i128,
+        optimization_mode: OptimizationMode::ManualCpc,
+        target_cpa: 500i128,
+        target_ctr: 100u32,
+    });
     c.record_spend(&admin, &1u64, &5_000i128);
     let alloc = c.get_allocation(&1u64).unwrap();
     assert_eq!(alloc.spent_today, 5_000);
@@ -89,15 +89,15 @@ fn test_record_spend_resets_on_new_day() {
     env.mock_all_auths();
     let (c, admin, _) = setup(&env);
     let advertiser = Address::generate(&env);
-    c.set_budget_allocation(
-        &advertiser,
-        &1u64,
-        &100_000i128,
-        &10_000i128,
-        &OptimizationMode::ManualCpc,
-        &500i128,
-        &100u32,
-    );
+    c.set_budget_allocation(&SetBudgetAllocationArgs {
+        advertiser: advertiser.clone(),
+        campaign_id: 1u64,
+        total_budget: 100_000i128,
+        daily_budget: 10_000i128,
+        optimization_mode: OptimizationMode::ManualCpc,
+        target_cpa: 500i128,
+        target_ctr: 100u32,
+    });
 
     c.record_spend(&admin, &1u64, &10_000i128);
     assert!(!c.can_spend(&1u64, &1i128));
@@ -118,15 +118,15 @@ fn test_can_spend() {
     env.mock_all_auths();
     let (c, _, _) = setup(&env);
     let advertiser = Address::generate(&env);
-    c.set_budget_allocation(
-        &advertiser,
-        &1u64,
-        &100_000i128,
-        &10_000i128,
-        &OptimizationMode::ManualCpc,
-        &500i128,
-        &100u32,
-    );
+    c.set_budget_allocation(&SetBudgetAllocationArgs {
+        advertiser: advertiser.clone(),
+        campaign_id: 1u64,
+        total_budget: 100_000i128,
+        daily_budget: 10_000i128,
+        optimization_mode: OptimizationMode::ManualCpc,
+        target_cpa: 500i128,
+        target_ctr: 100u32,
+    });
     assert!(c.can_spend(&1u64, &5_000i128));
     assert!(!c.can_spend(&1u64, &110_000i128));
 }
@@ -137,15 +137,15 @@ fn test_can_spend_resets_on_new_day_without_write() {
     env.mock_all_auths();
     let (c, admin, _) = setup(&env);
     let advertiser = Address::generate(&env);
-    c.set_budget_allocation(
-        &advertiser,
-        &1u64,
-        &100_000i128,
-        &10_000i128,
-        &OptimizationMode::ManualCpc,
-        &500i128,
-        &100u32,
-    );
+    c.set_budget_allocation(&SetBudgetAllocationArgs {
+        advertiser: advertiser.clone(),
+        campaign_id: 1u64,
+        total_budget: 100_000i128,
+        daily_budget: 10_000i128,
+        optimization_mode: OptimizationMode::ManualCpc,
+        target_cpa: 500i128,
+        target_ctr: 100u32,
+    });
 
     c.record_spend(&admin, &1u64, &10_000i128);
     assert!(!c.can_spend(&1u64, &1i128));
@@ -178,15 +178,15 @@ fn test_optimization_does_not_break_reset() {
     env.mock_all_auths();
     let (c, admin, oracle) = setup(&env);
     let advertiser = Address::generate(&env);
-    c.set_budget_allocation(
-        &advertiser,
-        &1u64,
-        &100_000i128,
-        &10_000i128,
-        &OptimizationMode::ManualCpc,
-        &500i128,
-        &100u32,
-    );
+    c.set_budget_allocation(&SetBudgetAllocationArgs {
+        advertiser: advertiser.clone(),
+        campaign_id: 1u64,
+        total_budget: 100_000i128,
+        daily_budget: 10_000i128,
+        optimization_mode: OptimizationMode::ManualCpc,
+        target_cpa: 500i128,
+        target_ctr: 100u32,
+    });
 
     // Spend full budget on Day 0
     c.record_spend(&admin, &1u64, &10_000i128);
@@ -224,15 +224,15 @@ fn test_hourly_budget_remainder_tracked() {
     let advertiser = Address::generate(&env);
 
     // 100 stroops / 24 = 4 per hour, remainder 4
-    c.set_budget_allocation(
-        &advertiser,
-        &1u64,
-        &1_000i128,
-        &100i128,
-        &OptimizationMode::ManualCpc,
-        &500i128,
-        &100u32,
-    );
+    c.set_budget_allocation(&SetBudgetAllocationArgs {
+        advertiser: advertiser.clone(),
+        campaign_id: 1u64,
+        total_budget: 1_000i128,
+        daily_budget: 100i128,
+        optimization_mode: OptimizationMode::ManualCpc,
+        target_cpa: 500i128,
+        target_ctr: 100u32,
+    });
     let alloc = c.get_allocation(&1u64).unwrap();
     assert_eq!(alloc.hourly_budget, 4); // 100 / 24 = 4
     assert_eq!(alloc.budget_remainder, 4); // 100 % 24 = 4
@@ -250,15 +250,15 @@ fn test_hourly_budget_remainder_after_optimization() {
     env.mock_all_auths();
     let (c, _, oracle) = setup(&env);
     let advertiser = Address::generate(&env);
-    c.set_budget_allocation(
-        &advertiser,
-        &1u64,
-        &100_000i128,
-        &10_000i128,
-        &OptimizationMode::ManualCpc,
-        &500i128,
-        &100u32,
-    );
+    c.set_budget_allocation(&SetBudgetAllocationArgs {
+        advertiser: advertiser.clone(),
+        campaign_id: 1u64,
+        total_budget: 100_000i128,
+        daily_budget: 10_000i128,
+        optimization_mode: OptimizationMode::ManualCpc,
+        target_cpa: 500i128,
+        target_ctr: 100u32,
+    });
 
     // Optimize to a value that doesn't divide evenly by 24
     c.optimize_budget(
@@ -287,15 +287,15 @@ fn test_record_spend_stranger_rejected() {
     let (c, _, _) = setup(&env);
     let advertiser = Address::generate(&env);
     let stranger = Address::generate(&env);
-    c.set_budget_allocation(
-        &advertiser,
-        &1u64,
-        &100_000i128,
-        &10_000i128,
-        &OptimizationMode::ManualCpc,
-        &500i128,
-        &100u32,
-    );
+    c.set_budget_allocation(&SetBudgetAllocationArgs {
+        advertiser: advertiser.clone(),
+        campaign_id: 1u64,
+        total_budget: 100_000i128,
+        daily_budget: 10_000i128,
+        optimization_mode: OptimizationMode::ManualCpc,
+        target_cpa: 500i128,
+        target_ctr: 100u32,
+    });
     c.record_spend(&stranger, &1u64, &5_000i128);
 }
 
@@ -306,15 +306,15 @@ fn test_record_spend_zero_amount_rejected() {
     env.mock_all_auths();
     let (c, admin, _) = setup(&env);
     let advertiser = Address::generate(&env);
-    c.set_budget_allocation(
-        &advertiser,
-        &1u64,
-        &100_000i128,
-        &10_000i128,
-        &OptimizationMode::ManualCpc,
-        &500i128,
-        &100u32,
-    );
+    c.set_budget_allocation(&SetBudgetAllocationArgs {
+        advertiser: advertiser.clone(),
+        campaign_id: 1u64,
+        total_budget: 100_000i128,
+        daily_budget: 10_000i128,
+        optimization_mode: OptimizationMode::ManualCpc,
+        target_cpa: 500i128,
+        target_ctr: 100u32,
+    });
     c.record_spend(&admin, &1u64, &0i128);
 }
 
@@ -325,15 +325,15 @@ fn test_record_spend_negative_amount_rejected() {
     env.mock_all_auths();
     let (c, admin, _) = setup(&env);
     let advertiser = Address::generate(&env);
-    c.set_budget_allocation(
-        &advertiser,
-        &1u64,
-        &100_000i128,
-        &10_000i128,
-        &OptimizationMode::ManualCpc,
-        &500i128,
-        &100u32,
-    );
+    c.set_budget_allocation(&SetBudgetAllocationArgs {
+        advertiser: advertiser.clone(),
+        campaign_id: 1u64,
+        total_budget: 100_000i128,
+        daily_budget: 10_000i128,
+        optimization_mode: OptimizationMode::ManualCpc,
+        target_cpa: 500i128,
+        target_ctr: 100u32,
+    });
     c.record_spend(&admin, &1u64, &-1_000i128);
 }
 
@@ -349,26 +349,26 @@ fn test_set_budget_allocation_wrong_advertiser_rejected() {
     let attacker = Address::generate(&env);
 
     // Original advertiser creates the allocation
-    c.set_budget_allocation(
-        &advertiser,
-        &1u64,
-        &100_000i128,
-        &10_000i128,
-        &OptimizationMode::ManualCpc,
-        &500i128,
-        &100u32,
-    );
+    c.set_budget_allocation(&SetBudgetAllocationArgs {
+        advertiser: advertiser.clone(),
+        campaign_id: 1u64,
+        total_budget: 100_000i128,
+        daily_budget: 10_000i128,
+        optimization_mode: OptimizationMode::ManualCpc,
+        target_cpa: 500i128,
+        target_ctr: 100u32,
+    });
 
     // Attacker tries to overwrite it
-    c.set_budget_allocation(
-        &attacker,
-        &1u64,
-        &1i128,
-        &1i128,
-        &OptimizationMode::ManualCpc,
-        &0i128,
-        &0u32,
-    );
+    c.set_budget_allocation(&SetBudgetAllocationArgs {
+        advertiser: attacker.clone(),
+        campaign_id: 1u64,
+        total_budget: 1i128,
+        daily_budget: 1i128,
+        optimization_mode: OptimizationMode::ManualCpc,
+        target_cpa: 0i128,
+        target_ctr: 0u32,
+    });
 }
 
 #[test]
@@ -378,26 +378,26 @@ fn test_set_budget_allocation_owner_can_update() {
     let (c, _, _) = setup(&env);
     let advertiser = Address::generate(&env);
 
-    c.set_budget_allocation(
-        &advertiser,
-        &1u64,
-        &100_000i128,
-        &10_000i128,
-        &OptimizationMode::ManualCpc,
-        &500i128,
-        &100u32,
-    );
+    c.set_budget_allocation(&SetBudgetAllocationArgs {
+        advertiser: advertiser.clone(),
+        campaign_id: 1u64,
+        total_budget: 100_000i128,
+        daily_budget: 10_000i128,
+        optimization_mode: OptimizationMode::ManualCpc,
+        target_cpa: 500i128,
+        target_ctr: 100u32,
+    });
 
     // Same advertiser updates their own allocation
-    c.set_budget_allocation(
-        &advertiser,
-        &1u64,
-        &200_000i128,
-        &20_000i128,
-        &OptimizationMode::AutoCpm,
-        &0i128,
-        &0u32,
-    );
+    c.set_budget_allocation(&SetBudgetAllocationArgs {
+        advertiser: advertiser.clone(),
+        campaign_id: 1u64,
+        total_budget: 200_000i128,
+        daily_budget: 20_000i128,
+        optimization_mode: OptimizationMode::AutoCpm,
+        target_cpa: 0i128,
+        target_ctr: 0u32,
+    });
 
     let alloc = c.get_allocation(&1u64).unwrap();
     assert_eq!(alloc.total_budget, 200_000);

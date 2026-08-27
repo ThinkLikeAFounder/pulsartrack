@@ -315,7 +315,8 @@ impl CampaignOrchestratorContract {
         if args.budget < campaign_type_data.min_budget {
             panic!("budget too low");
         }
-        if args.duration < campaign_type_data.min_duration || args.duration > campaign_type_data.max_duration
+        if args.duration < campaign_type_data.min_duration
+            || args.duration > campaign_type_data.max_duration
         {
             panic!("invalid duration");
         }

@@ -37,25 +37,64 @@
               "function_name": "update_retention",
               "args": [
                 {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                },
-                {
-                  "u64": 1
-                },
-                {
-                  "u32": 80
-                },
-                {
-                  "u32": 60
-                },
-                {
-                  "u32": 40
-                },
-                {
-                  "u64": 120
-                },
-                {
-                  "u32": 25
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "avg_session"
+                      },
+                      "val": {
+                        "u64": 120
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "bounce_rate"
+                      },
+                      "val": {
+                        "u32": 25
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "campaign_id"
+                      },
+                      "val": {
+                        "u64": 1
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "day1"
+                      },
+                      "val": {
+                        "u32": 80
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "day30"
+                      },
+                      "val": {
+                        "u32": 40
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "day7"
+                      },
+                      "val": {
+                        "u32": 60
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "oracle"
+                      },
+                      "val": {
+                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                      }
+                    }
+                  ]
                 }
               ]
             }

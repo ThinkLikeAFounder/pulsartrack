@@ -45,7 +45,15 @@ fn test_record_snapshot() {
     let env = Env::default();
     env.mock_all_auths();
     let (c, _, oracle) = setup(&env);
-    c.record_snapshot(&oracle, &1u64, &1000u64, &50u64, &10u64, &5000i128, &800u64);
+    c.record_snapshot(&SnapshotArgs {
+        oracle: oracle.clone(),
+        campaign_id: 1u64,
+        impressions: 1000u64,
+        clicks: 50u64,
+        conversions: 10u64,
+        spend: 5000i128,
+        reach: 800u64,
+    });
     let snap = c.get_snapshot(&1u64, &0u32).unwrap();
     assert_eq!(snap.impressions, 1000);
     assert_eq!(snap.clicks, 50);
@@ -56,7 +64,15 @@ fn test_update_retention() {
     let env = Env::default();
     env.mock_all_auths();
     let (c, _, oracle) = setup(&env);
-    c.update_retention(&oracle, &1u64, &80u32, &60u32, &40u32, &120u64, &25u32);
+    c.update_retention(&RetentionArgs {
+        oracle: oracle.clone(),
+        campaign_id: 1u64,
+        day1: 80u32,
+        day7: 60u32,
+        day30: 40u32,
+        avg_session: 120u64,
+        bounce_rate: 25u32,
+    });
     let ret = c.get_retention(&1u64).unwrap();
     assert_eq!(ret.day_1_retention, 80);
     assert_eq!(ret.day_7_retention, 60);
@@ -84,7 +100,15 @@ fn test_snapshot_count() {
     let env = Env::default();
     env.mock_all_auths();
     let (c, _, oracle) = setup(&env);
-    c.record_snapshot(&oracle, &1u64, &1000u64, &50u64, &10u64, &5000i128, &800u64);
+    c.record_snapshot(&SnapshotArgs {
+        oracle: oracle.clone(),
+        campaign_id: 1u64,
+        impressions: 1000u64,
+        clicks: 50u64,
+        conversions: 10u64,
+        spend: 5000i128,
+        reach: 800u64,
+    });
     assert_eq!(c.get_snapshot_count(&1u64), 1);
 }
 
@@ -98,15 +122,16 @@ fn test_ring_buffer_overwrites_oldest() {
 
     // Fill the ring buffer completely
     for i in 0..max {
-        c.record_snapshot(
-            &oracle,
-            &1u64,
-            &(i as u64), // impressions = index for identification
-            &0u64,
-            &0u64,
-            &0i128,
-            &0u64,
-        );
+        c.record_snapshot(&SnapshotArgs {
+            oracle: oracle.clone(),
+            campaign_id: 1u64,
+            // impressions = index for identification
+            impressions: i as u64,
+            clicks: 0u64,
+            conversions: 0u64,
+            spend: 0i128,
+            reach: 0u64,
+        });
     }
 
     // Verify the first snapshot is at index 0 with impressions = 0
@@ -114,7 +139,15 @@ fn test_ring_buffer_overwrites_oldest() {
     assert_eq!(first.impressions, 0);
 
     // Record one more — should overwrite index 0
-    c.record_snapshot(&oracle, &1u64, &9999u64, &0u64, &0u64, &0i128, &0u64);
+    c.record_snapshot(&SnapshotArgs {
+        oracle: oracle.clone(),
+        campaign_id: 1u64,
+        impressions: 9999u64,
+        clicks: 0u64,
+        conversions: 0u64,
+        spend: 0i128,
+        reach: 0u64,
+    });
 
     // Index 0 now holds the newest snapshot
     let overwritten = c.get_snapshot(&1u64, &0u32).unwrap();
@@ -138,7 +171,15 @@ fn test_ring_buffer_multiple_wraps() {
     // Write 2.5x the max to wrap multiple times
     let total = max * 2 + max / 2;
     for i in 0..total {
-        c.record_snapshot(&oracle, &1u64, &(i as u64), &0u64, &0u64, &0i128, &0u64);
+        c.record_snapshot(&SnapshotArgs {
+            oracle: oracle.clone(),
+            campaign_id: 1u64,
+            impressions: i as u64,
+            clicks: 0u64,
+            conversions: 0u64,
+            spend: 0i128,
+            reach: 0u64,
+        });
     }
 
     assert_eq!(c.get_snapshot_count(&1u64), total);
@@ -158,7 +199,15 @@ fn test_stored_snapshot_count_below_max() {
 
     // Record fewer than MAX_SNAPSHOTS
     for i in 0..5u32 {
-        c.record_snapshot(&oracle, &1u64, &(i as u64), &0u64, &0u64, &0i128, &0u64);
+        c.record_snapshot(&SnapshotArgs {
+            oracle: oracle.clone(),
+            campaign_id: 1u64,
+            impressions: i as u64,
+            clicks: 0u64,
+            conversions: 0u64,
+            spend: 0i128,
+            reach: 0u64,
+        });
     }
 
     assert_eq!(c.get_snapshot_count(&1u64), 5);
@@ -173,24 +222,24 @@ fn test_ring_buffer_independent_campaigns() {
 
     // Record snapshots for two different campaigns
     for i in 0..3u32 {
-        c.record_snapshot(
-            &oracle,
-            &1u64,
-            &(i as u64 * 100),
-            &0u64,
-            &0u64,
-            &0i128,
-            &0u64,
-        );
-        c.record_snapshot(
-            &oracle,
-            &2u64,
-            &(i as u64 * 200),
-            &0u64,
-            &0u64,
-            &0i128,
-            &0u64,
-        );
+        c.record_snapshot(&SnapshotArgs {
+            oracle: oracle.clone(),
+            campaign_id: 1u64,
+            impressions: i as u64 * 100,
+            clicks: 0u64,
+            conversions: 0u64,
+            spend: 0i128,
+            reach: 0u64,
+        });
+        c.record_snapshot(&SnapshotArgs {
+            oracle: oracle.clone(),
+            campaign_id: 2u64,
+            impressions: i as u64 * 200,
+            clicks: 0u64,
+            conversions: 0u64,
+            spend: 0i128,
+            reach: 0u64,
+        });
     }
 
     // Each campaign has its own independent count
