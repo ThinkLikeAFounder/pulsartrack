@@ -2,8 +2,8 @@
 //! Ad budget liquidity pool for campaign funding on Stellar.
 
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, token, Address, Env};
 use pulsar_common_fees::calculate_fee_bps;
+use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, token, Address, Env};
 
 #[contracttype]
 #[derive(Clone)]
@@ -49,6 +49,7 @@ pub enum DataKey {
     Provider(Address),
     Borrow(u64), // campaign_id
     BorrowCount,
+    Paused,
 }
 
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17_280;
@@ -72,6 +73,7 @@ impl LiquidityPoolContract {
         }
         admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage().instance().set(&DataKey::Paused, &false);
         env.storage().instance().set(&DataKey::TokenAddress, &token);
         env.storage().instance().set(&DataKey::TotalShares, &0i128);
         env.storage().instance().set(
@@ -89,6 +91,7 @@ impl LiquidityPoolContract {
     }
 
     pub fn deposit(env: Env, provider: Address, amount: i128) -> i128 {
+        Self::require_not_paused(&env);
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -161,6 +164,7 @@ impl LiquidityPoolContract {
     }
 
     pub fn withdraw(env: Env, provider: Address, shares: i128) -> i128 {
+        Self::require_not_paused(&env);
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -229,6 +233,7 @@ impl LiquidityPoolContract {
     }
 
     pub fn borrow(env: Env, borrower: Address, campaign_id: u64, amount: i128, duration_secs: u64) {
+        Self::require_not_paused(&env);
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -320,7 +325,6 @@ impl LiquidityPoolContract {
 
         // interest = principal * rate_bps * time_elapsed / (10000 * SECONDS_PER_YEAR)
         // Using i128 to avoid overflow
-        
 
         borrowed
             .saturating_mul(rate_bps as i128)
@@ -370,6 +374,7 @@ impl LiquidityPoolContract {
     }
 
     pub fn repay(env: Env, borrower: Address, campaign_id: u64, amount: i128) {
+        Self::require_not_paused(&env);
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -470,6 +475,47 @@ impl LiquidityPoolContract {
         env.storage()
             .persistent()
             .get(&DataKey::Borrow(campaign_id))
+    }
+
+    /// Pause the contract. Only callable by the admin.
+    ///
+    /// While paused every fund-moving entrypoint panics. Read-only getters
+    /// and administrative functions remain available so the contract can be
+    /// inspected and unpaused once a fix is ready.
+    pub fn set_paused(env: Env, admin: Address, paused: bool) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+        env.storage().instance().set(&DataKey::Paused, &paused);
+        env.events()
+            .publish((symbol_short!("pause"), symbol_short!("set")), paused);
+    }
+
+    /// Whether the contract is currently paused.
+    pub fn is_paused(env: Env) -> bool {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        env.storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false)
+    }
+
+    fn require_not_paused(env: &Env) {
+        let paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+        if paused {
+            panic!("contract is paused");
+        }
     }
 
     pub fn propose_admin(env: Env, current_admin: Address, new_admin: Address) {

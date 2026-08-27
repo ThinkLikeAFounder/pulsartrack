@@ -98,6 +98,7 @@ pub enum DataKey {
     RequiredApproverCount(u64),
     RequiredApprover(u64, Address),
     Performance(u64),
+    Paused,
 }
 
 // ============================================================
@@ -124,6 +125,7 @@ impl EscrowVaultContract {
         }
         admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage().instance().set(&DataKey::Paused, &false);
         env.storage()
             .instance()
             .set(&DataKey::TokenAddress, &token_address);
@@ -198,6 +200,7 @@ impl EscrowVaultContract {
 
     /// Create a new escrow
     pub fn create_escrow(env: Env, args: EscrowCreateArgs) -> u64 {
+        Self::require_not_paused(&env);
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -249,7 +252,9 @@ impl EscrowVaultContract {
             created_at: now,
             locked_at: Some(now),
             released_at: None,
-            expires_at: now.checked_add(args.expires_in).expect("expires_at overflow"),
+            expires_at: now
+                .checked_add(args.expires_in)
+                .expect("expires_at overflow"),
         };
 
         let _ttl_key = DataKey::Escrow(escrow_id);
@@ -298,7 +303,11 @@ impl EscrowVaultContract {
             .get(&DataKey::TokenAddress)
             .unwrap();
         let token_client = token::Client::new(&env, &token_addr);
-        token_client.transfer(&args.depositor, &env.current_contract_address(), &args.amount);
+        token_client.transfer(
+            &args.depositor,
+            &env.current_contract_address(),
+            &args.amount,
+        );
 
         env.events().publish(
             (symbol_short!("escrow"), symbol_short!("created")),
@@ -372,6 +381,7 @@ impl EscrowVaultContract {
 
     /// Release full escrow to beneficiary
     pub fn release_escrow(env: Env, caller: Address, escrow_id: u64) {
+        Self::require_not_paused(&env);
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -429,6 +439,7 @@ impl EscrowVaultContract {
 
     /// Partial release
     pub fn release_partial(env: Env, caller: Address, escrow_id: u64, amount: i128) {
+        Self::require_not_paused(&env);
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -483,6 +494,7 @@ impl EscrowVaultContract {
 
     /// Refund escrow if expired
     pub fn refund_escrow(env: Env, caller: Address, escrow_id: u64) {
+        Self::require_not_paused(&env);
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -550,6 +562,7 @@ impl EscrowVaultContract {
         claimant_amount: i128,
         respondent_amount: i128,
     ) {
+        Self::require_not_paused(&env);
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -785,6 +798,47 @@ impl EscrowVaultContract {
         }
     }
 
+    /// Pause the contract. Only callable by the admin.
+    ///
+    /// While paused every fund-moving entrypoint panics. Read-only getters
+    /// and administrative functions remain available so the contract can be
+    /// inspected and unpaused once a fix is ready.
+    pub fn set_paused(env: Env, admin: Address, paused: bool) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+        env.storage().instance().set(&DataKey::Paused, &paused);
+        env.events()
+            .publish((symbol_short!("pause"), symbol_short!("set")), paused);
+    }
+
+    /// Whether the contract is currently paused.
+    pub fn is_paused(env: Env) -> bool {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        env.storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false)
+    }
+
+    fn require_not_paused(env: &Env) {
+        let paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+        if paused {
+            panic!("contract is paused");
+        }
+    }
+
     pub fn propose_admin(env: Env, current_admin: Address, new_admin: Address) {
         pulsar_common_admin::propose_admin(
             &env,
@@ -800,7 +854,12 @@ impl EscrowVaultContract {
     }
 
     pub fn cancel_admin_proposal(env: Env, current_admin: Address) {
-        pulsar_common_admin::cancel_admin_proposal(&env, &DataKey::Admin, &DataKey::PendingAdmin, current_admin);
+        pulsar_common_admin::cancel_admin_proposal(
+            &env,
+            &DataKey::Admin,
+            &DataKey::PendingAdmin,
+            current_admin,
+        );
     }
 }
 

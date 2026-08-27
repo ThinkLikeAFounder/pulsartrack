@@ -52,6 +52,7 @@ pub enum DataKey {
     MaxPendingAmount,
     Payout(u64),
     PublisherEarnings(Address),
+    Paused,
 }
 
 const MAX_PENDING_AMOUNT: i128 = 1_000_000_000_000; // 100k XLM in stroops (assuming 7 decimals)
@@ -75,6 +76,7 @@ impl PayoutAutomationContract {
         }
         admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage().instance().set(&DataKey::Paused, &false);
         env.storage().instance().set(&DataKey::TokenAddress, &token);
         env.storage().instance().set(&DataKey::PayoutCounter, &0u64);
         env.storage()
@@ -183,6 +185,7 @@ impl PayoutAutomationContract {
     }
 
     pub fn execute_payout(env: Env, caller: Address, payout_id: u64) {
+        Self::require_not_paused(&env);
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -255,11 +258,19 @@ impl PayoutAutomationContract {
     }
 
     pub fn fund_payouts(env: Env, sender: Address, amount: i128) {
+        Self::require_not_paused(&env);
         sender.require_auth();
-        let token: Address = env.storage().instance().get(&DataKey::TokenAddress).unwrap();
-        token::Client::new(&env, &token).transfer(&sender, &env.current_contract_address(), &amount);
+        let token: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::TokenAddress)
+            .unwrap();
+        token::Client::new(&env, &token).transfer(
+            &sender,
+            &env.current_contract_address(),
+            &amount,
+        );
     }
-
 
     pub fn add_publisher_earnings(env: Env, admin: Address, publisher: Address, amount: i128) {
         env.storage()
@@ -345,6 +356,47 @@ impl PayoutAutomationContract {
             .instance()
             .get(&DataKey::MaxPendingAmount)
             .unwrap_or(MAX_PENDING_AMOUNT)
+    }
+
+    /// Pause the contract. Only callable by the admin.
+    ///
+    /// While paused every fund-moving entrypoint panics. Read-only getters
+    /// and administrative functions remain available so the contract can be
+    /// inspected and unpaused once a fix is ready.
+    pub fn set_paused(env: Env, admin: Address, paused: bool) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+        env.storage().instance().set(&DataKey::Paused, &paused);
+        env.events()
+            .publish((symbol_short!("pause"), symbol_short!("set")), paused);
+    }
+
+    /// Whether the contract is currently paused.
+    pub fn is_paused(env: Env) -> bool {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        env.storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false)
+    }
+
+    fn require_not_paused(env: &Env) {
+        let paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+        if paused {
+            panic!("contract is paused");
+        }
     }
 
     pub fn propose_admin(env: Env, current_admin: Address, new_admin: Address) {
