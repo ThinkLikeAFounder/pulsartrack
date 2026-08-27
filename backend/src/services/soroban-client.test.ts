@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// The global test setup (src/test-setup.ts) replaces this module with a stub so
+// route tests get a fake Soroban client. This file is the module's own unit
+// test, so it needs the real implementation.
 // The global test-setup mocks './services/soroban-client' with bare stubs for
 // the benefit of other suites. This file tests that module, so the mock is
 // removed here — otherwise the functions under test are stubs returning

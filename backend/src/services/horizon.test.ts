@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getAccountDetails, isAccountFunded, getAccountTransactions } from './horizon';
 
+// `vi.mock` factories are hoisted above module-level consts, so these have to
+// be created inside `vi.hoisted` to exist by the time the factory runs.
 // Declared via vi.hoisted so these are initialised before the vi.mock factory
 // below, which vitest hoists above ordinary const declarations.
 const { mockLoadAccount, mockTransactions } = vi.hoisted(() => ({

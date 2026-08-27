@@ -7,6 +7,7 @@ import { validateContractIds } from "./config/stellar";
 import prisma from "./db/prisma";
 import redisClient from "./config/redis";
 import { validateSimulationAccount } from "./services/soroban-client";
+import { EnvValidationError, loadEnv } from "./config/env";
 import { logger } from "./lib/logger";
 
 const PORT = parseInt(process.env.PORT || "4000", 10);
@@ -81,6 +82,10 @@ process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
 async function start() {
+  // Validate the whole environment up front so a misconfigured deploy fails
+  // here, naming the offending variables, rather than at request time.
+  loadEnv();
+
   validateContractIds();
 
   await validateSimulationAccount();
@@ -120,6 +125,12 @@ async function start() {
 
 if (process.env.NODE_ENV !== "test") {
   start().catch(async (err) => {
+    if (err instanceof EnvValidationError) {
+      // Config is broken before anything was opened — report and exit
+      // without attempting a resource teardown.
+      console.error(err.message);
+      process.exit(1);
+    }
     console.error("Failed to start server:", err);
     const exitCode = await shutdown(1);
     process.exit(exitCode);

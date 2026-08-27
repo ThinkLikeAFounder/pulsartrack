@@ -1,6 +1,9 @@
 # ── Rust ─────────────────────────────────────────────
 target/
-Cargo.lock
+# Cargo.lock IS committed: soroban-env-host declares `ed25519-dalek = ">=2.0.0"`,
+# so an unpinned resolve picks 3.0.0, whose CryptoRng bound the host's test PRNG
+# does not satisfy, and every crate's test build fails to compile. The lockfile
+# holds it at 2.x.
 
 # ── Stellar / Soroban ────────────────────────────────
 .soroban/

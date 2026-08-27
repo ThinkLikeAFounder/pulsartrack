@@ -28,6 +28,20 @@ export function createJwt(payload: Record<string, any>): string {
   return `${header}.${body}.${sig}`;
 }
 
+/**
+ * Constant-time comparison of two base64url signatures.
+ *
+ * `crypto.timingSafeEqual` throws when the buffers differ in length, and the
+ * length itself is not secret (it is a fixed-width HMAC digest), so a
+ * length mismatch is rejected up front without leaking byte-position timing.
+ */
+function safeCompareSignatures(actual: string, expected: string): boolean {
+  const actualBuf = Buffer.from(actual, "base64url");
+  const expectedBuf = Buffer.from(expected, "base64url");
+  if (actualBuf.length !== expectedBuf.length) return false;
+  return crypto.timingSafeEqual(actualBuf, expectedBuf);
+}
+
 export function decodeJwt(token: string): Record<string, any> {
   const parts = token.split(".");
   if (parts.length !== 3) throw new Error("Malformed token");
@@ -36,7 +50,9 @@ export function decodeJwt(token: string): Record<string, any> {
     .createHmac("sha256", JWT_SECRET)
     .update(`${header}.${body}`)
     .digest("base64url");
-  if (sig !== expected) throw new Error("Invalid token signature");
+  if (!safeCompareSignatures(sig, expected)) {
+    throw new Error("Invalid token signature");
+  }
   const payload = JSON.parse(Buffer.from(body, "base64url").toString());
   if (payload.exp < Math.floor(Date.now() / 1000)) {
     throw new Error("Token expired");
