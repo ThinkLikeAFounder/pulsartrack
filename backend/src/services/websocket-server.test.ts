@@ -3,12 +3,14 @@ import { broadcastToChannel, broadcast } from './websocket-server';
 
 // Mock ws
 vi.mock('ws', () => {
+  // Typed as an intersection so the static `OPEN` member the real `ws`
+  // export carries can be assigned onto the mock without a TS2339 error.
   const MockWebSocket = vi.fn().mockImplementation(() => ({
     readyState: 1, // OPEN
     send: vi.fn(),
     close: vi.fn(),
     on: vi.fn(),
-  }));
+  })) as ReturnType<typeof vi.fn> & { OPEN: number };
   MockWebSocket.OPEN = 1;
   return { WebSocketServer: vi.fn(), WebSocket: MockWebSocket };
 });

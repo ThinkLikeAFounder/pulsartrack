@@ -1,8 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getAccountDetails, isAccountFunded, getAccountTransactions } from './horizon';
 
-const mockLoadAccount = vi.fn();
-const mockTransactions = vi.fn();
+// Declared via vi.hoisted so these are initialised before the vi.mock factory
+// below, which vitest hoists above ordinary const declarations.
+const { mockLoadAccount, mockTransactions } = vi.hoisted(() => ({
+  mockLoadAccount: vi.fn(),
+  mockTransactions: vi.fn(),
+}));
 
 vi.mock('../config/stellar', () => ({
   getHorizonServer: vi.fn().mockReturnValue({

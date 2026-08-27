@@ -44,6 +44,11 @@ describe('Auction Routes', () => {
                 query: vi.fn(),
                 release: vi.fn(),
             };
+            // The route issues BEGIN before its first real query. Queued
+            // `mockResolvedValueOnce` values are consumed in call order, so
+            // without this the BEGIN would swallow the first caller-supplied
+            // result and shift every subsequent one.
+            mockClient.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
             for (const result of queryResults) {
                 mockClient.query.mockResolvedValueOnce(result);
             }
@@ -64,8 +69,6 @@ describe('Auction Routes', () => {
                 { rows: [{ publisher: otherAddress, floor_price_stroops: '100', status: 'Open' }] },
                 // Campaign ownership check
                 { rows: [{ advertiser: mockAddress }] },
-                // BEGIN
-                { rows: [] },
                 // Insert bid
                 { rows: [{ id: 'bid-uuid', auction_id: 1, bidder: mockAddress, campaign_id: 1, amount_stroops: 150 }] },
                 // Update bid count

@@ -23,6 +23,7 @@ pub enum DataKey {
     PendingAdmin,
     State,
     TokenAddress,
+    Paused,
 }
 
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17_280;
@@ -42,6 +43,7 @@ impl TreasuryManagerContract {
         }
         admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage().instance().set(&DataKey::Paused, &false);
         env.storage().instance().set(&DataKey::TokenAddress, &token);
         env.storage().instance().set(
             &DataKey::State,
@@ -54,6 +56,7 @@ impl TreasuryManagerContract {
     }
 
     pub fn deposit(env: Env, sender: Address, amount: i128) {
+        Self::require_not_paused(&env);
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -63,16 +66,16 @@ impl TreasuryManagerContract {
             panic!("amount must be positive");
         }
 
-        let token: Address = env.storage().instance().get(&DataKey::TokenAddress).unwrap();
+        let token: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::TokenAddress)
+            .unwrap();
         let token_client = token::Client::new(&env, &token);
         token_client.transfer(&sender, &env.current_contract_address(), &amount);
 
-        let mut state: TreasuryState =
-            env.storage().instance().get(&DataKey::State).unwrap();
-        state.balance = state
-            .balance
-            .checked_add(amount)
-            .expect("balance overflow");
+        let mut state: TreasuryState = env.storage().instance().get(&DataKey::State).unwrap();
+        state.balance = state.balance.checked_add(amount).expect("balance overflow");
         state.total_deposited = state
             .total_deposited
             .checked_add(amount)
@@ -86,6 +89,7 @@ impl TreasuryManagerContract {
     }
 
     pub fn withdraw(env: Env, admin: Address, recipient: Address, amount: i128) {
+        Self::require_not_paused(&env);
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -99,7 +103,11 @@ impl TreasuryManagerContract {
             panic!("amount must be positive");
         }
 
-        let token: Address = env.storage().instance().get(&DataKey::TokenAddress).unwrap();
+        let token: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::TokenAddress)
+            .unwrap();
         let token_client = token::Client::new(&env, &token);
 
         // Use the actual on-chain balance as the authoritative source so that
@@ -111,8 +119,7 @@ impl TreasuryManagerContract {
             panic!("insufficient on-chain token balance");
         }
 
-        let mut state: TreasuryState =
-            env.storage().instance().get(&DataKey::State).unwrap();
+        let mut state: TreasuryState = env.storage().instance().get(&DataKey::State).unwrap();
         state.balance = actual_balance
             .checked_sub(amount)
             .expect("balance underflow");
@@ -134,10 +141,13 @@ impl TreasuryManagerContract {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-        let token: Address = env.storage().instance().get(&DataKey::TokenAddress).unwrap();
+        let token: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::TokenAddress)
+            .unwrap();
         let actual = token::Client::new(&env, &token).balance(&env.current_contract_address());
-        let mut state: TreasuryState =
-            env.storage().instance().get(&DataKey::State).unwrap();
+        let mut state: TreasuryState = env.storage().instance().get(&DataKey::State).unwrap();
         state.balance = actual;
         env.storage().instance().set(&DataKey::State, &state);
     }
@@ -153,7 +163,51 @@ impl TreasuryManagerContract {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-        env.storage().instance().get(&DataKey::TokenAddress).unwrap()
+        env.storage()
+            .instance()
+            .get(&DataKey::TokenAddress)
+            .unwrap()
+    }
+
+    /// Pause the contract. Only callable by the admin.
+    ///
+    /// While paused every fund-moving entrypoint panics. Read-only getters
+    /// and administrative functions remain available so the contract can be
+    /// inspected and unpaused once a fix is ready.
+    pub fn set_paused(env: Env, admin: Address, paused: bool) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+        env.storage().instance().set(&DataKey::Paused, &paused);
+        env.events()
+            .publish((symbol_short!("pause"), symbol_short!("set")), paused);
+    }
+
+    /// Whether the contract is currently paused.
+    pub fn is_paused(env: Env) -> bool {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        env.storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false)
+    }
+
+    fn require_not_paused(env: &Env) {
+        let paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+        if paused {
+            panic!("contract is paused");
+        }
     }
 
     pub fn propose_admin(env: Env, current_admin: Address, new_admin: Address) {
