@@ -1,4 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// The global test setup (src/test-setup.ts) replaces this module with a stub so
+// route tests get a fake Soroban client. This file is the module's own unit
+// test, so it needs the real implementation.
+vi.unmock('./soroban-client');
+
 import { callReadOnly, toAddressScVal, toU64ScVal, getServer } from './soroban-client';
 
 // Mock stellar-sdk
@@ -6,37 +12,45 @@ const mockSimulateTransaction = vi.fn();
 const mockGetAccount = vi.fn();
 
 vi.mock('@stellar/stellar-sdk', () => {
-  const actual = vi.importActual<any>('@stellar/stellar-sdk');
+  // Plain classes, not `vi.fn()` implementations: the production code calls
+  // `new Contract(...)` / `new Address(...)`, and a mocked arrow implementation
+  // is not constructable.
+  class MockRpcServer {
+    simulateTransaction = mockSimulateTransaction;
+    getAccount = mockGetAccount;
+  }
+
+  class MockContract {
+    call = vi.fn().mockReturnValue('mock_op');
+  }
+
+  class MockTransactionBuilder {
+    addOperation = vi.fn().mockReturnThis();
+    setTimeout = vi.fn().mockReturnThis();
+    build = vi.fn().mockReturnValue('mock_tx');
+  }
+
+  class MockAddress {
+    toScVal = vi.fn().mockReturnValue('address_scval');
+  }
+
   return {
-    ...actual,
     rpc: {
-      Server: vi.fn().mockImplementation(() => ({
-        simulateTransaction: mockSimulateTransaction,
-        getAccount: mockGetAccount,
-      })),
+      Server: MockRpcServer,
       Api: {
         isSimulationError: (sim: any) => sim?.error !== undefined && !sim?.result,
         isSimulationSuccess: (sim: any) => sim?.result !== undefined,
       },
     },
-    Contract: vi.fn().mockImplementation(() => ({
-      call: vi.fn().mockReturnValue('mock_op'),
-    })),
-    TransactionBuilder: Object.assign(
-      vi.fn().mockImplementation(() => ({
-        addOperation: vi.fn().mockReturnThis(),
-        setTimeout: vi.fn().mockReturnThis(),
-        build: vi.fn().mockReturnValue('mock_tx'),
-      })),
-      { fromXDR: vi.fn() },
-    ),
+    Contract: MockContract,
+    TransactionBuilder: Object.assign(MockTransactionBuilder, {
+      fromXDR: vi.fn(),
+    }),
     BASE_FEE: '100',
     scValToNative: vi.fn().mockReturnValue('decoded_value'),
     nativeToScVal: vi.fn().mockReturnValue('scval'),
     xdr: {},
-    Address: vi.fn().mockImplementation(() => ({
-      toScVal: vi.fn().mockReturnValue('address_scval'),
-    })),
+    Address: MockAddress,
   };
 });
 

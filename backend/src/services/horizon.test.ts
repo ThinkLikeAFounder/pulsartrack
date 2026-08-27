@@ -1,8 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getAccountDetails, isAccountFunded, getAccountTransactions } from './horizon';
 
-const mockLoadAccount = vi.fn();
-const mockTransactions = vi.fn();
+// `vi.mock` factories are hoisted above module-level consts, so these have to
+// be created inside `vi.hoisted` to exist by the time the factory runs.
+const { mockLoadAccount, mockTransactions } = vi.hoisted(() => ({
+  mockLoadAccount: vi.fn(),
+  mockTransactions: vi.fn(),
+}));
 
 vi.mock('../config/stellar', () => ({
   getHorizonServer: vi.fn().mockReturnValue({

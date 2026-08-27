@@ -9,8 +9,12 @@ vi.mock('ws', () => {
     close: vi.fn(),
     on: vi.fn(),
   }));
-  MockWebSocket.OPEN = 1;
-  return { WebSocketServer: vi.fn(), WebSocket: MockWebSocket };
+  // `ws` exposes OPEN as a static on the constructor; the production code
+  // compares against it, so the mock has to carry it too.
+  return {
+    WebSocketServer: vi.fn(),
+    WebSocket: Object.assign(MockWebSocket, { OPEN: 1 }),
+  };
 });
 
 vi.mock('./horizon', () => ({
