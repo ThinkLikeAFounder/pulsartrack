@@ -306,3 +306,23 @@ See [`SECURITY.md`](SECURITY.md) for responsible-disclosure guidelines.
 ## License
 
 [MIT](LICENSE)
+
+
+---
+
+## Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for detailed guidelines on:
+
+- How to find and claim issues
+- Setting up your development environment
+- Branch naming and commit message conventions
+- Running tests locally
+- The CI-gated auto-merge process
+- Code style guidelines
+
+---
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](./LICENSE) file for details.
