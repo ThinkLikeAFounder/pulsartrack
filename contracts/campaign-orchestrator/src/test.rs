@@ -52,16 +52,16 @@ fn test_create_campaign() {
     // min_budget=1_000_000, duration 100-10_000, default platform_fee=2%
     // budget=1_000_000 + fee=20_000 = 1_020_000 needed
     mint(&env, &token, &advertiser, 5_000_000);
-    let id = c.create_campaign(
-        &advertiser,
-        &1u32,
-        &1_000_000i128,
-        &100i128,
-        &1000u32,
-        &10_000u64,
-        &5_000u64,
-        &true,
-    );
+    let id = c.create_campaign(&CampaignCreateArgs {
+        advertiser: advertiser.clone(),
+        campaign_type: 1u32,
+        budget: 1_000_000i128,
+        cost_per_view: 100i128,
+        duration: 1000u32,
+        target_views: 10_000u64,
+        daily_view_limit: 5_000u64,
+        refundable: true,
+    });
     assert_eq!(id, 1);
     assert_eq!(c.get_campaign_count(), 1);
     let campaign = c.get_campaign(&id).unwrap();
@@ -86,16 +86,16 @@ fn test_pause_resume_campaign() {
     let (c, _, _, token) = setup(&env);
     let advertiser = Address::generate(&env);
     mint(&env, &token, &advertiser, 5_000_000);
-    let id = c.create_campaign(
-        &advertiser,
-        &1u32,
-        &1_000_000i128,
-        &100i128,
-        &1000u32,
-        &10_000u64,
-        &5_000u64,
-        &true,
-    );
+    let id = c.create_campaign(&CampaignCreateArgs {
+        advertiser: advertiser.clone(),
+        campaign_type: 1u32,
+        budget: 1_000_000i128,
+        cost_per_view: 100i128,
+        duration: 1000u32,
+        target_views: 10_000u64,
+        daily_view_limit: 5_000u64,
+        refundable: true,
+    });
     c.pause_campaign(&advertiser, &id);
     let campaign = c.get_campaign(&id).unwrap();
     assert!(matches!(campaign.status, CampaignStatus::Paused));
@@ -112,16 +112,16 @@ fn test_cancel_campaign_decrements_active_campaigns() {
     let advertiser = Address::generate(&env);
     mint(&env, &token, &advertiser, 5_000_000);
 
-    let id = c.create_campaign(
-        &advertiser,
-        &1u32,
-        &1_000_000i128,
-        &100i128,
-        &1000u32,
-        &10_000u64,
-        &5_000u64,
-        &true,
-    );
+    let id = c.create_campaign(&CampaignCreateArgs {
+        advertiser: advertiser.clone(),
+        campaign_type: 1u32,
+        budget: 1_000_000i128,
+        cost_per_view: 100i128,
+        duration: 1000u32,
+        target_views: 10_000u64,
+        daily_view_limit: 5_000u64,
+        refundable: true,
+    });
 
     let stats_before = c.get_advertiser_stats(&advertiser).unwrap();
     assert_eq!(stats_before.total_campaigns, 1);
@@ -170,7 +170,14 @@ fn test_get_campaign_nonexistent() {
 
 // ── record_view tests (#783) ────────────────────────────────────────────────
 
-fn setup_campaign_with_publisher(env: &Env) -> (CampaignOrchestratorContractClient<'_>, Address, Address, u64) {
+fn setup_campaign_with_publisher(
+    env: &Env,
+) -> (
+    CampaignOrchestratorContractClient<'_>,
+    Address,
+    Address,
+    u64,
+) {
     let (c, admin, token_admin, token) = setup(env);
     let advertiser = Address::generate(env);
     let publisher = Address::generate(env);
@@ -178,16 +185,16 @@ fn setup_campaign_with_publisher(env: &Env) -> (CampaignOrchestratorContractClie
     mint(env, &token, &advertiser, 5_000_000);
     c.verify_publisher(&admin, &publisher, &80u32);
 
-    let id = c.create_campaign(
-        &advertiser,
-        &1u32,
-        &1_000_000i128,
-        &100i128,
-        &1000u32,
-        &10_000u64,
-        &100u64,
-        &true,
-    );
+    let id = c.create_campaign(&CampaignCreateArgs {
+        advertiser: advertiser.clone(),
+        campaign_type: 1u32,
+        budget: 1_000_000i128,
+        cost_per_view: 100i128,
+        duration: 1000u32,
+        target_views: 10_000u64,
+        daily_view_limit: 100u64,
+        refundable: true,
+    });
     (c, advertiser, publisher, id)
 }
 
@@ -231,7 +238,26 @@ fn test_record_view_paused_campaign() {
 fn test_record_view_insufficient_budget() {
     let env = Env::default();
     env.mock_all_auths();
-    let (c, _, publisher, id) = setup_campaign_with_publisher(&env);
+    let (c, admin, token_admin, token) = setup(&env);
+    let advertiser = Address::generate(&env);
+    let publisher = Address::generate(&env);
+    let _ = token_admin;
+
+    mint(&env, &token, &advertiser, 5_000_000);
+    c.verify_publisher(&admin, &publisher, &80u32);
+
+    // target_views and daily_view_limit are set above the budget-implied view
+    // count so that budget exhaustion is the first guard to trip.
+    let id = c.create_campaign(&CampaignCreateArgs {
+        advertiser: advertiser.clone(),
+        campaign_type: 1u32,
+        budget: 1_000_000i128,
+        cost_per_view: 100i128,
+        duration: 1000u32,
+        target_views: 20_000u64,
+        daily_view_limit: 20_000u64,
+        refundable: true,
+    });
 
     // Exhaust budget: cost_per_view=100, remaining=1_000_000 → 10000 views needed
     for _ in 0..10_000 {

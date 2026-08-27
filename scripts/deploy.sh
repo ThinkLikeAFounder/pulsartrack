@@ -233,6 +233,12 @@ deploy_contract "dispute_resolution"    "pulsar_dispute_resolution"
 deploy_contract "budget_optimizer"      "pulsar_budget_optimizer"
 deploy_contract "anomaly_detector"      "pulsar_anomaly_detector"
 
+# Access Control & Treasury
+deploy_contract "access_control"        "pulsar_access_control"
+deploy_contract "treasury_manager"      "pulsar_treasury_manager"
+deploy_contract "vesting_schedule"      "pulsar_vesting_schedule"
+deploy_contract "whitelist_registry"    "pulsar_whitelist_registry"
+
 	echo ""
 	echo "=============================================="
 	echo "  Deployment complete!"

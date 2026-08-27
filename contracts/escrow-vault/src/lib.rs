@@ -249,7 +249,9 @@ impl EscrowVaultContract {
             created_at: now,
             locked_at: Some(now),
             released_at: None,
-            expires_at: now.checked_add(args.expires_in).expect("expires_at overflow"),
+            expires_at: now
+                .checked_add(args.expires_in)
+                .expect("expires_at overflow"),
         };
 
         let _ttl_key = DataKey::Escrow(escrow_id);
@@ -298,7 +300,11 @@ impl EscrowVaultContract {
             .get(&DataKey::TokenAddress)
             .unwrap();
         let token_client = token::Client::new(&env, &token_addr);
-        token_client.transfer(&args.depositor, &env.current_contract_address(), &args.amount);
+        token_client.transfer(
+            &args.depositor,
+            &env.current_contract_address(),
+            &args.amount,
+        );
 
         env.events().publish(
             (symbol_short!("escrow"), symbol_short!("created")),
@@ -800,7 +806,12 @@ impl EscrowVaultContract {
     }
 
     pub fn cancel_admin_proposal(env: Env, current_admin: Address) {
-        pulsar_common_admin::cancel_admin_proposal(&env, &DataKey::Admin, &DataKey::PendingAdmin, current_admin);
+        pulsar_common_admin::cancel_admin_proposal(
+            &env,
+            &DataKey::Admin,
+            &DataKey::PendingAdmin,
+            current_admin,
+        );
     }
 }
 
