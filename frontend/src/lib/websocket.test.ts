@@ -21,27 +21,55 @@ describe('PulsarWebSocket', () => {
   let currentWs: ControllableMockWs | null = null;
   let pendingWsCreation: ((ws: ControllableMockWs) => void) | null = null;
 
-  const mockWebSocketClass = vi.fn(function (this: ControllableMockWs, url: string) {
-    const self: ControllableMockWs = this;
-    self.url = url;
-    self.readyState = 0;
-    self.onopen = null;
-    self.onmessage = null;
-    self.onerror = null;
-    self.onclose = null;
-    self.sentMessages = [];
-    self.send = (data: string) => {
-      self.sentMessages.push(data);
-    };
-    self.close = () => {
-      self.readyState = 3;
-      if (self.onclose) self.onclose();
-    };
-    currentWs = self;
-    if (pendingWsCreation) {
-      pendingWsCreation(self);
+  class MockWs implements ControllableMockWs {
+    static readonly CONNECTING = 0;
+    static readonly OPEN = 1;
+    static readonly CLOSING = 2;
+    static readonly CLOSED = 3;
+
+    url: string;
+    readyState = 0;
+    onopen: (() => void) | null = null;
+    onmessage: ((event: { data: string }) => void) | null = null;
+    onerror: (() => void) | null = null;
+    onclose: (() => void) | null = null;
+    sentMessages: string[] = [];
+
+    constructor(url: string) {
+      this.url = url;
+      MockWs.register(this);
     }
-  });
+
+    private static register(ws: MockWs): void {
+      currentWs = ws;
+      if (pendingWsCreation) {
+        pendingWsCreation(ws);
+      }
+    }
+
+    send(data: string): void {
+      this.sentMessages.push(data);
+    }
+
+    close(): void {
+      this.readyState = MockWs.CLOSED;
+      if (this.onclose) this.onclose();
+    }
+  }
+
+  // Records every construction while still returning a real MockWs instance
+  // (prototype methods intact), so the source's `new WebSocket(url)` and its
+  // static `WebSocket.OPEN` reads both behave like the real API.
+  const constructionSpy = vi.fn();
+
+  class SpyWs extends MockWs {
+    constructor(url: string) {
+      super(url);
+      constructionSpy(url);
+    }
+  }
+
+  const mockWebSocketClass = Object.assign(SpyWs, { mock: constructionSpy.mock });
 
   function triggerOpen() {
     if (!currentWs) throw new Error('No WebSocket created yet');
@@ -78,9 +106,9 @@ describe('PulsarWebSocket', () => {
     vi.useFakeTimers();
     currentWs = null;
     pendingWsCreation = null;
+    constructionSpy.mockClear();
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (global as any).WebSocket = mockWebSocketClass;
+    globalThis.WebSocket = mockWebSocketClass as unknown as typeof WebSocket;
 
     // Reset singleton between tests
     vi.resetModules();
@@ -100,8 +128,8 @@ describe('PulsarWebSocket', () => {
     it('creates a WebSocket with the correct URL', () => {
       const client = new PulsarWebSocket('ws://test.example.com:4000');
       client.connect();
-      expect(mockWebSocketClass).toHaveBeenCalledTimes(1);
-      expect(mockWebSocketClass).toHaveBeenCalledWith('ws://test.example.com:4000');
+      expect(constructionSpy).toHaveBeenCalledTimes(1);
+      expect(constructionSpy).toHaveBeenCalledWith('ws://test.example.com:4000');
     });
 
     it('emits "connected" event and resets reconnect counters when WebSocket opens', () => {
@@ -134,7 +162,7 @@ describe('PulsarWebSocket', () => {
 
       // Previous onclose should be nullified so it doesn't schedule another reconnect
       expect(firstWs?.onclose).toBeNull();
-      expect(mockWebSocketClass).toHaveBeenCalledTimes(2);
+      expect(constructionSpy).toHaveBeenCalledTimes(2);
     });
 
     it('isConnected reflects readyState correctly', () => {
@@ -173,8 +201,10 @@ describe('PulsarWebSocket', () => {
 
       expect(bidHandler).toHaveBeenCalledTimes(1);
       expect(bidHandler.mock.calls[0][0]).toEqual(payload);
-      expect(allHandler).toHaveBeenCalledTimes(2); // connected + bid_placed
-      expect(allHandler.mock.calls[1][0]).toEqual(payload);
+      // Handlers were registered after 'connected' fired, so 'all' only sees
+      // the bid_placed event.
+      expect(allHandler).toHaveBeenCalledTimes(1);
+      expect(allHandler.mock.calls[0][0]).toEqual(payload);
     });
 
     it('handles pong messages and clears heartbeat timeout', () => {
@@ -267,51 +297,42 @@ describe('PulsarWebSocket', () => {
       client.connect();
       triggerOpen();
 
-      expect(mockWebSocketClass).toHaveBeenCalledTimes(1);
+      expect(constructionSpy).toHaveBeenCalledTimes(1);
 
       triggerClose();
       expect(client.isConnected).toBe(false);
 
       // Reconnect is scheduled at 3s delay
       vi.advanceTimersByTime(2999);
-      expect(mockWebSocketClass).toHaveBeenCalledTimes(1);
+      expect(constructionSpy).toHaveBeenCalledTimes(1);
 
       vi.advanceTimersByTime(1);
-      expect(mockWebSocketClass).toHaveBeenCalledTimes(2);
+      expect(constructionSpy).toHaveBeenCalledTimes(2);
     });
 
     it('uses exponential backoff for subsequent reconnect attempts', () => {
       const client = new PulsarWebSocket('ws://test.example.com');
 
-      const creationDelays: number[] = [];
-      let lastCreationTime = 0;
-      pendingWsCreation = () => {
-        const now = vi.getTimerCount() ?? 0;
-        if (lastCreationTime > 0) {
-          creationDelays.push(now);
-        }
-      };
-
       client.connect();
       triggerOpen();
-      expect(mockWebSocketClass).toHaveBeenCalledTimes(1);
+      expect(constructionSpy).toHaveBeenCalledTimes(1);
 
       // First close -> reconnect at 3s
       triggerClose();
       vi.advanceTimersByTime(3000);
-      expect(mockWebSocketClass).toHaveBeenCalledTimes(2);
+      expect(constructionSpy).toHaveBeenCalledTimes(2);
       triggerOpen();
 
       // Second close -> reconnect at 6s (3 * 2)
       triggerClose();
       vi.advanceTimersByTime(6000);
-      expect(mockWebSocketClass).toHaveBeenCalledTimes(3);
+      expect(constructionSpy).toHaveBeenCalledTimes(3);
       triggerOpen();
 
       // Third close -> reconnect at 12s (6 * 2)
       triggerClose();
       vi.advanceTimersByTime(12000);
-      expect(mockWebSocketClass).toHaveBeenCalledTimes(4);
+      expect(constructionSpy).toHaveBeenCalledTimes(4);
     });
 
     it('stops reconnecting after maxReconnectAttempts (5)', () => {
@@ -319,22 +340,21 @@ describe('PulsarWebSocket', () => {
       client.connect();
       triggerOpen();
 
+      // Never re-open: a successful open resets reconnectAttempts, so the cap
+      // is only reachable across consecutive failed reconnects.
       for (let i = 0; i < 5; i++) {
         triggerClose();
-        // Advance past the current backoff to let connect fire
         vi.advanceTimersByTime(3000 * Math.pow(2, i));
-        // Open the new connection so next close is a fresh drop
-        triggerOpen();
       }
 
-      const callCountAfter5 = mockWebSocketClass.mock.calls.length;
+      // 1 initial + 5 reconnect attempts
+      expect(constructionSpy).toHaveBeenCalledTimes(6);
 
-      // 6th close should NOT trigger another reconnect
+      // 6th close is past maxReconnectAttempts and must NOT reconnect
       triggerClose();
-      vi.advanceTimersByTime(3000 * Math.pow(2, 5));
       vi.advanceTimersByTime(60000);
 
-      expect(mockWebSocketClass.mock.calls.length).toBe(callCountAfter5);
+      expect(constructionSpy).toHaveBeenCalledTimes(6);
     });
 
     it('resets reconnect counters after a successful reconnection', () => {
@@ -354,7 +374,7 @@ describe('PulsarWebSocket', () => {
       // Next close should start at 3s again, not 12s
       triggerClose();
       vi.advanceTimersByTime(3000);
-      expect(mockWebSocketClass).toHaveBeenCalledTimes(4);
+      expect(constructionSpy).toHaveBeenCalledTimes(4);
     });
 
     it('disconnect cancels pending reconnect timers and closes ws', () => {
@@ -369,7 +389,7 @@ describe('PulsarWebSocket', () => {
 
       vi.advanceTimersByTime(30000);
       // No new WebSocket should have been created (the pending reconnect was cleared)
-      expect(mockWebSocketClass).toHaveBeenCalledTimes(1);
+      expect(constructionSpy).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -414,7 +434,7 @@ describe('PulsarWebSocket', () => {
 
     it('connectWebSocket and disconnectWebSocket operate on the singleton', () => {
       connectWebSocket();
-      expect(mockWebSocketClass).toHaveBeenCalledTimes(1);
+      expect(constructionSpy).toHaveBeenCalledTimes(1);
 
       triggerOpen();
       const ws = getPulsarWebSocket();

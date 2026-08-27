@@ -6,6 +6,11 @@ vi.mock('./wallet', () => ({
 
 import { signTx } from './wallet';
 import { useTransactionStore } from '../store/tx-store';
+// Real (unmocked) SDK module — used to build genuine xdr.ScVal fixtures.
+const origSdkModule = await vi.importActual<typeof import('@stellar/stellar-sdk')>(
+  '@stellar/stellar-sdk',
+);
+
 import {
   callReadOnly,
   callContract,
@@ -18,7 +23,7 @@ import {
   addressToScVal,
 } from './soroban-client';
 
-const SIM_ACCOUNT = 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN';
+const SIM_ACCOUNT = 'GDWUSKGGFDI4FRXK5EBTRECZSVQSSWJHHJOGH6JWG3AUMFFMQ435DIAG';
 const SOROBAN_RPC_URL = 'https://soroban-testnet.stellar.org';
 const NETWORK_PASSPHRASE = 'Test SDF Network ; September 2015';
 
@@ -30,7 +35,7 @@ vi.mock('./stellar-config', () => ({
   // getters above), so referencing SIM_ACCOUNT here is a TDZ error.
   FALLBACK_SIMULATION_ACCOUNT: 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN',
   CONTRACT_IDS: {
-    CAMPAIGN_ORCHESTRATOR: 'CAMPAIGN_ORCH_ID',
+    CAMPAIGN_ORCHESTRATOR: 'CADQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQP5KR',
   },
 }));
 
@@ -41,6 +46,9 @@ describe('soroban-client', () => {
     sendTransaction: ReturnType<typeof vi.fn>;
     getTransaction: ReturnType<typeof vi.fn>;
   };
+
+  // Records the args passed to `new rpc.Server(...)`.
+  let serverCtorSpy: ReturnType<typeof vi.fn<(...ctorArgs: unknown[]) => void>>;
 
   beforeEach(async () => {
     process.env.NEXT_PUBLIC_SIMULATION_ACCOUNT = SIM_ACCOUNT;
@@ -64,12 +72,28 @@ describe('soroban-client', () => {
     // rpc.Server returns the same object across the board. We simply retarget
     // the implementation here so getAccount / simulateTransaction etc. call
     // our per-test rpcMock functions so we can assert on them.
-    vi.mocked(sdk.rpc.Server).mockImplementation(() => ({
-      getAccount: rpcMock.getAccount,
-      simulateTransaction: rpcMock.simulateTransaction,
-      sendTransaction: rpcMock.sendTransaction,
-      getTransaction: rpcMock.getTransaction,
-    }));
+    // NOTE: vi.clearAllMocks() above (and setup.ts's afterEach) strips any
+    // previously installed implementation from rpc.Server, which makes
+    // `new rpc.Server(...)` return undefined ("is not a constructor").
+    // Reinstall it here, after the clear, on every test.
+    // `vi.fn().mockImplementation(fn)` makes the mock itself non-constructable,
+    // so `new rpc.Server(...)` in the source would throw. Instead install a real
+    // constructable class directly onto the mocked module namespace, and record
+    // constructor args on a separate spy for assertions.
+    serverCtorSpy = vi.fn();
+
+    class MockRpcServer {
+      getAccount = rpcMock.getAccount;
+      simulateTransaction = rpcMock.simulateTransaction;
+      sendTransaction = rpcMock.sendTransaction;
+      getTransaction = rpcMock.getTransaction;
+
+      constructor(...ctorArgs: unknown[]) {
+        serverCtorSpy(...ctorArgs);
+      }
+    }
+
+    (sdk.rpc as unknown as { Server: unknown }).Server = MockRpcServer;
   });
 
   afterEach(() => {
@@ -103,15 +127,14 @@ describe('soroban-client', () => {
     });
 
     it('addressToScVal returns a lazy address descriptor', () => {
-      expect(addressToScVal('GABC')).toEqual({ __type: 'address', value: 'GABC' });
+      expect(addressToScVal('GDWUSKGGFDI4FRXK5EBTRECZSVQSSWJHHJOGH6JWG3AUMFFMQ435DIAG')).toEqual({ __type: 'address', value: 'GDWUSKGGFDI4FRXK5EBTRECZSVQSSWJHHJOGH6JWG3AUMFFMQ435DIAG' });
     });
   });
 
   describe('getSorobanServer', () => {
     it('creates an rpc.Server with the configured RPC URL', async () => {
-      const sdk = await import('@stellar/stellar-sdk');
       const server = await getSorobanServer();
-      expect(sdk.rpc.Server).toHaveBeenCalledWith(SOROBAN_RPC_URL, { allowHttp: false });
+      expect(serverCtorSpy).toHaveBeenCalledWith(SOROBAN_RPC_URL, { allowHttp: false });
       expect(server).toBeDefined();
     });
   });
@@ -127,7 +150,7 @@ describe('soroban-client', () => {
       });
 
       const mockNativeResult = { name: 'Campaign A', budget: '100' };
-      const retvalSymbol = Symbol('retvalScVal');
+      const retvalSymbol = origSdkModule.xdr.ScVal.scvU32(4242);
 
       const simSuccess = {
         transactionData: { build: vi.fn() },
@@ -149,7 +172,7 @@ describe('soroban-client', () => {
         });
 
       const result = await callReadOnly({
-        contractId: 'CAMPAIGN_CONTRACT_ID',
+        contractId: 'CADQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQP5KR',
         method: 'get_campaign',
         args: [u32ToScVal(1)],
       });
@@ -181,7 +204,7 @@ describe('soroban-client', () => {
       rpcMock.simulateTransaction.mockResolvedValue(simSuccessNoRetval);
 
       const result = await callReadOnly({
-        contractId: 'CAMPAIGN_CONTRACT_ID',
+        contractId: 'CADQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQP5KR',
         method: 'noop',
       });
 
@@ -193,7 +216,7 @@ describe('soroban-client', () => {
 
       await expect(
         callReadOnly({
-          contractId: 'CAMPAIGN_CONTRACT_ID',
+          contractId: 'CADQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQP5KR',
           method: 'get_campaign',
         }),
       ).rejects.toThrow('Could not fetch account for read simulation');
@@ -217,7 +240,7 @@ describe('soroban-client', () => {
 
       await expect(
         callReadOnly({
-          contractId: 'CAMPAIGN_CONTRACT_ID',
+          contractId: 'CADQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQP5KR',
           method: 'get_campaign',
         }),
       ).rejects.toThrow('Simulation error: HostValueError: Invalid input');
@@ -238,7 +261,7 @@ describe('soroban-client', () => {
 
       await expect(
         callReadOnly({
-          contractId: 'CAMPAIGN_CONTRACT_ID',
+          contractId: 'CADQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQP5KR',
           method: 'get_campaign',
         }),
       ).rejects.toThrow('Simulation failed with no result');
@@ -246,9 +269,12 @@ describe('soroban-client', () => {
   });
 
   describe('callContract', () => {
-    const SOURCE = 'GAUWSFTCLDEMQ6MJC3V2KKIXTCGIY7NQ2QBBQPVQN2K42N6Y7KQ5A3AY';
+    const SOURCE = 'GDWUSKGGFDI4FRXK5EBTRECZSVQSSWJHHJOGH6JWG3AUMFFMQ435DIAG';
     const TX_HASH = 'txhashabc123';
-    const SIGNED_XDR = 'AAAAgREALLYFAKESIGNEDXDRSTRING';
+    // A genuinely well-formed signed envelope: callContract feeds the signed XDR
+    // back through TransactionBuilder.fromXDR, which rejects malformed strings.
+    const SIGNED_XDR =
+      'AAAAAgAAAADtSSjGKNHCxurpAziQWZVhKVknOlxj+TY2wUYUrIc30QAAAGQAAAAAAAAAZQAAAAEAAAAAAAAAAAAAAABqj7AvAAAAAAAAAAEAAAAAAAAAAQAAAADtSSjGKNHCxurpAziQWZVhKVknOlxj+TY2wUYUrIc30QAAAAAAAAAAAJiWgAAAAAAAAAABrIc30QAAAEC+fsH/ri0Ns69asd6tQKpktNZOjnrgnoUehqSr7jSTxKnw609KQKMDdydFxeUUSatXXINOn3DefdBsx3Ywt/0H';
 
     beforeEach(() => {
       vi.mocked(signTx).mockResolvedValue(SIGNED_XDR);
@@ -282,7 +308,7 @@ describe('soroban-client', () => {
       rpcMock.sendTransaction.mockResolvedValue({ status: 'PENDING', hash: TX_HASH });
 
       // First getTransaction -> NOT_FOUND, second -> SUCCESS
-      const retvalScVal = Symbol('retval-scval');
+      const retvalScVal = origSdkModule.xdr.ScVal.scvU32(9191);
       const finalResult = { id: 7, name: 'Created!' };
       rpcMock.getTransaction
         .mockResolvedValueOnce({ status: 'NOT_FOUND' })
@@ -299,7 +325,7 @@ describe('soroban-client', () => {
 
       // Run the call. We must advance timers for the polling loop sleeps.
       const resultPromise = callContract({
-        contractId: 'CAMPAIGN_ORCH_ID',
+        contractId: 'CADQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQP5KR',
         method: 'create_campaign',
         args: [stringToScVal('New Campaign')],
         source: SOURCE,
@@ -351,7 +377,7 @@ describe('soroban-client', () => {
       });
 
       const result = await callContract({
-        contractId: 'CAMPAIGN_ORCH_ID',
+        contractId: 'CADQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQP5KR',
         method: 'create_campaign',
         args: [],
         source: SOURCE,
@@ -384,7 +410,7 @@ describe('soroban-client', () => {
       rpcMock.sendTransaction.mockResolvedValue({ status: 'ERROR', hash: undefined });
 
       const result = await callContract({
-        contractId: 'CAMPAIGN_ORCH_ID',
+        contractId: 'CADQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQP5KR',
         method: 'create_campaign',
         args: [],
         source: SOURCE,
@@ -420,7 +446,7 @@ describe('soroban-client', () => {
       });
 
       const resultPromise = callContract({
-        contractId: 'CAMPAIGN_ORCH_ID',
+        contractId: 'CADQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQP5KR',
         method: 'create_campaign',
         args: [],
         source: SOURCE,
@@ -464,7 +490,7 @@ describe('soroban-client', () => {
       rpcMock.getTransaction.mockResolvedValue({ status: 'NOT_FOUND' });
 
       const resultPromise = callContract({
-        contractId: 'CAMPAIGN_ORCH_ID',
+        contractId: 'CADQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQP5KR',
         method: 'create_campaign',
         args: [],
         source: SOURCE,
@@ -492,7 +518,7 @@ describe('soroban-client', () => {
       rpcMock.getAccount.mockRejectedValue(new Error('Network read ECONNRESET'));
 
       const result = await callContract({
-        contractId: 'CAMPAIGN_ORCH_ID',
+        contractId: 'CADQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQP5KR',
         method: 'create_campaign',
         args: [],
         source: SOURCE,
@@ -506,7 +532,7 @@ describe('soroban-client', () => {
       rpcMock.getAccount.mockRejectedValue({ weird: 'shape' });
 
       const result = await callContract({
-        contractId: 'CAMPAIGN_ORCH_ID',
+        contractId: 'CADQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQP5KR',
         method: 'create_campaign',
         args: [],
         source: SOURCE,

@@ -42,6 +42,31 @@ impl MockGovToken {
             .unwrap_or(1_000_000)
     }
 
+    /// Voting power as of a ledger strictly before `ledger_sequence`.
+    ///
+    /// Mirrors the real governance token: power recorded at or after the
+    /// queried ledger is invisible, which is what defeats a same-transaction
+    /// borrow. Tests seed history with `set_past_votes`; absent a seeded entry
+    /// this falls back to the mock's balance so existing vote tests keep
+    /// exercising the normal path.
+    pub fn get_past_votes(env: Env, account: Address, ledger_sequence: u32) -> i128 {
+        if let Some(v) = env
+            .storage()
+            .persistent()
+            .get::<(Address, u32), i128>(&(account.clone(), ledger_sequence))
+        {
+            return v;
+        }
+        Self::balance(env, account)
+    }
+
+    /// Seed the historical voting power visible at `ledger_sequence`.
+    pub fn set_past_votes(env: Env, account: Address, ledger_sequence: u32, amount: i128) {
+        env.storage()
+            .persistent()
+            .set(&(account, ledger_sequence), &amount);
+    }
+
     /// Token transfer: move `amount` from `from` to `to`.
     pub fn transfer(env: Env, from: Address, to: Address, amount: i128) {
         from.require_auth();
@@ -999,4 +1024,97 @@ fn test_create_proposal_exact_minimum_accepted() {
     let proposal_id = client.create_proposal(&proposer, &make_title(&env), &make_desc(&env), &None);
 
     assert_eq!(proposal_id, 1);
+}
+
+// ─── Flash-loan vote manipulation (#815) ─────────────────────────────────────
+
+#[test]
+#[should_panic(expected = "insufficient governance tokens")]
+fn test_flash_loan_voter_cannot_vote_with_same_block_borrow() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|li| li.sequence_number = 500);
+
+    let (client, _, token_addr) = setup_with_mock_token(&env, 10_000_000);
+    let token = MockGovTokenClient::new(&env, &token_addr);
+
+    let proposer = Address::generate(&env);
+    let attacker = Address::generate(&env);
+
+    let proposal_id = client.create_proposal(&proposer, &make_title(&env), &make_desc(&env), &None);
+    let snapshot_ledger = client.get_proposal(&proposal_id).unwrap().snapshot_ledger;
+
+    // Attacker's live balance is huge (the borrowed tokens)...
+    token.set_balance(&attacker, &1_000_000i128);
+    // ...but they held nothing as of the snapshot ledger, which is what
+    // cast_vote weighs. The borrow therefore buys no voting power.
+    token.set_past_votes(&attacker, &snapshot_ledger, &0i128);
+
+    client.cast_vote(&attacker, &proposal_id, &VoteChoice::For, &1_000_000i128);
+}
+
+#[test]
+fn test_legitimate_voter_with_pre_snapshot_balance_can_vote() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|li| li.sequence_number = 500);
+
+    let (client, _, token_addr) = setup_with_mock_token(&env, 10_000_000);
+    let token = MockGovTokenClient::new(&env, &token_addr);
+
+    let proposer = Address::generate(&env);
+    let voter = Address::generate(&env);
+
+    let proposal_id = client.create_proposal(&proposer, &make_title(&env), &make_desc(&env), &None);
+    let snapshot_ledger = client.get_proposal(&proposal_id).unwrap().snapshot_ledger;
+
+    // An ordinary holder who owned tokens before the proposal votes normally.
+    token.set_balance(&voter, &5_000i128);
+    token.set_past_votes(&voter, &snapshot_ledger, &5_000i128);
+
+    client.cast_vote(&voter, &proposal_id, &VoteChoice::For, &5_000i128);
+
+    let proposal = client.get_proposal(&proposal_id).unwrap();
+    assert_eq!(proposal.votes_for, 5_000);
+    assert!(client.has_voted(&proposal_id, &voter));
+}
+
+#[test]
+#[should_panic(expected = "insufficient governance tokens")]
+fn test_vote_power_above_snapshot_balance_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|li| li.sequence_number = 500);
+
+    let (client, _, token_addr) = setup_with_mock_token(&env, 10_000_000);
+    let token = MockGovTokenClient::new(&env, &token_addr);
+
+    let proposer = Address::generate(&env);
+    let voter = Address::generate(&env);
+
+    let proposal_id = client.create_proposal(&proposer, &make_title(&env), &make_desc(&env), &None);
+    let snapshot_ledger = client.get_proposal(&proposal_id).unwrap().snapshot_ledger;
+
+    token.set_balance(&voter, &1_000_000i128);
+    token.set_past_votes(&voter, &snapshot_ledger, &1_000i128);
+
+    // Voting beyond the snapshot-time holding is rejected even though the live
+    // balance would cover it.
+    client.cast_vote(&voter, &proposal_id, &VoteChoice::For, &1_001i128);
+}
+
+#[test]
+fn test_proposal_records_snapshot_ledger_at_creation() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|li| li.sequence_number = 777);
+
+    let (client, _, _, _) = setup(&env);
+    let proposer = Address::generate(&env);
+
+    let proposal_id = client.create_proposal(&proposer, &make_title(&env), &make_desc(&env), &None);
+    let proposal = client.get_proposal(&proposal_id).unwrap();
+
+    assert_eq!(proposal.snapshot_ledger, 777);
+    assert_eq!(proposal.start_ledger, 777);
 }

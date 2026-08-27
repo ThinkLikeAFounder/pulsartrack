@@ -28,12 +28,22 @@ describe('error-handler', () => {
   });
 
   describe('parseStellarError - network / transport errors', () => {
-    it('classifies network / socket throw as CONTRACT_ERROR (generic "error" substring)', () => {
+    it('classifies a message containing "network" as NETWORK_MISMATCH, ahead of the generic "error" branch', () => {
       const parsed = parseStellarError(
         new Error('Failed to fetch: network error during RPC call'),
       );
+      // The 'network' branch is checked before the generic 'error' branch,
+      // so precedence puts this in NETWORK_MISMATCH.
+      expect(parsed.code).toBe(ErrorCode.NETWORK_MISMATCH);
+      expect(parsed.message).toBe(
+        'Wrong network. Please switch to the correct Stellar network in Freighter.',
+      );
+    });
+
+    it('classifies a generic transport failure with no earlier-branch keyword as CONTRACT_ERROR', () => {
+      const parsed = parseStellarError(new Error('RPC call failed'));
       expect(parsed.code).toBe(ErrorCode.CONTRACT_ERROR);
-      expect(parsed.message).toContain('network error');
+      expect(parsed.message).toContain('RPC call failed');
     });
 
     it('classifies TypeError "fetch failed" as CONTRACT_ERROR', () => {

@@ -270,6 +270,14 @@
                     },
                     {
                       "key": {
+                        "symbol": "snapshot_ledger"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
                         "symbol": "start_ledger"
                       },
                       "val": {
@@ -433,6 +441,14 @@
                       },
                       "val": {
                         "u32": 1000
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "snapshot_ledger"
+                      },
+                      "val": {
+                        "u32": 0
                       }
                     },
                     {
