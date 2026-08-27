@@ -111,45 +111,45 @@ impl BudgetOptimizerContract {
             .set(&DataKey::OracleAddress, &oracle);
     }
 
-pub fn set_budget_allocation(env: Env, args: SetBudgetAllocationArgs) {
-    env.storage()
-        .instance()
-        .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-    args.advertiser.require_auth();
+    pub fn set_budget_allocation(env: Env, args: SetBudgetAllocationArgs) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        args.advertiser.require_auth();
 
-    if args.daily_budget > args.total_budget {
-        panic!("daily budget exceeds total");
-    }
-
-    // Ownership check: if an allocation already exists, only the original
-    // Advertiser may overwrite it.
-    if let Some(existing) = env
-        .storage()
-        .persistent()
-        .get::<DataKey, BudgetAllocation>(&DataKey::Allocation(args.campaign_id))
-    {
-        if existing.advertiser != args.advertiser {
-            panic!("unauthorized");
+        if args.daily_budget > args.total_budget {
+            panic!("daily budget exceeds total");
         }
-    }
 
-    let allocation = BudgetAllocation {
-        campaign_id: args.campaign_id,
-        advertiser: args.advertiser.clone(),
-        total_budget: args.total_budget,
-        daily_budget: args.daily_budget,
-        hourly_budget: args.daily_budget / 24,
-        budget_remainder: args.daily_budget % 24,
-        spent_today: 0,
-        spent_total: 0,
-        optimization_mode: args.optimization_mode,
-        target_cpa: args.target_cpa,
-        target_ctr: args.target_ctr,
-        last_optimized: env.ledger().timestamp(),
-        last_reset_day: env.ledger().timestamp() / 86_400, // Hourly reset tracking
-    };
+        // Ownership check: if an allocation already exists, only the original
+        // Advertiser may overwrite it.
+        if let Some(existing) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, BudgetAllocation>(&DataKey::Allocation(args.campaign_id))
+        {
+            if existing.advertiser != args.advertiser {
+                panic!("unauthorized");
+            }
+        }
 
-    // Actually, let me look at this more carefully. The campaign_id should come from args
+        let allocation = BudgetAllocation {
+            campaign_id: args.campaign_id,
+            advertiser: args.advertiser.clone(),
+            total_budget: args.total_budget,
+            daily_budget: args.daily_budget,
+            hourly_budget: args.daily_budget / 24,
+            budget_remainder: args.daily_budget % 24,
+            spent_today: 0,
+            spent_total: 0,
+            optimization_mode: args.optimization_mode,
+            target_cpa: args.target_cpa,
+            target_ctr: args.target_ctr,
+            last_optimized: env.ledger().timestamp(),
+            last_reset_day: env.ledger().timestamp() / 86_400, // Hourly reset tracking
+        };
+
+        // Actually, let me look at this more carefully. The campaign_id should come from args
 
         let _ttl_key = DataKey::Allocation(args.campaign_id);
         env.storage().persistent().set(&_ttl_key, &allocation);

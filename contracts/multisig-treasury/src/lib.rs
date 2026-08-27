@@ -45,6 +45,7 @@ pub enum DataKey {
     Tx(u64),
     TxApproval(u64, Address),
     TxRejection(u64, Address),
+    Paused,
 }
 
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17_280;
@@ -71,6 +72,8 @@ impl MultisigTreasuryContract {
         }
 
         env.storage().instance().set(&DataKey::Admin, &admin);
+
+        env.storage().instance().set(&DataKey::Paused, &false);
         env.storage()
             .instance()
             .set(&DataKey::Signers, &initial_signers);
@@ -219,6 +222,7 @@ impl MultisigTreasuryContract {
     }
 
     pub fn execute_transaction(env: Env, caller: Address, tx_id: u64) {
+        Self::require_not_paused(&env);
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -333,13 +337,11 @@ impl MultisigTreasuryContract {
         env.storage()
             .persistent()
             .set(&DataKey::TxRejection(tx_id, signer.clone()), &true);
-        env.storage()
-            .persistent()
-            .extend_ttl(
-                &DataKey::TxRejection(tx_id, signer),
-                PERSISTENT_LIFETIME_THRESHOLD,
-                PERSISTENT_BUMP_AMOUNT,
-            );
+        env.storage().persistent().extend_ttl(
+            &DataKey::TxRejection(tx_id, signer),
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
 
         let _ttl_key = DataKey::Tx(tx_id);
         env.storage().persistent().set(&_ttl_key, &tx);
@@ -440,6 +442,47 @@ impl MultisigTreasuryContract {
             (symbol_short!("treasury"), symbol_short!("sgn_rem")),
             signer,
         );
+    }
+
+    /// Pause the contract. Only callable by the admin.
+    ///
+    /// While paused every fund-moving entrypoint panics. Read-only getters
+    /// and administrative functions remain available so the contract can be
+    /// inspected and unpaused once a fix is ready.
+    pub fn set_paused(env: Env, admin: Address, paused: bool) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+        env.storage().instance().set(&DataKey::Paused, &paused);
+        env.events()
+            .publish((symbol_short!("pause"), symbol_short!("set")), paused);
+    }
+
+    /// Whether the contract is currently paused.
+    pub fn is_paused(env: Env) -> bool {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        env.storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false)
+    }
+
+    fn require_not_paused(env: &Env) {
+        let paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+        if paused {
+            panic!("contract is paused");
+        }
     }
 
     pub fn propose_admin(env: Env, current_admin: Address, new_admin: Address) {

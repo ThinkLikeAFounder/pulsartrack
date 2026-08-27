@@ -6,6 +6,7 @@ import type { xdr, rpc, Transaction, FeeBumpTransaction } from "@stellar/stellar
 import {
   getSorobanRpcUrl,
   getNetworkPassphrase,
+  FALLBACK_SIMULATION_ACCOUNT,
 } from "./stellar-config";
 import { signTx } from "./wallet";
 import { useTransactionStore, TransactionType } from "../store/tx-store";
@@ -74,8 +75,7 @@ export async function callReadOnly<T = unknown>(
 
   if (!simulationAccount) {
     if (process.env.NODE_ENV === "development") {
-      simulationAccount =
-        "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
+      simulationAccount = FALLBACK_SIMULATION_ACCOUNT;
     } else {
       throw new Error(
         "NEXT_PUBLIC_SIMULATION_ACCOUNT environment variable is not set. A source account is required for contract simulations.",

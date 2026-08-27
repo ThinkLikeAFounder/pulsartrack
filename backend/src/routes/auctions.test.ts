@@ -59,9 +59,11 @@ describe('Auction Routes', () => {
                 query: vi.fn(),
                 release: vi.fn(),
             };
-            // BEGIN — always the first call now that the auction row is locked
-            // inside the transaction (see #794 TOCTOU fix).
-            mockClient.query.mockResolvedValueOnce(EMPTY);
+            // The route issues BEGIN before its first real query. Queued
+            // `mockResolvedValueOnce` values are consumed in call order, so
+            // without this the BEGIN would swallow the first caller-supplied
+            // result and shift every subsequent one.
+            mockClient.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
             for (const result of queryResults) {
                 mockClient.query.mockResolvedValueOnce(result);
             }
