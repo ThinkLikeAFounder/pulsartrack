@@ -64,13 +64,3 @@ export async function runAllChecks(): Promise<HealthCheckResult> {
     horizon,
   };
 }
-
-export async function startHealthService() {
-  logger.info("Health service started");
-  // ...existing code...
-}
-
-export function checkHealth() {
-  logger.debug("Health check invoked");
-  // ...existing code...
-}
