@@ -18,6 +18,7 @@ import {
   useCreateProposal,
 } from '@/hooks/useContract';
 import { stroopsToXlm } from '@/lib/stellar-config';
+import { useToast } from '@/contexts/ToastContext';
 
 type ProposalStatus = 'Active' | 'Passed' | 'Rejected' | 'Executed';
 
@@ -57,6 +58,7 @@ export default function GovernancePage() {
   const { data: proposalCount } = useProposalCount(isConnected);
   const { data: proposals, isLoading: proposalsLoading } =
     useGovernanceProposals(proposalCount, isConnected);
+  const { success, error: toastError } = useToast();
   const { castVote, isPending: voteLoading } = useCastVote();
   const { createProposal, isPending: createLoading } = useCreateProposal();
 
@@ -317,8 +319,16 @@ export default function GovernancePage() {
                         votingPeriodDays: proposalData.votingPeriodDays,
                       });
                       setProposalData({ title: '', description: '', votingPeriodDays: 7 });
+                      success('Proposal submitted', 'Your governance proposal has been created.');
                     } catch (error) {
+                      // Issue #791 — surface the failure to the user, not just the console.
+                      // The form data is intentionally left intact so they can retry;
+                      // the submit button re-enables on its own once the mutation settles.
                       console.error('Failed to create proposal:', error);
+                      toastError(
+                        'Proposal submission failed',
+                        error instanceof Error ? error.message : 'Please try again.',
+                      );
                     }
                   }}
                 >
