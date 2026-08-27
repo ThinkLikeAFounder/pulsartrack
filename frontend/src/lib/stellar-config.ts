@@ -31,6 +31,14 @@ export const NETWORKS = {
   },
 } as const;
 
+/**
+ * Fallback source account used for read-only contract simulations when
+ * NEXT_PUBLIC_SIMULATION_ACCOUNT is not set. Development only — production
+ * callers must provide their own account via the environment variable.
+ */
+export const FALLBACK_SIMULATION_ACCOUNT =
+  'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN';
+
 export type NetworkType = keyof typeof NETWORKS;
 
 export const CURRENT_NETWORK: NetworkType =
