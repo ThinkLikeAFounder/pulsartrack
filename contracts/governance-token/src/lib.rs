@@ -47,6 +47,23 @@ pub enum DataKey {
     Delegation(Address),
     DelegatedPower(Address),
     VotingSnapshot(Address, u32), // Address, ledger_sequence
+    /// Number of checkpoints written for an account.
+    CheckpointCount(Address),
+    /// The nth checkpoint for an account: (ledger_sequence, voting_power).
+    Checkpoint(Address, u32), // Address, checkpoint index
+}
+
+/// A point-in-time record of an account's voting power.
+///
+/// `ledger` is the ledger sequence at which `power` became effective. Reads for
+/// a target ledger resolve to the newest checkpoint whose `ledger` is strictly
+/// less than the target, so power created in a given ledger is never usable for
+/// that same ledger. That is what closes the flash-loan window.
+#[contracttype]
+#[derive(Clone)]
+pub struct Checkpoint {
+    pub ledger: u32,
+    pub power: i128,
 }
 
 // 1_000_000_000_000 base units. With the 7-decimal metadata below this is
@@ -179,12 +196,14 @@ impl GovernanceTokenContract {
             .persistent()
             .get::<DataKey, Delegation>(&DataKey::Delegation(from.clone()));
 
+        let mut from_delegate_cp: Option<Address> = None;
         if let Some(delegation) = from_delegation {
             let delegate_power: i128 = env
                 .storage()
                 .persistent()
                 .get(&DataKey::DelegatedPower(delegation.delegate.clone()))
                 .unwrap_or(0);
+            from_delegate_cp = Some(delegation.delegate.clone());
             let _ttl_key = DataKey::DelegatedPower(delegation.delegate);
             env.storage()
                 .persistent()
@@ -216,12 +235,14 @@ impl GovernanceTokenContract {
             .persistent()
             .get::<DataKey, Delegation>(&DataKey::Delegation(to.clone()));
 
+        let mut to_delegate_cp: Option<Address> = None;
         if let Some(delegation) = to_delegation {
             let delegate_power: i128 = env
                 .storage()
                 .persistent()
                 .get(&DataKey::DelegatedPower(delegation.delegate.clone()))
                 .unwrap_or(0);
+            to_delegate_cp = Some(delegation.delegate.clone());
             let _ttl_key = DataKey::DelegatedPower(delegation.delegate);
             env.storage()
                 .persistent()
@@ -231,6 +252,15 @@ impl GovernanceTokenContract {
                 PERSISTENT_LIFETIME_THRESHOLD,
                 PERSISTENT_BUMP_AMOUNT,
             );
+        }
+
+        Self::write_checkpoint(&env, &from);
+        Self::write_checkpoint(&env, &to);
+        if let Some(d) = from_delegate_cp {
+            Self::write_checkpoint(&env, &d);
+        }
+        if let Some(d) = to_delegate_cp {
+            Self::write_checkpoint(&env, &d);
         }
 
         env.events()
@@ -303,12 +333,14 @@ impl GovernanceTokenContract {
             .persistent()
             .get::<DataKey, Delegation>(&DataKey::Delegation(from.clone()));
 
+        let mut from_delegate_cp: Option<Address> = None;
         if let Some(delegation) = from_delegation {
             let delegate_power: i128 = env
                 .storage()
                 .persistent()
                 .get(&DataKey::DelegatedPower(delegation.delegate.clone()))
                 .unwrap_or(0);
+            from_delegate_cp = Some(delegation.delegate.clone());
             let _ttl_key = DataKey::DelegatedPower(delegation.delegate);
             env.storage()
                 .persistent()
@@ -340,12 +372,14 @@ impl GovernanceTokenContract {
             .persistent()
             .get::<DataKey, Delegation>(&DataKey::Delegation(to.clone()));
 
+        let mut to_delegate_cp: Option<Address> = None;
         if let Some(delegation) = to_delegation {
             let delegate_power: i128 = env
                 .storage()
                 .persistent()
                 .get(&DataKey::DelegatedPower(delegation.delegate.clone()))
                 .unwrap_or(0);
+            to_delegate_cp = Some(delegation.delegate.clone());
             let _ttl_key = DataKey::DelegatedPower(delegation.delegate);
             env.storage()
                 .persistent()
@@ -355,6 +389,15 @@ impl GovernanceTokenContract {
                 PERSISTENT_LIFETIME_THRESHOLD,
                 PERSISTENT_BUMP_AMOUNT,
             );
+        }
+
+        Self::write_checkpoint(&env, &from);
+        Self::write_checkpoint(&env, &to);
+        if let Some(d) = from_delegate_cp {
+            Self::write_checkpoint(&env, &d);
+        }
+        if let Some(d) = to_delegate_cp {
+            Self::write_checkpoint(&env, &d);
         }
     }
 
@@ -441,12 +484,14 @@ impl GovernanceTokenContract {
             .persistent()
             .get::<DataKey, Delegation>(&DataKey::Delegation(recipient.clone()));
 
+        let mut to_delegate_cp: Option<Address> = None;
         if let Some(delegation) = recipient_delegation {
             let delegate_power: i128 = env
                 .storage()
                 .persistent()
                 .get(&DataKey::DelegatedPower(delegation.delegate.clone()))
                 .unwrap_or(0);
+            to_delegate_cp = Some(delegation.delegate.clone());
             let _ttl_key = DataKey::DelegatedPower(delegation.delegate);
             env.storage()
                 .persistent()
@@ -460,6 +505,11 @@ impl GovernanceTokenContract {
         env.storage()
             .instance()
             .set(&DataKey::TotalSupply, &(current_supply + amount));
+
+        Self::write_checkpoint(&env, &recipient);
+        if let Some(d) = to_delegate_cp {
+            Self::write_checkpoint(&env, &d);
+        }
     }
 
     /// Burn tokens
@@ -498,12 +548,14 @@ impl GovernanceTokenContract {
             .persistent()
             .get::<DataKey, Delegation>(&DataKey::Delegation(from.clone()));
 
+        let mut from_delegate_cp: Option<Address> = None;
         if let Some(delegation) = from_delegation {
             let delegate_power: i128 = env
                 .storage()
                 .persistent()
                 .get(&DataKey::DelegatedPower(delegation.delegate.clone()))
                 .unwrap_or(0);
+            from_delegate_cp = Some(delegation.delegate.clone());
             let _ttl_key = DataKey::DelegatedPower(delegation.delegate);
             env.storage()
                 .persistent()
@@ -523,6 +575,11 @@ impl GovernanceTokenContract {
         env.storage()
             .instance()
             .set(&DataKey::TotalSupply, &(supply - amount));
+
+        Self::write_checkpoint(&env, &from);
+        if let Some(d) = from_delegate_cp {
+            Self::write_checkpoint(&env, &d);
+        }
     }
 
     /// Delegate voting power
@@ -547,6 +604,7 @@ impl GovernanceTokenContract {
             .persistent()
             .get::<DataKey, Delegation>(&DataKey::Delegation(delegator.clone()));
 
+        let mut old_delegate_cp: Option<Address> = None;
         if let Some(old_delegation) = existing_delegation {
             let old_delegate_power: i128 = env
                 .storage()
@@ -554,6 +612,7 @@ impl GovernanceTokenContract {
                 .get(&DataKey::DelegatedPower(old_delegation.delegate.clone()))
                 .unwrap_or(0);
             let new_old_power = old_delegate_power.saturating_sub(delegator_balance);
+            old_delegate_cp = Some(old_delegation.delegate.clone());
             let _ttl_key = DataKey::DelegatedPower(old_delegation.delegate);
             env.storage()
                 .persistent()
@@ -593,6 +652,12 @@ impl GovernanceTokenContract {
             PERSISTENT_BUMP_AMOUNT,
         );
 
+        Self::write_checkpoint(&env, &delegator);
+        Self::write_checkpoint(&env, &delegate_to);
+        if let Some(d) = old_delegate_cp {
+            Self::write_checkpoint(&env, &d);
+        }
+
         env.events()
             .publish((symbol_short!("delegate"),), (delegator, delegate_to));
     }
@@ -609,6 +674,7 @@ impl GovernanceTokenContract {
             .persistent()
             .get::<DataKey, Delegation>(&DataKey::Delegation(delegator.clone()));
 
+        let mut from_delegate_cp: Option<Address> = None;
         if let Some(delegation_info) = delegation {
             let delegator_balance: i128 = env
                 .storage()
@@ -622,6 +688,7 @@ impl GovernanceTokenContract {
                 .get(&DataKey::DelegatedPower(delegation_info.delegate.clone()))
                 .unwrap_or(0);
             let new_power = delegate_power.saturating_sub(delegator_balance);
+            from_delegate_cp = Some(delegation_info.delegate.clone());
             let _ttl_key = DataKey::DelegatedPower(delegation_info.delegate);
             env.storage()
                 .persistent()
@@ -635,7 +702,12 @@ impl GovernanceTokenContract {
 
         env.storage()
             .persistent()
-            .remove(&DataKey::Delegation(delegator));
+            .remove(&DataKey::Delegation(delegator.clone()));
+
+        Self::write_checkpoint(&env, &delegator);
+        if let Some(d) = from_delegate_cp {
+            Self::write_checkpoint(&env, &d);
+        }
     }
 
     /// Get voting power (0 if delegated, otherwise own balance plus received delegations)
@@ -675,6 +747,132 @@ impl GovernanceTokenContract {
             .get(&DataKey::Delegation(delegator))
     }
 
+    /// Record `voter`'s current voting power as a checkpoint at the current
+    /// ledger. Called after every mutation that can change voting power
+    /// (transfer, mint, burn, delegate, revoke).
+    ///
+    /// Writing a checkpoint for the current ledger does NOT make that power
+    /// usable in the current ledger: `get_past_votes` only considers
+    /// checkpoints strictly older than the ledger it is asked about.
+    fn write_checkpoint(env: &Env, account: &Address) {
+        let power = Self::voting_power(env.clone(), account.clone());
+        let current_ledger = env.ledger().sequence();
+
+        let count: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::CheckpointCount(account.clone()))
+            .unwrap_or(0);
+
+        // Collapse repeated writes within the same ledger into one entry so a
+        // single ledger cannot produce a contradictory history.
+        if count > 0 {
+            let last_key = DataKey::Checkpoint(account.clone(), count - 1);
+            let last: Checkpoint = env.storage().persistent().get(&last_key).unwrap();
+            if last.ledger == current_ledger {
+                let updated = Checkpoint {
+                    ledger: current_ledger,
+                    power,
+                };
+                env.storage().persistent().set(&last_key, &updated);
+                env.storage().persistent().extend_ttl(
+                    &last_key,
+                    PERSISTENT_LIFETIME_THRESHOLD,
+                    PERSISTENT_BUMP_AMOUNT,
+                );
+                return;
+            }
+        }
+
+        let key = DataKey::Checkpoint(account.clone(), count);
+        env.storage().persistent().set(
+            &key,
+            &Checkpoint {
+                ledger: current_ledger,
+                power,
+            },
+        );
+        env.storage().persistent().extend_ttl(
+            &key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+
+        let count_key = DataKey::CheckpointCount(account.clone());
+        env.storage().persistent().set(&count_key, &(count + 1));
+        env.storage().persistent().extend_ttl(
+            &count_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+    }
+
+    /// Voting power `account` held as of a ledger strictly before
+    /// `ledger_sequence`.
+    ///
+    /// This is the flash-loan-safe read that governance must use. Because the
+    /// lookup requires `checkpoint.ledger < ledger_sequence`, tokens acquired
+    /// in `ledger_sequence` itself — including inside the very transaction that
+    /// borrows them — contribute nothing.
+    pub fn get_past_votes(env: Env, account: Address, ledger_sequence: u32) -> i128 {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+
+        if ledger_sequence > env.ledger().sequence() {
+            panic!("cannot read votes for a future ledger");
+        }
+
+        let count: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::CheckpointCount(account.clone()))
+            .unwrap_or(0);
+        if count == 0 {
+            return 0;
+        }
+
+        // Binary search for the newest checkpoint strictly older than
+        // `ledger_sequence`.
+        let mut low: u32 = 0;
+        let mut high: u32 = count; // exclusive
+        while low < high {
+            let mid = low + (high - low) / 2;
+            let cp: Checkpoint = env
+                .storage()
+                .persistent()
+                .get(&DataKey::Checkpoint(account.clone(), mid))
+                .unwrap();
+            if cp.ledger < ledger_sequence {
+                low = mid + 1;
+            } else {
+                high = mid;
+            }
+        }
+
+        if low == 0 {
+            return 0;
+        }
+
+        let cp: Checkpoint = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Checkpoint(account, low - 1))
+            .unwrap();
+        cp.power
+    }
+
+    /// Number of checkpoints recorded for an account.
+    pub fn get_checkpoint_count(env: Env, account: Address) -> u32 {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        env.storage()
+            .persistent()
+            .get(&DataKey::CheckpointCount(account))
+            .unwrap_or(0)
+    }
+
     /// Take a voting snapshot for a voter at a given ledger sequence.
     /// Stores the voter's own balance plus any delegated power they hold
     /// at that point in time. Governance-dao should use this snapshot
@@ -690,27 +888,11 @@ impl GovernanceTokenContract {
             panic!("cannot snapshot a future ledger");
         }
 
-        let own_balance: i128 = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Balance(voter.clone()))
-            .unwrap_or(0);
-        let delegated_power: i128 = env
-            .storage()
-            .persistent()
-            .get(&DataKey::DelegatedPower(voter.clone()))
-            .unwrap_or(0);
-
-        // If the voter has delegated their power away, snapshot as 0
-        let delegation = env
-            .storage()
-            .persistent()
-            .get::<DataKey, Delegation>(&DataKey::Delegation(voter.clone()));
-        let snapshot_power = if delegation.is_some() {
-            0i128
-        } else {
-            own_balance + delegated_power
-        };
+        // Resolve the power from the checkpoint history rather than from
+        // current storage. Reading live balances here was the bug: it recorded
+        // *present* power under a *past* ledger key, so a borrower could
+        // snapshot their inflated balance and have it counted as historical.
+        let snapshot_power = Self::get_past_votes(env.clone(), voter.clone(), ledger_sequence);
 
         let key = DataKey::VotingSnapshot(voter.clone(), ledger_sequence);
         env.storage().persistent().set(&key, &snapshot_power);

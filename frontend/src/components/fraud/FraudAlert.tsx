@@ -2,6 +2,8 @@
 
 import { clsx } from 'clsx';
 
+import { formatAddress } from '@/lib/display-utils';
+
 export type FraudSeverity = 'low' | 'medium' | 'high' | 'critical';
 
 export interface FraudAlertData {
@@ -56,10 +58,6 @@ const SEVERITY_STYLES: Record<FraudSeverity, { bg: string; border: string; text:
   },
 };
 
-function shortenAddress(addr: string) {
-  return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
-}
-
 export function FraudAlert({ alert, onResolve, onDismiss }: FraudAlertProps) {
   const styles = SEVERITY_STYLES[alert.severity];
   const time = new Date(alert.timestamp * 1000).toLocaleString();
@@ -89,13 +87,13 @@ export function FraudAlert({ alert, onResolve, onDismiss }: FraudAlertProps) {
             </div>
             <p className={clsx('text-sm mt-1', styles.text)}>{alert.description}</p>
             <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-500">
-              <span className="font-mono">{shortenAddress(alert.address)}</span>
+              <span className="font-mono">{formatAddress(alert.address)}</span>
               <span>·</span>
               <span>{time}</span>
               {alert.txHash && (
                 <>
                   <span>·</span>
-                  <span className="font-mono">{shortenAddress(alert.txHash)}</span>
+                  <span className="font-mono">{formatAddress(alert.txHash)}</span>
                 </>
               )}
             </div>

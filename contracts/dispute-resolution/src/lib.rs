@@ -339,6 +339,21 @@ impl DisputeResolutionContract {
             }
         }
 
+        // Return the locked claim funds to the claimant whenever the payout path
+        // above did not disburse them (#817). file_dispute locks claim_amount in
+        // this contract, so an outcome that pays out nothing from it -- NoAction --
+        // must hand it back, as must the escrow path, which settles the payout from
+        // escrow balances and leaves the locked claim funds untouched here.
+        let refund_claim = dispute.outcome == DisputeOutcome::NoAction || used_escrow;
+        if refund_claim && dispute.claim_amount > 0 {
+            let token_client = token::Client::new(&env, &dispute.token);
+            token_client.transfer(
+                &env.current_contract_address(),
+                &dispute.claimant,
+                &dispute.claim_amount,
+            );
+        }
+
         let fee: i128 = env
             .storage()
             .instance()

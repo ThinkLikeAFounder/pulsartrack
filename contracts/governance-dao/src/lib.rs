@@ -12,6 +12,21 @@ use soroban_sdk::{
 };
 
 // ============================================================
+// Governance token voting interface
+// ============================================================
+
+/// The subset of the governance token used for vote weighting.
+///
+/// `get_past_votes` resolves an account's voting power from the token's
+/// checkpoint history, using only checkpoints strictly older than the ledger
+/// asked about. Governance must weight votes with this rather than with a live
+/// `balance()` read, which is what made flash-loan vote inflation possible.
+#[soroban_sdk::contractclient(name = "GovTokenClient")]
+pub trait GovTokenInterface {
+    fn get_past_votes(env: Env, account: Address, ledger_sequence: u32) -> i128;
+}
+
+// ============================================================
 // Data Types
 // ============================================================
 
@@ -49,6 +64,10 @@ pub struct Proposal {
     pub threshold_pct: u32, // percentage to pass
     pub start_ledger: u32,
     pub end_ledger: u32,
+    /// Ledger the vote weights are measured at. Voting power is read strictly
+    /// before this ledger, so tokens acquired at or after proposal creation
+    /// carry no weight.
+    pub snapshot_ledger: u32,
     pub created_at: u64,
     pub executed_at: Option<u64>,
 }
@@ -208,6 +227,7 @@ impl GovernanceDaoContract {
             threshold_pct: threshold,
             start_ledger: start,
             end_ledger: start + voting_period,
+            snapshot_ledger: start,
             created_at: env.ledger().timestamp(),
             executed_at: None,
         };
@@ -247,17 +267,6 @@ impl GovernanceDaoContract {
             panic!("already voted");
         }
 
-        let gov_token: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::GovernanceToken)
-            .unwrap();
-        let token_client = token::Client::new(&env, &gov_token);
-        let balance = token_client.balance(&voter);
-        if power > balance {
-            panic!("insufficient governance tokens");
-        }
-
         let mut proposal: Proposal = env
             .storage()
             .persistent()
@@ -270,6 +279,23 @@ impl GovernanceDaoContract {
 
         if env.ledger().sequence() > proposal.end_ledger {
             panic!("voting period ended");
+        }
+
+        let gov_token: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::GovernanceToken)
+            .unwrap();
+
+        // Weight the vote by the power held strictly BEFORE this proposal's
+        // snapshot ledger, not by the voter's live balance. A live read let an
+        // attacker borrow tokens, vote on the inflated balance, and repay in the
+        // same transaction; power acquired at or after the snapshot ledger now
+        // resolves to the pre-existing checkpoint instead.
+        let voting_power = GovTokenClient::new(&env, &gov_token)
+            .get_past_votes(&voter, &proposal.snapshot_ledger);
+        if power > voting_power {
+            panic!("insufficient governance tokens");
         }
 
         if power <= 0 {
@@ -322,7 +348,11 @@ impl GovernanceDaoContract {
         );
 
         // Lock tokens after recording the vote guard.
-        token_client.transfer(&voter, &env.current_contract_address(), &power);
+        token::Client::new(&env, &gov_token).transfer(
+            &voter,
+            &env.current_contract_address(),
+            &power,
+        );
 
         env.events().publish(
             (symbol_short!("gov"), symbol_short!("voted")),

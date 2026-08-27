@@ -53,7 +53,7 @@ const PulsarEventSchema = z.object({
 
 type EventHandler = (event: PulsarEvent) => void;
 
-class PulsarWebSocket {
+export class PulsarWebSocket {
   private ws: WebSocket | null = null;
   private handlers: Map<EventType | 'all', EventHandler[]> = new Map();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -177,10 +177,16 @@ class PulsarWebSocket {
   disconnect(): void {
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
     }
     this.stopHeartbeat();
-    this.ws?.close();
-    this.ws = null;
+    if (this.ws) {
+      // Detach onclose first: closing would otherwise fire the handler and
+      // schedule a fresh reconnect, defeating the explicit disconnect.
+      this.ws.onclose = null;
+      this.ws.close();
+      this.ws = null;
+    }
   }
 
   on(eventType: EventType | 'all', handler: EventHandler): () => void {
