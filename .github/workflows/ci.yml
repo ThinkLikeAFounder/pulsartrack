@@ -10,6 +10,7 @@ jobs:
   contracts:
     name: Contracts CI
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust
@@ -24,6 +25,7 @@ jobs:
   backend:
     name: Backend CI
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - name: Setup Node.js
@@ -48,6 +50,7 @@ jobs:
   frontend:
     name: Frontend CI
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - name: Setup Node.js
@@ -75,6 +78,7 @@ jobs:
   e2e:
     name: E2E Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Setup Node.js
