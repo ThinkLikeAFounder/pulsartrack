@@ -23,9 +23,9 @@ jobs:
         run: cargo audit
 
       - name: Backend Audit
-        run: npm audit
+        run: npm run audit
         working-directory: backend
 
       - name: Frontend Audit
-        run: npm audit
+        run: npm audit --audit-level=high
         working-directory: frontend
