@@ -158,6 +158,9 @@ impl GovernanceCoreContract {
                     .set(&DataKey::RoleCount(role), &(count - 1));
             }
         }
+
+        env.events()
+            .publish((symbol_short!("role"), symbol_short!("revoked")), account);
     }
 
     pub fn has_role(env: Env, account: Address, role: Role) -> bool {
@@ -222,6 +225,9 @@ impl GovernanceCoreContract {
         env.storage()
             .instance()
             .set(&DataKey::GovernanceParams, &params);
+
+        env.events()
+            .publish((symbol_short!("params"), symbol_short!("updated")), admin);
     }
 
     pub fn get_params(env: Env) -> GovernanceParams {

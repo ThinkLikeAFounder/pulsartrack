@@ -200,7 +200,7 @@ impl MultisigTreasuryContract {
         }
 
         tx.approvals += 1;
-        let _ttl_key = DataKey::TxApproval(tx_id, signer);
+        let _ttl_key = DataKey::TxApproval(tx_id, signer.clone());
         env.storage().persistent().set(&_ttl_key, &true);
         env.storage().persistent().extend_ttl(
             &_ttl_key,
@@ -218,6 +218,11 @@ impl MultisigTreasuryContract {
             &_ttl_key,
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
+        );
+
+        env.events().publish(
+            (symbol_short!("tx"), symbol_short!("approved")),
+            (tx_id, signer),
         );
     }
 
@@ -338,7 +343,7 @@ impl MultisigTreasuryContract {
             .persistent()
             .set(&DataKey::TxRejection(tx_id, signer.clone()), &true);
         env.storage().persistent().extend_ttl(
-            &DataKey::TxRejection(tx_id, signer),
+            &DataKey::TxRejection(tx_id, signer.clone()),
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
         );
@@ -349,6 +354,11 @@ impl MultisigTreasuryContract {
             &_ttl_key,
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
+        );
+
+        env.events().publish(
+            (symbol_short!("tx"), symbol_short!("rejected")),
+            (tx_id, signer),
         );
     }
 
@@ -460,7 +470,7 @@ impl MultisigTreasuryContract {
         }
         env.storage().instance().set(&DataKey::Paused, &paused);
         env.events()
-            .publish((symbol_short!("pause"), symbol_short!("set")), paused);
+            .publish((symbol_short!("pause"), symbol_short!("set")), (admin, paused));
     }
 
     /// Whether the contract is currently paused.

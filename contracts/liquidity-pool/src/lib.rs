@@ -229,6 +229,11 @@ impl LiquidityPoolContract {
         let token_client = token::Client::new(&env, &token_addr);
         token_client.transfer(&env.current_contract_address(), &provider, &amount);
 
+        env.events().publish(
+            (symbol_short!("pool"), symbol_short!("withdraw")),
+            (provider, shares, amount),
+        );
+
         amount
     }
 
@@ -311,6 +316,11 @@ impl LiquidityPoolContract {
             .unwrap();
         let token_client = token::Client::new(&env, &token_addr);
         token_client.transfer(&env.current_contract_address(), &borrower, &amount);
+
+        env.events().publish(
+            (symbol_short!("pool"), symbol_short!("borrow")),
+            (borrower, campaign_id, amount),
+        );
     }
 
     /// Calculate interest accrued on a borrow position
@@ -368,6 +378,11 @@ impl LiquidityPoolContract {
             &_ttl_key,
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
+        );
+
+        env.events().publish(
+            (symbol_short!("pool"), symbol_short!("accrue")),
+            (campaign_id, new_interest),
         );
 
         new_interest
