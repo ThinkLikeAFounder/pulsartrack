@@ -265,16 +265,6 @@ impl GovernanceCoreContract {
         pulsar_common_admin::accept_admin(&env, &DataKey::Admin, &DataKey::PendingAdmin, new_admin);
     }
 
-    pub fn transfer_admin(env: Env, current_admin: Address, new_admin: Address) {
-        current_admin.require_auth();
-        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
-        if current_admin != stored_admin {
-            panic!("unauthorized");
-        }
-
-        env.storage().instance().set(&DataKey::Admin, &new_admin);
-        env.storage().instance().remove(&DataKey::PendingAdmin);
-    }
 }
 
 mod test;
