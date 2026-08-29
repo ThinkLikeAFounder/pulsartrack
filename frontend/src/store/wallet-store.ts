@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import type { StateStorage } from "zustand/middleware";
 import { isWalletConnected, getWalletAddress, verifyNetwork, getFreighterNetworkLabel } from "../lib/wallet";
+import { logger } from "../lib/logger";
 
 interface WalletStore {
   address: string | null;
@@ -64,7 +65,7 @@ export const useWalletStore = create<WalletStore>()(
           // Issue #790 — don't silently swallow. A background reconnect failure
           // shouldn't interrupt the user with a toast, but it must leave a
           // diagnostic trail and not leave a half-connected state lingering.
-          console.error("Wallet auto-reconnect failed:", error);
+          logger.error("Wallet auto-reconnect failed:", error);
           set({ address: null, isConnected: false, networkMismatch: false, freighterNetwork: null });
         }
       },

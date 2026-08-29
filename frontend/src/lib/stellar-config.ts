@@ -167,3 +167,47 @@ export function getSorobanRpcUrl(): string {
 export function getNetworkPassphrase(): string {
   return NETWORK_CONFIG.passphrase;
 }
+
+// Required NEXT_PUBLIC_* env vars, validated at startup so a missing or
+// malformed one fails loudly here instead of surfacing later inside
+// whichever feature happens to need it.
+const REQUIRED_ENV_VARS = [
+  'NEXT_PUBLIC_NETWORK',
+  'NEXT_PUBLIC_WS_URL',
+  'NEXT_PUBLIC_CONTRACT_AD_REGISTRY',
+  'NEXT_PUBLIC_CONTRACT_ANALYTICS_AGGREGATOR',
+  'NEXT_PUBLIC_CONTRACT_AUCTION_ENGINE',
+  'NEXT_PUBLIC_CONTRACT_CAMPAIGN_ORCHESTRATOR',
+  'NEXT_PUBLIC_CONTRACT_DISPUTE_RESOLUTION',
+  'NEXT_PUBLIC_CONTRACT_ESCROW_VAULT',
+  'NEXT_PUBLIC_CONTRACT_FRAUD_PREVENTION',
+  'NEXT_PUBLIC_CONTRACT_GOVERNANCE_DAO',
+  'NEXT_PUBLIC_CONTRACT_GOVERNANCE_TOKEN',
+  'NEXT_PUBLIC_CONTRACT_IDENTITY_REGISTRY',
+  'NEXT_PUBLIC_CONTRACT_PAYMENT_PROCESSOR',
+  'NEXT_PUBLIC_CONTRACT_PRIVACY_LAYER',
+  'NEXT_PUBLIC_CONTRACT_PUBLISHER_REPUTATION',
+  'NEXT_PUBLIC_CONTRACT_PUBLISHER_VERIFICATION',
+  'NEXT_PUBLIC_CONTRACT_REVENUE_SETTLEMENT',
+  'NEXT_PUBLIC_CONTRACT_REWARDS_DISTRIBUTOR',
+  'NEXT_PUBLIC_CONTRACT_SUBSCRIPTION_MANAGER',
+  'NEXT_PUBLIC_CONTRACT_TARGETING_ENGINE',
+] as const;
+
+/**
+ * Verifies every required NEXT_PUBLIC_* env var is present. Throws naming
+ * the specific missing variable(s) instead of letting each feature fail
+ * separately whenever it happens to be used.
+ */
+export function validateRequiredEnv(): void {
+  const missing = REQUIRED_ENV_VARS.filter((key) => !process.env[key]);
+  if (missing.length > 0) {
+    throw new Error(
+      `Missing required environment variable(s): ${missing.join(', ')}`
+    );
+  }
+}
+
+if (process.env.NODE_ENV === 'production') {
+  validateRequiredEnv();
+}
