@@ -11,6 +11,53 @@ interface CampaignFormProps {
   onCancel?: () => void;
 }
 
+type CampaignSubmission =
+  | { ok: false; error: string }
+  | {
+      ok: true;
+      payload: {
+        title: string;
+        contentId: string;
+        campaignType: number;
+        budgetXlm: number;
+        costPerViewXlm: number;
+        durationDays: number;
+        targetViews: number;
+        dailyViewLimit: number;
+        refundable: boolean;
+      };
+    };
+
+export function parseCampaignSubmission(
+  data: CampaignFormData,
+): CampaignSubmission {
+  const budget = Number.parseFloat(data.budgetXlm);
+  const costPerView = Number.parseFloat(data.costPerViewXlm);
+  const campaignType = Number(data.campaignType);
+  const durationDays = Number(data.durationDays);
+  const targetViews = Number.parseInt(data.targetViews, 10);
+  const dailyViewLimit = Number.parseInt(data.dailyViewLimit, 10);
+
+  if (!Number.isFinite(budget) || !Number.isFinite(costPerView)) {
+    return { ok: false, error: "Invalid numeric values" };
+  }
+
+  return {
+    ok: true,
+    payload: {
+      title: data.title,
+      contentId: data.contentId,
+      campaignType,
+      budgetXlm: budget,
+      costPerViewXlm: costPerView,
+      durationDays,
+      targetViews,
+      dailyViewLimit,
+      refundable: data.refundable ?? true,
+    },
+  };
+}
+
 export function CampaignForm({ onSuccess, onCancel }: CampaignFormProps) {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const { createCampaign, isPending } = useCreateCampaign();
@@ -20,7 +67,7 @@ export function CampaignForm({ onSuccess, onCancel }: CampaignFormProps) {
     handleSubmit,
     reset,
     watch,
-    formState: { errors, isValid },
+    formState: { errors },
   } = useForm<CampaignFormData>({
     resolver: zodResolver(campaignSchema),
     mode: "onTouched",
@@ -50,21 +97,30 @@ export function CampaignForm({ onSuccess, onCancel }: CampaignFormProps) {
     setSubmitError(null);
 
     try {
-      const result = await createCampaign({
-        title: data.title,
-        contentId: data.contentId,
-        campaignType: data.campaignType as number,
-        budgetXlm: parseFloat(data.budgetXlm),
-        costPerViewXlm: parseFloat(data.costPerViewXlm),
-        durationDays: data.durationDays as number,
-        targetViews: parseInt(data.targetViews),
-        dailyViewLimit: parseInt(data.dailyViewLimit),
-        refundable: data.refundable ?? true,
-      });
-      onSuccess?.(result as unknown as number);
+      const submission = parseCampaignSubmission(data);
+
+      if (!submission.ok) {
+        setSubmitError(submission.error);
+        return;
+      }
+
+      const result = await createCampaign(submission.payload);
+
+      if (!result.success) {
+        throw new Error(result.error || "Failed to create campaign");
+      }
+
+      const campaignId = Number(result.result);
+      if (!Number.isSafeInteger(campaignId) || campaignId <= 0) {
+        throw new Error("Invalid campaign ID returned");
+      }
+
+      onSuccess?.(campaignId);
       reset();
-    } catch (err: any) {
-      setSubmitError(err?.message || "Failed to create campaign");
+    } catch (err: unknown) {
+      setSubmitError(
+        err instanceof Error ? err.message : "Failed to create campaign",
+      );
     }
   };
 

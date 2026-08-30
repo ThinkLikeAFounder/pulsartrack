@@ -66,6 +66,7 @@ pub enum DataKey {
     Publisher(Address),
     KycRecord(Address),
     DomainOwner(String),
+    Orchestrator,
 }
 
 // ============================================================
@@ -83,7 +84,7 @@ pub struct PublisherVerificationContract;
 #[contractimpl]
 impl PublisherVerificationContract {
     /// Initialize the contract
-    pub fn initialize(env: Env, admin: Address) {
+    pub fn initialize(env: Env, admin: Address, orchestrator: Address) {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -92,6 +93,9 @@ impl PublisherVerificationContract {
         }
         admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage()
+            .instance()
+            .set(&DataKey::Orchestrator, &orchestrator);
         env.storage()
             .instance()
             .set(&DataKey::PublisherCount, &0u64);
@@ -203,12 +207,7 @@ impl PublisherVerificationContract {
     }
 
     /// Verify a publisher (admin only)
-    pub fn verify_publisher(
-        env: Env,
-        admin: Address,
-        publisher: Address,
-        initial_tier: PublisherTier,
-    ) {
+    pub fn verify_publisher(env: Env, admin: Address, publisher: Address) {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -225,9 +224,10 @@ impl PublisherVerificationContract {
             .expect("publisher not found");
 
         pub_data.status = VerificationStatus::Verified;
-        pub_data.tier = initial_tier;
         pub_data.verified_at = Some(env.ledger().timestamp());
         pub_data.reputation_score = 100;
+        // Derive tier from starting score to prevent admin from assigning unearned tiers
+        pub_data.tier = Self::_score_to_tier(100);
 
         let _ttl_key = DataKey::Publisher(publisher.clone());
         env.storage().persistent().set(&_ttl_key, &pub_data);
@@ -321,11 +321,21 @@ impl PublisherVerificationContract {
     }
 
     /// Record impression (called by campaign orchestrator)
-    pub fn record_impression(env: Env, _caller: Address, publisher: Address, earning: i128) {
+    pub fn record_impression(env: Env, caller: Address, publisher: Address, earning: i128) {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-        // In production, restrict to campaign orchestrator contract only
+
+        let orchestrator: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Orchestrator)
+            .unwrap();
+        if caller != orchestrator {
+            panic!("unauthorized: only campaign orchestrator");
+        }
+        caller.require_auth();
+
         let mut pub_data: Publisher = env
             .storage()
             .persistent()
@@ -335,6 +345,10 @@ impl PublisherVerificationContract {
         match pub_data.status {
             VerificationStatus::Verified => {}
             _ => panic!("publisher not verified"),
+        }
+
+        if earning < 0 {
+            panic!("earning per impression must be non-negative");
         }
 
         pub_data.total_earnings += earning;

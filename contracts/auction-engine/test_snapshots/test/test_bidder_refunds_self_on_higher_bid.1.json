@@ -504,7 +504,7 @@
             },
             "ext": "v0"
           },
-          86400
+          1051200
         ]
       ],
       [
@@ -591,7 +591,7 @@
             },
             "ext": "v0"
           },
-          86400
+          1051200
         ]
       ],
       [
@@ -678,7 +678,7 @@
             },
             "ext": "v0"
           },
-          86400
+          1051200
         ]
       ],
       [
@@ -723,61 +723,7 @@
             },
             "ext": "v0"
           },
-          86400
-        ]
-      ],
-      [
-        {
-          "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4",
-            "key": {
-              "vec": [
-                {
-                  "symbol": "BidderBid"
-                },
-                {
-                  "u64": 1
-                },
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDR4"
-                }
-              ]
-            },
-            "durability": "persistent"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_data": {
-                "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4",
-                "key": {
-                  "vec": [
-                    {
-                      "symbol": "BidderBid"
-                    },
-                    {
-                      "u64": 1
-                    },
-                    {
-                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDR4"
-                    }
-                  ]
-                },
-                "durability": "persistent",
-                "val": {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 3000
-                  }
-                }
-              }
-            },
-            "ext": "v0"
-          },
-          86400
+          1051200
         ]
       ],
       [
@@ -825,7 +771,7 @@
             },
             "ext": "v0"
           },
-          86400
+          1051200
         ]
       ],
       [

@@ -1,5 +1,5 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { CampaignForm } from './CampaignForm';
+import { CampaignForm, parseCampaignSubmission } from './CampaignForm';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { useCreateCampaign } from '@/hooks/useContract';
 
@@ -17,7 +17,7 @@ describe('CampaignForm', () => {
         vi.mocked(useCreateCampaign).mockReturnValue({
             createCampaign: mockCreateCampaign,
             isPending: false,
-        } as any);
+        } as Partial<ReturnType<typeof useCreateCampaign>> as ReturnType<typeof useCreateCampaign>);
     });
 
     it('should show error if title is missing', async () => {
@@ -43,7 +43,7 @@ describe('CampaignForm', () => {
             target: { value: '100' },
         });
 
-        mockCreateCampaign.mockResolvedValue(1); // Returns campaign ID
+        mockCreateCampaign.mockResolvedValue({ success: true, result: 1 });
 
         fireEvent.click(screen.getByText('Create Campaign'));
 
@@ -54,6 +54,23 @@ describe('CampaignForm', () => {
                 budgetXlm: 100,
             }));
             expect(mockOnSuccess).toHaveBeenCalledWith(1);
+        });
+    });
+
+    it('should reject non-finite numeric values before contract submission', () => {
+        expect(parseCampaignSubmission({
+            title: 'Overflow Campaign',
+            contentId: 'ipfs://overflow',
+            campaignType: 1,
+            budgetXlm: '1e309',
+            costPerViewXlm: '0.001',
+            durationDays: 30,
+            targetViews: '10000',
+            dailyViewLimit: '1000',
+            refundable: true,
+        })).toEqual({
+            ok: false,
+            error: 'Invalid numeric values',
         });
     });
 

@@ -3,11 +3,19 @@ name: Deploy to Testnet
 on:
   push:
     branches: [main]
+    paths:
+      - 'contracts/**'
+      - 'scripts/deploy.sh'
+      - '.github/workflows/deploy-testnet.yml'
+
+permissions:
+  contents: write
 
 jobs:
   deploy:
     name: Deploy Contracts
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -17,9 +25,7 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Install Stellar CLI
-        run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-          cargo install --locked stellar-cli --features opt
+        run: cargo install --locked stellar-cli --features opt
 
       - name: Build contract WASMs
         run: cargo build --release --target wasm32-unknown-unknown

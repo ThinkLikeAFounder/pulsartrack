@@ -71,6 +71,8 @@ const PERSISTENT_BUMP_AMOUNT: u32 = 1_051_200;
 const MAX_EXTENSIONS: u32 = 10;
 /// Maximum total duration multiplier relative to original_end_ledger.
 const MAX_DURATION_MULTIPLIER: u32 = 3;
+/// Maximum number of transition records stored per campaign (ring-buffer cap).
+const MAX_TRANSITIONS: u32 = 100;
 
 #[contract]
 pub struct CampaignLifecycleContract;
@@ -134,6 +136,14 @@ impl CampaignLifecycleContract {
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
         advertiser.require_auth();
+
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::Lifecycle(campaign_id))
+        {
+            panic!("campaign already registered");
+        }
 
         let lifecycle = CampaignLifecycle {
             campaign_id,
@@ -242,7 +252,7 @@ impl CampaignLifecycleContract {
             PERSISTENT_BUMP_AMOUNT,
         );
 
-        // Record transition
+        // Record transition (ring-buffer capped at MAX_TRANSITIONS)
         let count: u32 = env
             .storage()
             .persistent()
@@ -255,7 +265,8 @@ impl CampaignLifecycleContract {
             reason,
             timestamp: now,
         };
-        let _ttl_key = DataKey::Transition(campaign_id, count);
+        let index = count % MAX_TRANSITIONS;
+        let _ttl_key = DataKey::Transition(campaign_id, index);
         env.storage().persistent().set(&_ttl_key, &transition);
         env.storage().persistent().extend_ttl(
             &_ttl_key,
@@ -310,7 +321,8 @@ impl CampaignLifecycleContract {
         // Enforce maximum total duration (original_end_ledger * MAX_DURATION_MULTIPLIER)
         let max_end = lifecycle
             .original_end_ledger
-            .saturating_mul(MAX_DURATION_MULTIPLIER);
+            .checked_mul(MAX_DURATION_MULTIPLIER)
+            .expect("max duration calculation overflows u32");
         let new_end = lifecycle.current_end_ledger.saturating_add(extra_ledgers);
         if new_end > max_end {
             panic!("extension exceeds max campaign duration");
@@ -325,6 +337,41 @@ impl CampaignLifecycleContract {
             &_ttl_key,
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
+        );
+    }
+
+    /// Permissionless: transition an Active campaign to Expired once its end_ledger has passed.
+    pub fn expire_campaign(env: Env, campaign_id: u64) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+
+        let mut lifecycle: CampaignLifecycle = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Lifecycle(campaign_id))
+            .expect("lifecycle not found");
+
+        if lifecycle.state != LifecycleState::Active {
+            panic!("campaign not active");
+        }
+        if env.ledger().sequence() <= lifecycle.current_end_ledger {
+            panic!("campaign has not expired yet");
+        }
+
+        lifecycle.state = LifecycleState::Expired;
+
+        let _ttl_key = DataKey::Lifecycle(campaign_id);
+        env.storage().persistent().set(&_ttl_key, &lifecycle);
+        env.storage().persistent().extend_ttl(
+            &_ttl_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+
+        env.events().publish(
+            (symbol_short!("lifecycle"), symbol_short!("expired")),
+            campaign_id,
         );
     }
 

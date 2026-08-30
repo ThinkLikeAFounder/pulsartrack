@@ -64,7 +64,10 @@ export function PublisherCard({ publisher, rank, onSelect }: PublisherCardProps)
       </div>
 
       <div className="mt-3">
-        <ReputationBadge score={(publisher as any).reputation_score || 0} size="sm" />
+        <ReputationBadge
+          score={(publisher as Publisher & { reputation_score?: number }).reputation_score || 0}
+          size="sm"
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-3 mt-3 pt-3 border-t border-gray-700">

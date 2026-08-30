@@ -84,6 +84,9 @@ impl TokenBridgeContract {
         if admin != stored_admin {
             panic!("unauthorized");
         }
+        if max_daily_limit <= 0 {
+            panic!("max_daily_limit must be positive");
+        }
         let _ttl_key = DataKey::SupportedChain(chain);
         env.storage().persistent().set(&_ttl_key, &max_daily_limit);
         env.storage().persistent().extend_ttl(
@@ -126,7 +129,10 @@ impl TokenBridgeContract {
             .get(&daily_volume_key)
             .unwrap_or(0);
 
-        if current_daily_volume + amount > max_daily_limit {
+        let new_daily_volume = current_daily_volume
+            .checked_add(amount)
+            .expect("daily volume overflow");
+        if new_daily_volume > max_daily_limit {
             panic!("daily transfer limit exceeded for chain");
         }
 
@@ -135,23 +141,11 @@ impl TokenBridgeContract {
             .instance()
             .get(&DataKey::BridgeFeesBps)
             .unwrap_or(50);
-        let bridge_fee = (amount * fee_bps as i128) / 10_000;
+        let bridge_fee = amount
+            .checked_mul(fee_bps as i128)
+            .expect("bridge fee calculation overflow")
+            / 10_000;
         let net_amount = amount - bridge_fee;
-
-        // Lock tokens in bridge contract
-        let token_client = token::Client::new(&env, &token);
-        token_client.transfer(&sender, &env.current_contract_address(), &amount);
-
-        // Update daily volume for this chain
-        let new_daily_volume = current_daily_volume + amount;
-        env.storage()
-            .persistent()
-            .set(&daily_volume_key, &new_daily_volume);
-        env.storage().persistent().extend_ttl(
-            &daily_volume_key,
-            PERSISTENT_LIFETIME_THRESHOLD,
-            PERSISTENT_BUMP_AMOUNT,
-        );
 
         let counter: u64 = env
             .storage()
@@ -160,12 +154,13 @@ impl TokenBridgeContract {
             .unwrap_or(0);
         let deposit_id = counter + 1;
 
+        // Persist bridge state before the external token transfer.
         let deposit = BridgeDeposit {
             deposit_id,
             sender: sender.clone(),
             recipient_chain,
             recipient_address,
-            token,
+            token: token.clone(),
             amount: net_amount,
             bridge_fee,
             status: BridgeStatus::Pending,
@@ -174,8 +169,16 @@ impl TokenBridgeContract {
             tx_hash: None,
         };
 
+        env.storage()
+            .persistent()
+            .set(&daily_volume_key, &new_daily_volume);
         let _ttl_key = DataKey::Deposit(deposit_id);
         env.storage().persistent().set(&_ttl_key, &deposit);
+        env.storage().persistent().extend_ttl(
+            &daily_volume_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
         env.storage().persistent().extend_ttl(
             &_ttl_key,
             PERSISTENT_LIFETIME_THRESHOLD,
@@ -184,6 +187,10 @@ impl TokenBridgeContract {
         env.storage()
             .instance()
             .set(&DataKey::DepositCounter, &deposit_id);
+
+        // Lock tokens in bridge contract after state is committed.
+        let token_client = token::Client::new(&env, &token);
+        token_client.transfer(&sender, &env.current_contract_address(), &amount);
 
         env.events().publish(
             (symbol_short!("bridge"), symbol_short!("deposit")),
@@ -256,13 +263,8 @@ impl TokenBridgeContract {
         }
 
         let total_refund = deposit.amount + deposit.bridge_fee;
-        let token_client = token::Client::new(&env, &deposit.token);
-        token_client.transfer(
-            &env.current_contract_address(),
-            &deposit.sender,
-            &total_refund,
-        );
-
+        
+        // Update deposit status and persist BEFORE token transfer (CEI pattern)
         deposit.status = BridgeStatus::Refunded;
         let _ttl_key = DataKey::Deposit(deposit_id);
         env.storage().persistent().set(&_ttl_key, &deposit);
@@ -270,6 +272,14 @@ impl TokenBridgeContract {
             &_ttl_key,
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
+        );
+
+        // Perform token transfer after state update
+        let token_client = token::Client::new(&env, &deposit.token);
+        token_client.transfer(
+            &env.current_contract_address(),
+            &deposit.sender,
+            &total_refund,
         );
     }
 

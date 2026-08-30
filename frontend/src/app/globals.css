@@ -5,6 +5,11 @@
   --foreground: #171717;
 }
 
+.dark {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -12,15 +17,347 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), "Segoe UI", sans-serif;
+}
+
+/* =========================================================================
+   PulsarTrack — "Deep Space Observatory" landing system
+   A self-contained dark cosmic canvas (always dark, by design) built around
+   the CP-1919 pulsar waveform and a doppler-shift palette.
+   ========================================================================= */
+
+.pt-cosmos {
+  --void: #04050d;
+  --void-2: #080b1c;
+  --void-3: #0c1230;
+  --signal: #5eeaff;     /* blueshift — primary beam */
+  --signal-dim: #2bb6d6;
+  --redshift: #ff5d8f;   /* redshift — accent */
+  --violet: #9d7bff;
+  --ink: #eef3ff;
+  --muted: #8b94bd;
+  --faint: #5b6390;
+  --line: rgba(143, 162, 222, 0.14);
+  --line-bright: rgba(143, 162, 222, 0.28);
+  --display: var(--font-instrument, "Iowan Old Style", Georgia, serif);
+
+  position: relative;
+  isolation: isolate;
+  overflow-x: clip;
+  color: var(--ink);
+  font-family: var(--font-geist-sans), "Segoe UI", sans-serif;
+  background:
+    radial-gradient(1200px 760px at 50% -8%, rgba(94, 234, 255, 0.12), transparent 62%),
+    radial-gradient(980px 640px at 84% 14%, rgba(157, 123, 255, 0.12), transparent 56%),
+    radial-gradient(820px 620px at 8% 30%, rgba(255, 93, 143, 0.08), transparent 56%),
+    linear-gradient(180deg, var(--void) 0%, var(--void-2) 42%, var(--void) 100%);
+}
+
+/* Faint coordinate grid that fades toward the edges */
+.pt-cosmos::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, var(--line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--line) 1px, transparent 1px);
+  background-size: 64px 64px;
+  -webkit-mask-image: radial-gradient(120% 90% at 50% 0%, #000 0%, transparent 72%);
+  mask-image: radial-gradient(120% 90% at 50% 0%, #000 0%, transparent 72%);
+  opacity: 0.5;
+  animation: pt-grid-drift 60s linear infinite;
+}
+
+/* Grain / noise overlay for depth */
+.pt-cosmos::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  opacity: 0.045;
+  mix-blend-mode: screen;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+@keyframes pt-grid-drift {
+  to { background-position: 64px 64px, 64px 64px; }
+}
+
+/* ---- Starfield ---------------------------------------------------------- */
+.pt-stars {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+}
+.pt-star {
+  position: absolute;
+  border-radius: 9999px;
+  background: #fff;
+  opacity: 0.5;
+  animation: pt-twinkle var(--t, 4s) ease-in-out var(--dl, 0s) infinite;
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.5);
+}
+@keyframes pt-twinkle {
+  0%, 100% { opacity: 0.12; transform: scale(0.8); }
+  50% { opacity: 0.9; transform: scale(1.15); }
+}
+
+/* ---- Radio-telescope sweep --------------------------------------------- */
+.pt-sweep {
+  position: absolute;
+  border-radius: 9999px;
+  pointer-events: none;
+  z-index: -1;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    rgba(94, 234, 255, 0.22) 14deg,
+    rgba(94, 234, 255, 0.02) 40deg,
+    transparent 70deg,
+    transparent 360deg
+  );
+  -webkit-mask-image: radial-gradient(closest-side, transparent 34%, #000 38%, #000 64%, transparent 66%);
+  mask-image: radial-gradient(closest-side, transparent 34%, #000 38%, #000 64%, transparent 66%);
+  animation: pt-rotate 18s linear infinite;
+  opacity: 0.7;
+}
+.pt-sweep-ring {
+  position: absolute;
+  border-radius: 9999px;
+  border: 1px solid rgba(94, 234, 255, 0.18);
+  pointer-events: none;
+  z-index: -1;
+}
+@keyframes pt-rotate { to { transform: rotate(360deg); } }
+
+/* ---- Pulsar waveform (CP-1919) ----------------------------------------- */
+.pt-ridges {
+  width: 100%;
+  height: auto;
+  display: block;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 16%, #000 84%, transparent 100%);
+  mask-image: linear-gradient(180deg, transparent 0%, #000 16%, #000 84%, transparent 100%);
+  filter: drop-shadow(0 0 7px rgba(94, 234, 255, 0.22));
+  animation: pt-breathe 8s ease-in-out infinite;
+}
+@keyframes pt-breathe {
+  0%, 100% { filter: drop-shadow(0 0 6px rgba(94, 234, 255, 0.18)); opacity: 0.92; }
+  50% { filter: drop-shadow(0 0 14px rgba(94, 234, 255, 0.4)); opacity: 1; }
+}
+
+/* The "lighthouse" beam dot that pulses on a fixed cadence */
+.pt-beacon {
+  position: relative;
+  width: 9px;
+  height: 9px;
+  border-radius: 9999px;
+  background: var(--signal);
+  box-shadow: 0 0 0 0 rgba(94, 234, 255, 0.6);
+  animation: pt-ping 2.4s cubic-bezier(0.2, 0.7, 0.3, 1) infinite;
+}
+@keyframes pt-ping {
+  0% { box-shadow: 0 0 0 0 rgba(94, 234, 255, 0.5); }
+  70%, 100% { box-shadow: 0 0 0 16px rgba(94, 234, 255, 0); }
+}
+.pt-live-dot {
+  width: 7px; height: 7px; border-radius: 9999px;
+  background: var(--signal);
+  animation: pt-blink 1.6s steps(1, end) infinite;
+}
+@keyframes pt-blink { 0%, 60% { opacity: 1; } 61%, 100% { opacity: 0.25; } }
+
+/* ---- Reveal system ------------------------------------------------------ */
+.pt-load {
+  opacity: 0;
+  animation: pt-rise 1s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: var(--d, 0s);
+}
+@keyframes pt-rise {
+  from { opacity: 0; transform: translateY(26px); }
+  to { opacity: 1; transform: none; }
+}
+.pt-reveal {
+  opacity: 0;
+  transform: translateY(30px);
+  transition: opacity 0.85s ease, transform 0.85s cubic-bezier(0.2, 0.7, 0.2, 1);
+  transition-delay: var(--d, 0s);
+  will-change: opacity, transform;
+}
+.pt-reveal.pt-in { opacity: 1; transform: none; }
+
+/* ---- Typography & accents ---------------------------------------------- */
+.pt-display { font-family: var(--display); font-weight: 400; letter-spacing: -0.01em; }
+.pt-mono {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.pt-grad {
+  background: linear-gradient(100deg, var(--signal) 0%, var(--violet) 48%, var(--redshift) 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: pt-shimmer 8s ease-in-out infinite;
+}
+@keyframes pt-shimmer {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+/* ---- Buttons ------------------------------------------------------------ */
+.pt-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.85rem 1.5rem;
+  border-radius: 9999px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #04050d;
+  background: linear-gradient(180deg, #aef3ff, var(--signal));
+  box-shadow: 0 0 0 1px rgba(94, 234, 255, 0.6), 0 14px 40px -12px rgba(94, 234, 255, 0.7);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+  overflow: hidden;
+}
+.pt-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0 0 1px rgba(94, 234, 255, 0.9), 0 22px 50px -10px rgba(94, 234, 255, 0.8);
+}
+.pt-btn::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(120deg, transparent 30%, rgba(255, 255, 255, 0.55) 50%, transparent 70%);
+  transform: translateX(-120%);
+  transition: transform 0.7s ease;
+}
+.pt-btn:hover::after { transform: translateX(120%); }
+
+.pt-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.85rem 1.5rem;
+  border-radius: 9999px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--ink);
+  background: rgba(143, 162, 222, 0.06);
+  border: 1px solid var(--line-bright);
+  backdrop-filter: blur(8px);
+  transition: transform 0.25s ease, border-color 0.25s ease, background 0.25s ease;
+}
+.pt-btn-ghost:hover {
+  transform: translateY(-2px);
+  border-color: rgba(94, 234, 255, 0.55);
+  background: rgba(94, 234, 255, 0.08);
+}
+
+/* ---- Pills & chips ------------------------------------------------------ */
+.pt-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.85rem 0.4rem 0.7rem;
+  border-radius: 9999px;
+  font-size: 0.72rem;
+  border: 1px solid var(--line-bright);
+  background: rgba(143, 162, 222, 0.05);
+  color: var(--muted);
+  backdrop-filter: blur(8px);
+}
+
+/* ---- Glass cards -------------------------------------------------------- */
+.pt-card {
+  position: relative;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, rgba(143, 162, 222, 0.06), rgba(143, 162, 222, 0.015));
+  backdrop-filter: blur(10px);
+  overflow: hidden;
+  transition: transform 0.35s cubic-bezier(0.2, 0.7, 0.2, 1), border-color 0.35s ease;
+}
+.pt-card::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--signal), var(--redshift), transparent);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+/* radial spotlight that follows the cursor via --mx/--my */
+.pt-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  background: radial-gradient(380px circle at var(--mx, 50%) var(--my, 0%), rgba(94, 234, 255, 0.13), transparent 60%);
+}
+.pt-card:hover {
+  transform: translateY(-5px);
+  border-color: rgba(94, 234, 255, 0.32);
+}
+.pt-card:hover::before, .pt-card:hover::after { opacity: 1; }
+
+.pt-icon {
+  display: grid;
+  place-items: center;
+  width: 46px; height: 46px;
+  border-radius: 12px;
+  color: var(--signal);
+  background: radial-gradient(120% 120% at 30% 20%, rgba(94, 234, 255, 0.22), rgba(94, 234, 255, 0.04));
+  border: 1px solid rgba(94, 234, 255, 0.22);
+}
+
+/* ---- Catalog rows ------------------------------------------------------- */
+.pt-cat-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  transition: background 0.25s ease, border-color 0.25s ease, transform 0.25s ease;
+}
+.pt-cat-item:hover {
+  background: rgba(94, 234, 255, 0.06);
+  border-color: rgba(94, 234, 255, 0.2);
+  transform: translateX(3px);
+}
+.pt-dot {
+  width: 6px; height: 6px; border-radius: 9999px;
+  background: var(--signal-dim);
+  box-shadow: 0 0 8px var(--signal);
+  flex: none;
+}
+
+/* ---- Divider beam ------------------------------------------------------- */
+.pt-beamline {
+  height: 1px;
+  width: 100%;
+  background: linear-gradient(90deg, transparent, var(--line-bright) 20%, var(--signal) 50%, var(--line-bright) 80%, transparent);
+  opacity: 0.6;
+}
+
+/* ---- Reduced motion ----------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .pt-cosmos *, .pt-cosmos::before {
+    animation: none !important;
+    transition-duration: 0.001ms !important;
+  }
+  .pt-reveal { opacity: 1; transform: none; }
+  .pt-load { opacity: 1; }
 }

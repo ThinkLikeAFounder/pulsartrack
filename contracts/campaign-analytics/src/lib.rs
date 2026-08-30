@@ -52,6 +52,54 @@ pub enum DataKey {
     Funnel(u64),
 }
 
+// ============================================================
+// Snapshot Arguments
+// ============================================================
+
+#[contracttype]
+#[derive(Clone)]
+pub struct SnapshotArgs {
+    pub oracle: Address,
+    pub campaign_id: u64,
+    pub impressions: u64,
+    pub clicks: u64,
+    pub conversions: u64,
+    pub spend: i128,
+    pub reach: u64,
+}
+
+// ============================================================
+// Funnel Arguments
+// ============================================================
+
+#[contracttype]
+#[derive(Clone)]
+pub struct FunnelArgs {
+    pub oracle: Address,
+    pub campaign_id: u64,
+    pub impressions: u64,
+    pub engagements: u64,
+    pub clicks: u64,
+    pub sign_ups: u64,
+    pub conversions: u64,
+    pub conversion_value: i128,
+}
+
+// ============================================================
+// Retention Arguments
+// ============================================================
+
+#[contracttype]
+#[derive(Clone)]
+pub struct RetentionArgs {
+    pub oracle: Address,
+    pub campaign_id: u64,
+    pub day1: u32,
+    pub day7: u32,
+    pub day30: u32,
+    pub avg_session: u64,
+    pub bounce_rate: u32,
+}
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17_280;
 const INSTANCE_BUMP_AMOUNT: u32 = 86_400;
 const PERSISTENT_LIFETIME_THRESHOLD: u32 = 120_960;
@@ -81,57 +129,48 @@ impl CampaignAnalyticsContract {
             .set(&DataKey::OracleAddress, &oracle);
     }
 
-    pub fn record_snapshot(
-        env: Env,
-        oracle: Address,
-        campaign_id: u64,
-        impressions: u64,
-        clicks: u64,
-        conversions: u64,
-        spend: i128,
-        reach: u64,
-    ) {
+    pub fn record_snapshot(env: Env, args: SnapshotArgs) {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-        oracle.require_auth();
+        args.oracle.require_auth();
         let stored_oracle: Address = env
             .storage()
             .instance()
             .get(&DataKey::OracleAddress)
             .unwrap();
-        if oracle != stored_oracle {
+        if args.oracle != stored_oracle {
             panic!("unauthorized");
         }
 
         let snapshot = CampaignSnapshot {
-            campaign_id,
+            campaign_id: args.campaign_id,
             ledger_sequence: env.ledger().sequence(),
             timestamp: env.ledger().timestamp(),
-            impressions,
-            clicks,
-            conversions,
-            spend,
-            reach,
+            impressions: args.impressions,
+            clicks: args.clicks,
+            conversions: args.conversions,
+            spend: args.spend,
+            reach: args.reach,
         };
 
         let count: u32 = env
             .storage()
             .persistent()
-            .get(&DataKey::SnapshotCount(campaign_id))
+            .get(&DataKey::SnapshotCount(args.campaign_id))
             .unwrap_or(0);
 
         // Ring buffer: overwrite oldest snapshot once MAX_SNAPSHOTS is reached,
         // keeping storage bounded to MAX_SNAPSHOTS entries per campaign.
         let index = count % MAX_SNAPSHOTS;
-        let snapshot_key = DataKey::Snapshot(campaign_id, index);
+        let snapshot_key = DataKey::Snapshot(args.campaign_id, index);
         env.storage().persistent().set(&snapshot_key, &snapshot);
         env.storage().persistent().extend_ttl(
             &snapshot_key,
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
         );
-        let count_key = DataKey::SnapshotCount(campaign_id);
+        let count_key = DataKey::SnapshotCount(args.campaign_id);
         env.storage().persistent().set(&count_key, &(count + 1));
         env.storage().persistent().extend_ttl(
             &count_key,
@@ -140,41 +179,31 @@ impl CampaignAnalyticsContract {
         );
     }
 
-    pub fn update_funnel(
-        env: Env,
-        oracle: Address,
-        campaign_id: u64,
-        impressions: u64,
-        engagements: u64,
-        clicks: u64,
-        sign_ups: u64,
-        conversions: u64,
-        conversion_value: i128,
-    ) {
+    pub fn update_funnel(env: Env, args: FunnelArgs) {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-        oracle.require_auth();
+        args.oracle.require_auth();
         let stored_oracle: Address = env
             .storage()
             .instance()
             .get(&DataKey::OracleAddress)
             .unwrap();
-        if oracle != stored_oracle {
+        if args.oracle != stored_oracle {
             panic!("unauthorized");
         }
 
         let funnel = ConversionFunnel {
-            campaign_id,
-            impressions,
-            engagements,
-            clicks,
-            sign_ups,
-            conversions,
-            conversion_value,
+            campaign_id: args.campaign_id,
+            impressions: args.impressions,
+            engagements: args.engagements,
+            clicks: args.clicks,
+            sign_ups: args.sign_ups,
+            conversions: args.conversions,
+            conversion_value: args.conversion_value,
         };
 
-        let _ttl_key = DataKey::Funnel(campaign_id);
+        let _ttl_key = DataKey::Funnel(args.campaign_id);
         env.storage().persistent().set(&_ttl_key, &funnel);
         env.storage().persistent().extend_ttl(
             &_ttl_key,
@@ -183,39 +212,30 @@ impl CampaignAnalyticsContract {
         );
     }
 
-    pub fn update_retention(
-        env: Env,
-        oracle: Address,
-        campaign_id: u64,
-        day1: u32,
-        day7: u32,
-        day30: u32,
-        avg_session: u64,
-        bounce_rate: u32,
-    ) {
+    pub fn update_retention(env: Env, args: RetentionArgs) {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-        oracle.require_auth();
+        args.oracle.require_auth();
         let stored_oracle: Address = env
             .storage()
             .instance()
             .get(&DataKey::OracleAddress)
             .unwrap();
-        if oracle != stored_oracle {
+        if args.oracle != stored_oracle {
             panic!("unauthorized");
         }
 
         let metrics = RetentionMetrics {
-            campaign_id,
-            day_1_retention: day1,
-            day_7_retention: day7,
-            day_30_retention: day30,
-            avg_session_duration: avg_session,
-            bounce_rate,
+            campaign_id: args.campaign_id,
+            day_1_retention: args.day1,
+            day_7_retention: args.day7,
+            day_30_retention: args.day30,
+            avg_session_duration: args.avg_session,
+            bounce_rate: args.bounce_rate,
         };
 
-        let _ttl_key = DataKey::RetentionMetrics(campaign_id);
+        let _ttl_key = DataKey::RetentionMetrics(args.campaign_id);
         env.storage().persistent().set(&_ttl_key, &metrics);
         env.storage().persistent().extend_ttl(
             &_ttl_key,

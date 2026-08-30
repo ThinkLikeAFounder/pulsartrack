@@ -2,7 +2,7 @@
 use super::*;
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
-    token::StellarAssetClient,
+    token::{Client as TokenClient, StellarAssetClient},
     Address, Env, String,
 };
 
@@ -30,7 +30,7 @@ fn setup(
     let token_admin = Address::generate(env);
     let token_addr = deploy_token(env, &token_admin);
 
-    let contract_id = env.register_contract(None, DisputeResolutionContract);
+    let contract_id = env.register(DisputeResolutionContract, ());
     let client = DisputeResolutionContractClient::new(env, &contract_id);
     client.initialize(&admin, &token_addr, &1000i128);
 
@@ -52,7 +52,7 @@ fn test_initialize() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let contract_id = env.register_contract(None, DisputeResolutionContract);
+    let contract_id = env.register(DisputeResolutionContract, ());
     let client = DisputeResolutionContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -68,7 +68,7 @@ fn test_initialize_twice() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let contract_id = env.register_contract(None, DisputeResolutionContract);
+    let contract_id = env.register(DisputeResolutionContract, ());
     let client = DisputeResolutionContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -84,7 +84,7 @@ fn test_initialize_twice() {
 fn test_initialize_non_admin_fails() {
     let env = Env::default();
 
-    let contract_id = env.register_contract(None, DisputeResolutionContract);
+    let contract_id = env.register(DisputeResolutionContract, ());
     let client = DisputeResolutionContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -120,6 +120,57 @@ fn test_authorize_arbitrator_by_stranger() {
     client.authorize_arbitrator(&stranger, &arbitrator);
 }
 
+// ─── revoke_arbitrator ───────────────────────────────────────────────────────
+
+#[test]
+fn test_revoke_arbitrator() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, _, _) = setup(&env);
+    let arbitrator = Address::generate(&env);
+
+    client.authorize_arbitrator(&admin, &arbitrator);
+    client.revoke_arbitrator(&admin, &arbitrator);
+}
+
+#[test]
+#[should_panic(expected = "arbitrator not authorized")]
+fn test_revoke_arbitrator_blocks_assignment() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, _, token_addr) = setup(&env);
+
+    let claimant = Address::generate(&env);
+    let respondent = Address::generate(&env);
+    let arbitrator = Address::generate(&env);
+    mint(&env, &token_addr, &claimant, 1_000_000);
+
+    let dispute_id = client.file_dispute(
+        &claimant,
+        &respondent,
+        &1u64,
+        &50_000i128,
+        &make_desc(&env),
+        &make_evidence(&env),
+    );
+
+    client.authorize_arbitrator(&admin, &arbitrator);
+    client.revoke_arbitrator(&admin, &arbitrator);
+    client.assign_arbitrator(&admin, &dispute_id, &arbitrator);
+}
+
+#[test]
+#[should_panic(expected = "unauthorized")]
+fn test_revoke_arbitrator_by_stranger() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _, _, _) = setup(&env);
+    let stranger = Address::generate(&env);
+    let arbitrator = Address::generate(&env);
+
+    client.revoke_arbitrator(&stranger, &arbitrator);
+}
+
 // ─── file_dispute ────────────────────────────────────────────────────────────
 
 #[test]
@@ -152,6 +203,26 @@ fn test_file_dispute() {
     assert!(matches!(dispute.outcome, DisputeOutcome::Pending));
     assert!(dispute.arbitrator.is_none());
     let _ = token_admin;
+}
+
+#[test]
+#[should_panic(expected = "claimant and respondent cannot be the same address")]
+fn test_file_dispute_self_dispute_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _, _, token_addr) = setup(&env);
+
+    let claimant = Address::generate(&env);
+    mint(&env, &token_addr, &claimant, 1_000_000);
+
+    client.file_dispute(
+        &claimant,
+        &claimant,
+        &1u64,
+        &50_000i128,
+        &make_desc(&env),
+        &make_evidence(&env),
+    );
 }
 
 #[test]
@@ -265,6 +336,40 @@ fn test_assign_unauthorized_arbitrator() {
     client.assign_arbitrator(&admin, &dispute_id, &arbitrator);
 }
 
+#[test]
+#[should_panic(expected = "cannot assign arbitrator to a finalized dispute")]
+fn test_assign_arbitrator_on_resolved_dispute() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, _, token_addr) = setup(&env);
+
+    let claimant = Address::generate(&env);
+    let respondent = Address::generate(&env);
+    let arbitrator = Address::generate(&env);
+    let new_arbitrator = Address::generate(&env);
+    mint(&env, &token_addr, &claimant, 1_000_000);
+
+    let dispute_id = client.file_dispute(
+        &claimant,
+        &respondent,
+        &1u64,
+        &50_000i128,
+        &make_desc(&env),
+        &make_evidence(&env),
+    );
+    client.authorize_arbitrator(&admin, &arbitrator);
+    client.authorize_arbitrator(&admin, &new_arbitrator);
+    client.assign_arbitrator(&admin, &dispute_id, &arbitrator);
+    client.resolve_dispute(
+        &arbitrator,
+        &dispute_id,
+        &DisputeOutcome::Claimant,
+        &String::from_str(&env, "claimant wins"),
+    );
+
+    client.assign_arbitrator(&admin, &dispute_id, &new_arbitrator);
+}
+
 // ─── resolve_dispute ─────────────────────────────────────────────────────────
 
 #[test]
@@ -307,6 +412,89 @@ fn test_resolve_dispute() {
 }
 
 #[test]
+fn test_resolve_dispute_no_action_refunds_filing_fee() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, _, token_addr) = setup(&env);
+
+    let claimant = Address::generate(&env);
+    let respondent = Address::generate(&env);
+    let arbitrator = Address::generate(&env);
+    let token_client = TokenClient::new(&env, &token_addr);
+    mint(&env, &token_addr, &claimant, 1_000_000);
+
+    let initial_claimant_balance = token_client.balance(&claimant);
+    let dispute_id = client.file_dispute(
+        &claimant,
+        &respondent,
+        &1u64,
+        &50_000i128,
+        &make_desc(&env),
+        &make_evidence(&env),
+    );
+
+    client.authorize_arbitrator(&admin, &arbitrator);
+    client.assign_arbitrator(&admin, &dispute_id, &arbitrator);
+    client.resolve_dispute(
+        &arbitrator,
+        &dispute_id,
+        &DisputeOutcome::NoAction,
+        &String::from_str(&env, "no action needed"),
+    );
+
+    let claimant_balance_after = token_client.balance(&claimant);
+    assert_eq!(claimant_balance_after, initial_claimant_balance);
+    assert_eq!(token_client.balance(&client.address), 0);
+
+    let dispute = client.get_dispute(&dispute_id).unwrap();
+    assert!(matches!(dispute.outcome, DisputeOutcome::NoAction));
+    assert!(matches!(dispute.status, DisputeStatus::Resolved));
+}
+
+#[test]
+fn test_resolve_dispute_respondent_does_not_receive_filing_fee() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, _, token_addr) = setup(&env);
+
+    let claimant = Address::generate(&env);
+    let respondent = Address::generate(&env);
+    let arbitrator = Address::generate(&env);
+    let token_client = TokenClient::new(&env, &token_addr);
+    mint(&env, &token_addr, &claimant, 1_000_000);
+
+    let initial_claimant_balance = token_client.balance(&claimant);
+    let initial_respondent_balance = token_client.balance(&respondent);
+    let dispute_id = client.file_dispute(
+        &claimant,
+        &respondent,
+        &1u64,
+        &50_000i128,
+        &make_desc(&env),
+        &make_evidence(&env),
+    );
+
+    client.authorize_arbitrator(&admin, &arbitrator);
+    client.assign_arbitrator(&admin, &dispute_id, &arbitrator);
+    client.resolve_dispute(
+        &arbitrator,
+        &dispute_id,
+        &DisputeOutcome::Respondent,
+        &String::from_str(&env, "respondent wins"),
+    );
+
+    assert_eq!(
+        token_client.balance(&claimant),
+        initial_claimant_balance - 50_000 - 1_000
+    );
+    assert_eq!(
+        token_client.balance(&respondent),
+        initial_respondent_balance + 50_000
+    );
+    assert_eq!(token_client.balance(&client.address), 1_000);
+}
+
+#[test]
 #[should_panic(expected = "not assigned arbitrator")]
 fn test_resolve_by_wrong_arbitrator() {
     let env = Env::default();
@@ -338,6 +526,39 @@ fn test_resolve_by_wrong_arbitrator() {
     );
 }
 
+// ─── Pending outcome rejection (regression #747) ─────────────────────────────
+
+#[test]
+#[should_panic(expected = "Pending is not a valid resolution outcome")]
+fn test_resolve_with_pending_outcome_is_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, _, token_addr) = setup(&env);
+
+    let claimant = Address::generate(&env);
+    let respondent = Address::generate(&env);
+    let arbitrator = Address::generate(&env);
+    mint(&env, &token_addr, &claimant, 1_000_000);
+
+    let dispute_id = client.file_dispute(
+        &claimant,
+        &respondent,
+        &1u64,
+        &50_000i128,
+        &make_desc(&env),
+        &make_evidence(&env),
+    );
+    client.authorize_arbitrator(&admin, &arbitrator);
+    client.assign_arbitrator(&admin, &dispute_id, &arbitrator);
+
+    client.resolve_dispute(
+        &arbitrator,
+        &dispute_id,
+        &DisputeOutcome::Pending,
+        &String::from_str(&env, "should not work"),
+    );
+}
+
 // ─── read-only ───────────────────────────────────────────────────────────────
 
 #[test]
@@ -356,4 +577,28 @@ fn test_get_dispute_count_initial() {
     let (client, _, _, _) = setup(&env);
 
     assert_eq!(client.get_dispute_count(), 0);
+}
+
+// ─── set_escrow_contract ─────────────────────────────────────────────────────
+
+#[test]
+fn test_set_escrow_contract() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, _, _) = setup(&env);
+    let escrow_addr = Address::generate(&env);
+
+    client.set_escrow_contract(&admin, &escrow_addr);
+}
+
+#[test]
+#[should_panic(expected = "unauthorized")]
+fn test_set_escrow_contract_unauthorized() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _, _, _) = setup(&env);
+    let stranger = Address::generate(&env);
+    let escrow_addr = Address::generate(&env);
+
+    client.set_escrow_contract(&stranger, &escrow_addr);
 }

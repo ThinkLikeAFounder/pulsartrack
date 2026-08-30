@@ -10,9 +10,9 @@ services:
     container_name: pulsartrack-db-dev
     restart: unless-stopped
     environment:
-      POSTGRES_USER: pulsartrack
-      POSTGRES_PASSWORD: pulsartrack_dev_password
-      POSTGRES_DB: pulsartrack
+      POSTGRES_USER: ${POSTGRES_USER:-pulsartrack}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_DB: ${POSTGRES_DB:-pulsartrack}
     ports:
       - "5432:5432"
     volumes:
@@ -56,7 +56,7 @@ services:
     environment:
       NODE_ENV: development
       PORT: 3001
-      DATABASE_URL: postgresql://pulsartrack:pulsartrack_dev_password@db:5432/pulsartrack
+      DATABASE_URL: postgresql://${POSTGRES_USER:-pulsartrack}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@db:5432/${POSTGRES_DB:-pulsartrack}
       REDIS_URL: redis://redis:6379
       STELLAR_NETWORK: testnet
       STELLAR_HORIZON_URL: https://horizon-testnet.stellar.org

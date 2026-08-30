@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom';
-import { vi, beforeAll, afterAll, afterEach } from 'vitest';
+import { vi, beforeAll, afterEach } from 'vitest';
 
 // Mock Freighter API
 vi.mock('@stellar/freighter-api', () => ({
@@ -51,14 +51,14 @@ class MockWebSocket {
         }, 0);
     }
 
-    send(data: string) { }
+    send() { }
     close() {
         this.readyState = 3; // CLOSED
         this.onclose();
     }
 }
 
-// @ts-ignore
+// @ts-expect-error — MockWebSocket is a minimal stub, not a full WebSocket impl
 global.WebSocket = MockWebSocket;
 
 // Mock window.freighter

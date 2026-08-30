@@ -29,8 +29,8 @@ export function ProposalForm({ onSubmit, onCancel, requiredBalance = 1000 }: Pro
       await onSubmit?.({ title, description, durationDays });
       setTitle('');
       setDescription('');
-    } catch (err: any) {
-      setError(err?.message || 'Failed to submit proposal');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to submit proposal');
     } finally {
       setIsPending(false);
     }
@@ -45,41 +45,46 @@ export function ProposalForm({ onSubmit, onCancel, requiredBalance = 1000 }: Pro
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-300 mb-1">
+        <label htmlFor="proposal-title" className="block text-sm font-medium text-gray-300 mb-1">
           Proposal Title <span className="text-red-400">*</span>
         </label>
         <input
+          id="proposal-title"
           type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="e.g. Reduce platform fee to 1.5%"
           maxLength={120}
+          aria-describedby="proposal-title-hint"
           className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm"
         />
-        <p className="text-xs text-gray-500 mt-1 text-right">{title.length}/120</p>
+        <p id="proposal-title-hint" className="text-xs text-gray-500 mt-1 text-right">{title.length}/120</p>
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-300 mb-1">
+        <label htmlFor="proposal-description" className="block text-sm font-medium text-gray-300 mb-1">
           Description <span className="text-red-400">*</span>
         </label>
         <textarea
+          id="proposal-description"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Describe the proposal in detail. Include motivation, implementation plan, and expected outcomes. Minimum 50 characters."
           rows={6}
+          aria-describedby="proposal-description-hint"
           className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm resize-none"
         />
-        <p className="text-xs text-gray-500 mt-1">
+        <p id="proposal-description-hint" className="text-xs text-gray-500 mt-1">
           {description.length} chars {description.length < 50 && `(need ${50 - description.length} more)`}
         </p>
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-300 mb-1">
+        <label htmlFor="proposal-duration" className="block text-sm font-medium text-gray-300 mb-1">
           Voting Duration
         </label>
         <select
+          id="proposal-duration"
           value={durationDays}
           onChange={(e) => setDurationDays(parseInt(e.target.value))}
           className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 text-sm"

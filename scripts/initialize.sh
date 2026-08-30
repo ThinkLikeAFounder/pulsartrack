@@ -92,7 +92,15 @@ call_contract() {
 }
 
 read_contract() {
-  python3 -c "import json; d=json.load(open('$DEPLOY_FILE')); print(d['contracts'].get('$1',''))" 2>/dev/null
+  python3 - "$DEPLOY_FILE" "$1" <<'PY' 2>/dev/null
+import json
+import sys
+
+deploy_file, name = sys.argv[1], sys.argv[2]
+with open(deploy_file, encoding="utf-8") as f:
+    data = json.load(f)
+print(data["contracts"].get(name, ""))
+PY
 }
 
 echo ""

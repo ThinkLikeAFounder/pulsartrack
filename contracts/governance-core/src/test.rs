@@ -1,10 +1,13 @@
 #![cfg(test)]
 use super::*;
-use soroban_sdk::{testutils::{Address as _, Ledger}, Address, Env};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger},
+    Address, Env,
+};
 
 fn setup(env: &Env) -> (GovernanceCoreContractClient<'_>, Address) {
     let admin = Address::generate(env);
-    let id = env.register_contract(None, GovernanceCoreContract);
+    let id = env.register(GovernanceCoreContract, ());
     let c = GovernanceCoreContractClient::new(env, &id);
     c.initialize(&admin);
     (c, admin)
@@ -22,7 +25,7 @@ fn test_initialize() {
 fn test_initialize_twice() {
     let env = Env::default();
     env.mock_all_auths();
-    let id = env.register_contract(None, GovernanceCoreContract);
+    let id = env.register(GovernanceCoreContract, ());
     let c = GovernanceCoreContractClient::new(&env, &id);
     let a = Address::generate(&env);
     c.initialize(&a);
@@ -33,7 +36,7 @@ fn test_initialize_twice() {
 #[should_panic]
 fn test_initialize_non_admin_fails() {
     let env = Env::default();
-    let id = env.register_contract(None, GovernanceCoreContract);
+    let id = env.register(GovernanceCoreContract, ());
     let c = GovernanceCoreContractClient::new(&env, &id);
     c.initialize(&Address::generate(&env));
 }
@@ -83,6 +86,45 @@ fn test_revoke_role() {
     assert!(c.has_role(&account, &Role::Operator));
     c.revoke_role(&admin, &account, &Role::Operator);
     assert!(!c.has_role(&account, &Role::Operator));
+}
+
+#[test]
+fn test_revoke_after_expiry_cleanup_no_double_decrement() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin) = setup(&env);
+    let expiring = Address::generate(&env);
+    let permanent = Address::generate(&env);
+
+    let role_count = |role: Role| -> u32 {
+        env.as_contract(&c.address, || {
+            env.storage()
+                .instance()
+                .get(&DataKey::RoleCount(role))
+                .unwrap_or(0)
+        })
+    };
+
+    // Grant one expiring and one permanent Operator role
+    c.grant_role(&admin, &expiring, &Role::Operator, &Some(100u64));
+    c.grant_role(&admin, &permanent, &Role::Operator, &None);
+    assert_eq!(role_count(Role::Operator), 2);
+
+    // Advance past expiry — has_role lazily cleans the expired grant
+    env.ledger().with_mut(|li| {
+        li.timestamp = 200;
+    });
+    assert!(!c.has_role(&expiring, &Role::Operator));
+    assert_eq!(role_count(Role::Operator), 1);
+
+    // Revoking the already-cleaned grant must NOT decrement again
+    c.revoke_role(&admin, &expiring, &Role::Operator);
+    assert_eq!(role_count(Role::Operator), 1);
+
+    // The permanent grant is still intact and counted
+    assert!(c.has_role(&permanent, &Role::Operator));
+    c.revoke_role(&admin, &permanent, &Role::Operator);
+    assert_eq!(role_count(Role::Operator), 0);
 }
 
 #[test]

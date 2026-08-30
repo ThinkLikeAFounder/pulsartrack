@@ -85,7 +85,11 @@ export function useWallet() {
       if (addr && addr !== addressRef.current) {
         setAddress(addr);
         setConnected(true);
-        queryClient.invalidateQueries(); // Invalidate on account switch
+        // Invalidate address-dependent queries only
+        queryClient.invalidateQueries({ queryKey: ["contract"] });
+        queryClient.invalidateQueries({ queryKey: ["advertiser_campaigns"] });
+        queryClient.invalidateQueries({ queryKey: ["publisher_auctions"] });
+        queryClient.invalidateQueries({ queryKey: ["governance_proposals"] });
         return;
       } else if (addr === addressRef.current) {
         setConnected(true);

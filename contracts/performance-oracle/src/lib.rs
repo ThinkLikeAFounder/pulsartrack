@@ -39,9 +39,10 @@ pub enum DataKey {
     MinAttesters,
     ConsensusThresholdPct,
     Attester(Address),
-    Attestation(u64, Address), // campaign_id, attester
-    AttestationCount(u64),     // campaign_id
-    Consensus(u64),            // campaign_id
+    Attestation(u64, Address),       // campaign_id, attester
+    AttestationCount(u64),           // campaign_id
+    Consensus(u64),                  // campaign_id
+    ConsensusFinalized(u64),         // campaign_id
     CampaignAttesterIndex(u64, u32), // campaign_id, index -> Address
 }
 
@@ -49,6 +50,8 @@ const INSTANCE_LIFETIME_THRESHOLD: u32 = 17_280;
 const INSTANCE_BUMP_AMOUNT: u32 = 86_400;
 const PERSISTENT_LIFETIME_THRESHOLD: u32 = 120_960;
 const PERSISTENT_BUMP_AMOUNT: u32 = 1_051_200;
+const MAX_CONSENSUS_ATTESTERS: u32 = 50;
+const MAX_DEVIATION_BPS: u32 = 5000; // 50% maximum deviation (5000 basis points = 50%)
 
 #[contract]
 pub struct PerformanceOracleContract;
@@ -90,6 +93,20 @@ impl PerformanceOracleContract {
         );
     }
 
+    pub fn revoke_attester(env: Env, admin: Address, attester: Address) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+
+        let _ttl_key = DataKey::Attester(attester);
+        env.storage().persistent().remove(&_ttl_key);
+    }
+
     pub fn submit_attestation(
         env: Env,
         attester: Address,
@@ -118,9 +135,38 @@ impl PerformanceOracleContract {
         if env
             .storage()
             .persistent()
+            .has(&DataKey::ConsensusFinalized(campaign_id))
+        {
+            panic!("consensus already finalized");
+        }
+
+        if env
+            .storage()
+            .persistent()
             .has(&DataKey::Attestation(campaign_id, attester.clone()))
         {
             panic!("already attested");
+        }
+
+        if quality_score > 100 {
+            panic!("quality_score must be 0-100");
+        }
+        if fraud_rate > 10_000 {
+            panic!("fraud_rate must be 0-10000 basis points");
+        }
+        if clicks > impressions {
+            panic!("clicks cannot exceed impressions");
+        }
+
+        // Enforce hard cap on attesters to prevent exceeding Soroban CPU limits
+        let count: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::AttestationCount(campaign_id))
+            .unwrap_or(0);
+
+        if count >= MAX_CONSENSUS_ATTESTERS {
+            panic!("attester limit reached");
         }
 
         let attestation = PerformanceAttestation {
@@ -166,9 +212,6 @@ impl PerformanceOracleContract {
             PERSISTENT_BUMP_AMOUNT,
         );
 
-        // Attempt to build consensus with actual averaging
-        Self::_try_build_consensus(&env, campaign_id, count + 1);
-
         env.events().publish(
             (symbol_short!("oracle"), symbol_short!("attested")),
             campaign_id,
@@ -207,15 +250,60 @@ impl PerformanceOracleContract {
             .unwrap_or(0)
     }
 
-    fn _try_build_consensus(env: &Env, campaign_id: u64, total_attesters: u32) {
+    pub fn finalize_consensus(env: Env, admin: Address, campaign_id: u64) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::ConsensusFinalized(campaign_id))
+        {
+            panic!("consensus already finalized");
+        }
+
+        if !Self::_try_build_consensus(&env, campaign_id) {
+            panic!("consensus not ready");
+        }
+
+        let _ttl_key = DataKey::ConsensusFinalized(campaign_id);
+        env.storage().persistent().set(&_ttl_key, &true);
+        env.storage().persistent().extend_ttl(
+            &_ttl_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+    }
+
+    fn _try_build_consensus(env: &Env, campaign_id: u64) -> bool {
         let min_attesters: u32 = env
             .storage()
             .instance()
             .get(&DataKey::MinAttesters)
             .unwrap_or(3);
 
-        if total_attesters < min_attesters {
-            return;
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::ConsensusFinalized(campaign_id))
+        {
+            return false;
+        }
+
+        let total_attesters: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::AttestationCount(campaign_id))
+            .unwrap_or(0);
+
+        if total_attesters == 0 || total_attesters < min_attesters {
+            return false;
         }
 
         // Compute actual averages by reading all attestations
@@ -223,6 +311,12 @@ impl PerformanceOracleContract {
         let mut sum_clicks: u64 = 0;
         let mut sum_fraud_rate: u64 = 0;
         let mut sum_quality_score: u64 = 0;
+
+        // Track min/max for variance check
+        let mut min_fraud_rate: u32 = u32::MAX;
+        let mut max_fraud_rate: u32 = 0;
+        let mut min_quality_score: u32 = u32::MAX;
+        let mut max_quality_score: u32 = 0;
 
         for i in 0..total_attesters {
             let attester: Address = env
@@ -237,17 +331,65 @@ impl PerformanceOracleContract {
                 .get(&DataKey::Attestation(campaign_id, attester))
                 .expect("attestation not found");
 
-            sum_impressions += attestation.impressions_verified;
-            sum_clicks += attestation.clicks_verified;
-            sum_fraud_rate += attestation.fraud_rate as u64;
-            sum_quality_score += attestation.quality_score as u64;
+            sum_impressions = sum_impressions.saturating_add(attestation.impressions_verified);
+            sum_clicks = sum_clicks.saturating_add(attestation.clicks_verified);
+            sum_fraud_rate = sum_fraud_rate.saturating_add(attestation.fraud_rate as u64);
+            sum_quality_score = sum_quality_score.saturating_add(attestation.quality_score as u64);
+
+            // Track min/max for variance check
+            if attestation.fraud_rate < min_fraud_rate {
+                min_fraud_rate = attestation.fraud_rate;
+            }
+            if attestation.fraud_rate > max_fraud_rate {
+                max_fraud_rate = attestation.fraud_rate;
+            }
+            if attestation.quality_score < min_quality_score {
+                min_quality_score = attestation.quality_score;
+            }
+            if attestation.quality_score > max_quality_score {
+                max_quality_score = attestation.quality_score;
+            }
         }
 
         // Calculate averages
-        let avg_impressions = sum_impressions / (total_attesters as u64);
-        let avg_clicks = sum_clicks / (total_attesters as u64);
-        let avg_fraud_rate = (sum_fraud_rate / (total_attesters as u64)) as u32;
-        let avg_quality_score = (sum_quality_score / (total_attesters as u64)) as u32;
+        let total_attesters_u64 = total_attesters as u64;
+        let avg_impressions = sum_impressions / total_attesters_u64;
+        let avg_clicks = sum_clicks / total_attesters_u64;
+        let avg_fraud_rate = (sum_fraud_rate / total_attesters_u64).min(u32::MAX as u64) as u32;
+        let avg_quality_score =
+            (sum_quality_score / total_attesters_u64).min(u32::MAX as u64) as u32;
+
+        // Variance check: reject if values are too divergent
+        // Using median-absolute-deviation style check: max - min > tolerance
+        let fraud_deviation_bps = if avg_fraud_rate > 0 {
+            ((max_fraud_rate - min_fraud_rate) as u64 * 10000 / avg_fraud_rate as u64) as u32
+        } else {
+            0
+        };
+
+        let quality_deviation_bps = if avg_quality_score > 0 {
+            ((max_quality_score - min_quality_score) as u64 * 10000 / avg_quality_score as u64)
+                as u32
+        } else {
+            0
+        };
+
+        if fraud_deviation_bps > MAX_DEVIATION_BPS {
+            // Log the variance issue but don't panic - just don't build consensus
+            env.events().publish(
+                (symbol_short!("oracle"), symbol_short!("variance")),
+                (campaign_id, fraud_deviation_bps),
+            );
+            return false;
+        }
+
+        if quality_deviation_bps > MAX_DEVIATION_BPS {
+            env.events().publish(
+                (symbol_short!("oracle"), symbol_short!("variance")),
+                (campaign_id, quality_deviation_bps),
+            );
+            return false;
+        }
 
         let consensus = OracleConsensus {
             campaign_id,
@@ -267,6 +409,8 @@ impl PerformanceOracleContract {
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
         );
+
+        true
     }
 
     pub fn propose_admin(env: Env, current_admin: Address, new_admin: Address) {

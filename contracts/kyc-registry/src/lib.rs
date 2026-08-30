@@ -52,6 +52,17 @@ const INSTANCE_BUMP_AMOUNT: u32 = 86_400;
 const PERSISTENT_LIFETIME_THRESHOLD: u32 = 120_960;
 const PERSISTENT_BUMP_AMOUNT: u32 = 1_051_200;
 
+fn extend_kyc_record_ttl(env: &Env, account: &Address) {
+    let key = DataKey::KycRecord(account.clone());
+    if env.storage().persistent().has(&key) {
+        env.storage().persistent().extend_ttl(
+            &key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+    }
+}
+
 #[contract]
 pub struct KycRegistryContract;
 
@@ -117,6 +128,21 @@ impl KycRegistryContract {
             panic!("provider not active");
         }
 
+        // If an existing verified record exists and is still valid, block resubmission
+        if let Some(existing) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, KycRecord>(&DataKey::KycRecord(account.clone()))
+        {
+            let still_valid = existing.verified
+                && existing
+                    .expires_at
+                    .is_none_or(|e| e > env.ledger().timestamp());
+            if still_valid {
+                panic!("existing verified kyc record must be revoked before re-submitting");
+            }
+        }
+
         let record = KycRecord {
             account: account.clone(),
             level: level.clone(),
@@ -166,10 +192,17 @@ impl KycRegistryContract {
             .get(&DataKey::KycRecord(account.clone()))
             .expect("kyc not submitted");
 
+        if record.provider != provider_data.name {
+            panic!("provider mismatch");
+        }
+
         let now = env.ledger().timestamp();
         record.verified = true;
         record.verified_at = Some(now);
-        record.expires_at = expires_in_secs.map(|d| now + d);
+        record.expires_at = expires_in_secs.map(|d| {
+            now.checked_add(d)
+                .expect("kyc expiry timestamp overflows u64")
+        });
         record.verifier = Some(provider.clone());
 
         let _ttl_key = DataKey::KycRecord(account.clone());
@@ -210,24 +243,25 @@ impl KycRegistryContract {
             .expect("kyc not found");
 
         record.verified = false;
-        let _ttl_key = DataKey::KycRecord(account);
+        let _ttl_key = DataKey::KycRecord(account.clone());
         env.storage().persistent().set(&_ttl_key, &record);
         env.storage().persistent().extend_ttl(
             &_ttl_key,
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
         );
+
+        env.events()
+            .publish((symbol_short!("kyc"), symbol_short!("revoked")), account);
     }
 
     pub fn is_kyc_valid(env: Env, account: Address) -> bool {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-        if let Some(record) = env
-            .storage()
-            .persistent()
-            .get::<DataKey, KycRecord>(&DataKey::KycRecord(account))
-        {
+        let key = DataKey::KycRecord(account.clone());
+        if let Some(record) = env.storage().persistent().get::<DataKey, KycRecord>(&key) {
+            extend_kyc_record_ttl(&env, &account);
             if !record.verified {
                 return false;
             }
@@ -245,18 +279,21 @@ impl KycRegistryContract {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-        env.storage().persistent().get(&DataKey::KycRecord(account))
+        let key = DataKey::KycRecord(account.clone());
+        let record = env.storage().persistent().get::<DataKey, KycRecord>(&key);
+        if record.is_some() {
+            extend_kyc_record_ttl(&env, &account);
+        }
+        record
     }
 
     pub fn get_kyc_level(env: Env, account: Address) -> KycLevel {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-        if let Some(record) = env
-            .storage()
-            .persistent()
-            .get::<DataKey, KycRecord>(&DataKey::KycRecord(account))
-        {
+        let key = DataKey::KycRecord(account.clone());
+        if let Some(record) = env.storage().persistent().get::<DataKey, KycRecord>(&key) {
+            extend_kyc_record_ttl(&env, &account);
             if record.verified {
                 record.level
             } else {

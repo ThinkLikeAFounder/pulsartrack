@@ -255,6 +255,16 @@
                         "val": {
                           "u64": 0
                         }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "Verifier"
+                            }
+                          ]
+                        },
+                        "val": "void"
                       }
                     ]
                   }

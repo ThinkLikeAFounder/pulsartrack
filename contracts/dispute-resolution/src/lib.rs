@@ -65,8 +65,8 @@ pub enum DataKey {
 
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17_280;
 const INSTANCE_BUMP_AMOUNT: u32 = 86_400;
-const PERSISTENT_LIFETIME_THRESHOLD: u32 = 34_560;
-const PERSISTENT_BUMP_AMOUNT: u32 = 259_200;
+const PERSISTENT_LIFETIME_THRESHOLD: u32 = 120_960;
+const PERSISTENT_BUMP_AMOUNT: u32 = 1_051_200;
 
 #[contract]
 pub struct DisputeResolutionContract;
@@ -109,6 +109,20 @@ impl DisputeResolutionContract {
         );
     }
 
+    pub fn revoke_arbitrator(env: Env, admin: Address, arbitrator: Address) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+        env.storage()
+            .persistent()
+            .remove(&DataKey::ArbitratorApproved(arbitrator));
+    }
+
     pub fn file_dispute(
         env: Env,
         claimant: Address,
@@ -125,8 +139,10 @@ impl DisputeResolutionContract {
         if claim_amount <= 0 {
             panic!("invalid claim amount");
         }
+        if claimant == respondent {
+            panic!("claimant and respondent cannot be the same address");
+        }
 
-        // Collect filing fee
         let fee: i128 = env
             .storage()
             .instance()
@@ -137,13 +153,6 @@ impl DisputeResolutionContract {
             .instance()
             .get(&DataKey::TokenAddress)
             .unwrap();
-        let token_client = token::Client::new(&env, &token_addr);
-        if fee > 0 {
-            token_client.transfer(&claimant, &env.current_contract_address(), &fee);
-        }
-
-        // Lock claim funds in this contract until dispute settlement.
-        token_client.transfer(&claimant, &env.current_contract_address(), &claim_amount);
 
         let counter: u64 = env
             .storage()
@@ -158,7 +167,7 @@ impl DisputeResolutionContract {
             respondent,
             campaign_id,
             claim_amount,
-            token: token_addr,
+            token: token_addr.clone(),
             description,
             evidence_hash,
             status: DisputeStatus::Filed,
@@ -179,6 +188,13 @@ impl DisputeResolutionContract {
         env.storage()
             .instance()
             .set(&DataKey::DisputeCounter, &dispute_id);
+
+        let token_client = token::Client::new(&env, &token_addr);
+        if fee > 0 {
+            token_client.transfer(&claimant, &env.current_contract_address(), &fee);
+        }
+        // Lock claim funds in this contract until dispute settlement.
+        token_client.transfer(&claimant, &env.current_contract_address(), &claim_amount);
 
         env.events().publish(
             (symbol_short!("dispute"), symbol_short!("filed")),
@@ -213,6 +229,10 @@ impl DisputeResolutionContract {
             .persistent()
             .get(&DataKey::Dispute(dispute_id))
             .expect("dispute not found");
+
+        if dispute.status == DisputeStatus::Resolved || dispute.status == DisputeStatus::Closed {
+            panic!("cannot assign arbitrator to a finalized dispute");
+        }
 
         dispute.arbitrator = Some(arbitrator);
         dispute.status = DisputeStatus::UnderReview;
@@ -251,19 +271,43 @@ impl DisputeResolutionContract {
             panic!("not assigned arbitrator");
         }
 
-        if dispute.status == DisputeStatus::Resolved {
-            panic!("already resolved");
+        match dispute.status {
+            DisputeStatus::Resolved | DisputeStatus::Closed | DisputeStatus::Appealed => {
+                panic!("dispute cannot be resolved in its current status");
+            }
+            _ => {}
         }
 
-        let (claimant_amount, respondent_amount) = match outcome {
+        // Reject Pending as a resolution outcome — it is only valid as an initial
+        // filing state (#747). Keep the arm in the match below as unreachable!()
+        // so Rust's exhaustiveness checker is satisfied.
+        if outcome == DisputeOutcome::Pending {
+            panic!("Pending is not a valid resolution outcome");
+        }
+
+        let (claimant_amount, respondent_amount) = match &outcome {
             DisputeOutcome::Claimant => (dispute.claim_amount, 0),
             DisputeOutcome::Respondent => (0, dispute.claim_amount),
             DisputeOutcome::Split => {
                 let claimant_part = dispute.claim_amount / 2;
                 (claimant_part, dispute.claim_amount - claimant_part)
             }
-            DisputeOutcome::NoAction | DisputeOutcome::Pending => (0, 0),
+            DisputeOutcome::NoAction => (0, 0),
+            DisputeOutcome::Pending => unreachable!("rejected above"),
         };
+
+        dispute.outcome = outcome;
+        dispute.resolution_notes = notes;
+        dispute.status = DisputeStatus::Resolved;
+        dispute.resolved_at = Some(env.ledger().timestamp());
+
+        let _ttl_key = DataKey::Dispute(dispute_id);
+        env.storage().persistent().set(&_ttl_key, &dispute);
+        env.storage().persistent().extend_ttl(
+            &_ttl_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
 
         let used_escrow = if claimant_amount > 0 || respondent_amount > 0 {
             Self::try_settle_linked_escrow(
@@ -295,54 +339,34 @@ impl DisputeResolutionContract {
             }
         }
 
+        // Return the locked claim funds to the claimant whenever the payout path
+        // above did not disburse them (#817). file_dispute locks claim_amount in
+        // this contract, so an outcome that pays out nothing from it -- NoAction --
+        // must hand it back, as must the escrow path, which settles the payout from
+        // escrow balances and leaves the locked claim funds untouched here.
+        let refund_claim = dispute.outcome == DisputeOutcome::NoAction || used_escrow;
+        if refund_claim && dispute.claim_amount > 0 {
+            let token_client = token::Client::new(&env, &dispute.token);
+            token_client.transfer(
+                &env.current_contract_address(),
+                &dispute.claimant,
+                &dispute.claim_amount,
+            );
+        }
+
         let fee: i128 = env
             .storage()
             .instance()
             .get(&DataKey::FilingFee)
             .unwrap_or(0);
-        if fee > 0 {
-            let token_client = token::Client::new(&env, &dispute.token);
-            match outcome {
-                DisputeOutcome::Claimant => {
-                    token_client.transfer(&env.current_contract_address(), &dispute.claimant, &fee);
-                }
-                DisputeOutcome::Respondent => {
-                    token_client.transfer(&env.current_contract_address(), &dispute.respondent, &fee);
-                }
-                DisputeOutcome::Split => {
-                    let claimant_fee = fee / 2;
-                    let respondent_fee = fee - claimant_fee;
-                    if claimant_fee > 0 {
-                        token_client.transfer(
-                            &env.current_contract_address(),
-                            &dispute.claimant,
-                            &claimant_fee,
-                        );
-                    }
-                    if respondent_fee > 0 {
-                        token_client.transfer(
-                            &env.current_contract_address(),
-                            &dispute.respondent,
-                            &respondent_fee,
-                        );
-                    }
-                }
-                DisputeOutcome::NoAction | DisputeOutcome::Pending => {}
-            }
-        }
-
-        dispute.outcome = outcome;
-        dispute.resolution_notes = notes;
-        dispute.status = DisputeStatus::Resolved;
-        dispute.resolved_at = Some(env.ledger().timestamp());
-
-        let _ttl_key = DataKey::Dispute(dispute_id);
-        env.storage().persistent().set(&_ttl_key, &dispute);
-        env.storage().persistent().extend_ttl(
-            &_ttl_key,
-            PERSISTENT_LIFETIME_THRESHOLD,
-            PERSISTENT_BUMP_AMOUNT,
+        let fee_to_claimant = matches!(
+            dispute.outcome,
+            DisputeOutcome::Claimant | DisputeOutcome::Split | DisputeOutcome::NoAction
         );
+        if fee > 0 && fee_to_claimant {
+            let token_client = token::Client::new(&env, &dispute.token);
+            token_client.transfer(&env.current_contract_address(), &dispute.claimant, &fee);
+        }
 
         env.events().publish(
             (symbol_short!("dispute"), symbol_short!("resolved")),
@@ -392,7 +416,11 @@ impl DisputeResolutionContract {
         if admin != stored_admin {
             panic!("unauthorized");
         }
-        if !env.storage().persistent().has(&DataKey::Dispute(dispute_id)) {
+        if !env
+            .storage()
+            .persistent()
+            .has(&DataKey::Dispute(dispute_id))
+        {
             panic!("dispute not found");
         }
         let _ttl_key = DataKey::DisputeEscrow(dispute_id);
@@ -425,15 +453,12 @@ impl DisputeResolutionContract {
         claimant_amount: i128,
         respondent_amount: i128,
     ) -> bool {
-        let escrow_contract: Address = if let Some(addr) = env
-            .storage()
-            .instance()
-            .get(&DataKey::EscrowContract)
-        {
-            addr
-        } else {
-            return false;
-        };
+        let escrow_contract: Address =
+            if let Some(addr) = env.storage().instance().get(&DataKey::EscrowContract) {
+                addr
+            } else {
+                return false;
+            };
         let escrow_id: u64 = if let Some(id) = env
             .storage()
             .persistent()

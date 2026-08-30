@@ -165,6 +165,12 @@
                     },
                     {
                       "key": {
+                        "symbol": "signature"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
                         "symbol": "verified"
                       },
                       "val": {
@@ -234,6 +240,16 @@
                         "val": {
                           "u64": 0
                         }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "Verifier"
+                            }
+                          ]
+                        },
+                        "val": "void"
                       }
                     ]
                   }

@@ -2,7 +2,10 @@
 //! Time-locked execution of governance decisions on Stellar.
 
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, String, Symbol, Vec, Val};
+use soroban_sdk::{
+    contract, contractimpl, contracttype, symbol_short, xdr::ToXdr, Address, Bytes, BytesN, Env,
+    String, Symbol, Val, Vec,
+};
 
 #[contracttype]
 #[derive(Clone, PartialEq)]
@@ -40,6 +43,7 @@ pub enum DataKey {
     GracePeriod,
     EntryCounter,
     Entry(u64),
+    OperationHash(BytesN<32>),
 }
 
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17_280;
@@ -116,6 +120,22 @@ impl TimelockExecutorContract {
             panic!("invalid delay");
         }
 
+        let mut op_bytes = Bytes::new(&env);
+        op_bytes.append(&target_contract.clone().to_xdr(&env));
+        op_bytes.append(&function_name.clone().to_xdr(&env));
+        for arg in args.iter() {
+            op_bytes.append(&arg.to_xdr(&env));
+        }
+        let op_hash: BytesN<32> = env.crypto().sha256(&op_bytes).into();
+
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::OperationHash(op_hash.clone()))
+        {
+            panic!("operation already queued");
+        }
+
         let counter: u64 = env
             .storage()
             .instance()
@@ -126,6 +146,13 @@ impl TimelockExecutorContract {
         let now = env.ledger().timestamp();
         let grace: u64 = env.storage().instance().get(&DataKey::GracePeriod).unwrap();
 
+        let eta = now
+            .checked_add(delay_secs)
+            .expect("eta calculation overflows u64");
+        let _grace_end = eta
+            .checked_add(grace)
+            .expect("grace period end overflows u64");
+
         let entry = TimelockEntry {
             entry_id,
             proposer: proposer.clone(),
@@ -133,7 +160,7 @@ impl TimelockExecutorContract {
             function_name,
             args,
             description,
-            eta: now + delay_secs,
+            eta,
             grace_period: grace,
             status: TimelockStatus::Queued,
             queued_at: now,
@@ -150,6 +177,10 @@ impl TimelockExecutorContract {
         env.storage()
             .instance()
             .set(&DataKey::EntryCounter, &entry_id);
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::OperationHash(op_hash), &entry_id);
 
         env.events().publish(
             (symbol_short!("timelock"), symbol_short!("queued")),
@@ -184,13 +215,25 @@ impl TimelockExecutorContract {
             panic!("entry not queued");
         }
 
+        // Re-validate proposer is still authorized
+        let current_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if entry.proposer != current_admin {
+            panic!("proposer no longer authorized");
+        }
+
         let now = env.ledger().timestamp();
 
         if now < entry.eta {
             panic!("timelock not expired");
         }
 
-        if now > entry.eta + entry.grace_period {
+        // Use checked arithmetic to prevent overflow when computing grace period end
+        let grace_end = entry
+            .eta
+            .checked_add(entry.grace_period)
+            .expect("grace period end overflows u64");
+
+        if now > grace_end {
             entry.status = TimelockStatus::Expired;
             let _ttl_key = DataKey::Entry(entry_id);
             env.storage().persistent().set(&_ttl_key, &entry);
@@ -202,9 +245,7 @@ impl TimelockExecutorContract {
             panic!("grace period expired");
         }
 
-        // Perform the actual cross-contract invocation
-        let _: Val = env.invoke_contract(&entry.target_contract, &entry.function_name, entry.args.clone());
-
+        // CEI: update state before external call to prevent re-entrancy
         entry.status = TimelockStatus::Executed;
         entry.executed_at = Some(now);
         let _ttl_key = DataKey::Entry(entry_id);
@@ -213,6 +254,13 @@ impl TimelockExecutorContract {
             &_ttl_key,
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
+        );
+
+        // Perform the actual cross-contract invocation
+        let _: Val = env.invoke_contract(
+            &entry.target_contract,
+            &entry.function_name,
+            entry.args.clone(),
         );
 
         env.events().publish(
@@ -268,9 +316,12 @@ impl TimelockExecutorContract {
             .get::<DataKey, TimelockEntry>(&DataKey::Entry(entry_id))
         {
             let now = env.ledger().timestamp();
-            entry.status == TimelockStatus::Queued
-                && now >= entry.eta
-                && now <= entry.eta + entry.grace_period
+            // Use checked arithmetic to prevent overflow
+            if let Some(grace_end) = entry.eta.checked_add(entry.grace_period) {
+                entry.status == TimelockStatus::Queued && now >= entry.eta && now <= grace_end
+            } else {
+                false
+            }
         } else {
             false
         }

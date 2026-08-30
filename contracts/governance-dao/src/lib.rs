@@ -8,8 +8,23 @@
 
 #![no_std]
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, token, Address, Env, String,
+    contract, contractimpl, contracttype, symbol_short, token, Address, Env, IntoVal, String,
 };
+
+// ============================================================
+// Governance token voting interface
+// ============================================================
+
+/// The subset of the governance token used for vote weighting.
+///
+/// `get_past_votes` resolves an account's voting power from the token's
+/// checkpoint history, using only checkpoints strictly older than the ledger
+/// asked about. Governance must weight votes with this rather than with a live
+/// `balance()` read, which is what made flash-loan vote inflation possible.
+#[soroban_sdk::contractclient(name = "GovTokenClient")]
+pub trait GovTokenInterface {
+    fn get_past_votes(env: Env, account: Address, ledger_sequence: u32) -> i128;
+}
 
 // ============================================================
 // Data Types
@@ -49,6 +64,10 @@ pub struct Proposal {
     pub threshold_pct: u32, // percentage to pass
     pub start_ledger: u32,
     pub end_ledger: u32,
+    /// Ledger the vote weights are measured at. Voting power is read strictly
+    /// before this ledger, so tokens acquired at or after proposal creation
+    /// carry no weight.
+    pub snapshot_ledger: u32,
     pub created_at: u64,
     pub executed_at: Option<u64>,
 }
@@ -79,6 +98,7 @@ pub enum DataKey {
     Proposal(u64),
     Vote(u64, Address),
     HasVoted(u64, Address),
+    LockedTokens(u64, Address), // proposal_id, voter
 }
 
 // ============================================================
@@ -87,8 +107,8 @@ pub enum DataKey {
 
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17_280;
 const INSTANCE_BUMP_AMOUNT: u32 = 86_400;
-const PERSISTENT_LIFETIME_THRESHOLD: u32 = 34_560;
-const PERSISTENT_BUMP_AMOUNT: u32 = 259_200;
+const PERSISTENT_LIFETIME_THRESHOLD: u32 = 120_960; // ~7 days
+const PERSISTENT_BUMP_AMOUNT: u32 = 1_051_200; // ~61 days
 
 #[contract]
 pub struct GovernanceDaoContract;
@@ -110,6 +130,12 @@ impl GovernanceDaoContract {
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
         if env.storage().instance().has(&DataKey::Admin) {
             panic!("already initialized");
+        }
+        if quorum_bps == 0 {
+            panic!("quorum must be > 0");
+        }
+        if pass_threshold == 0 || pass_threshold > 100 {
+            panic!("pass_threshold must be 1-100");
         }
         admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &admin);
@@ -201,6 +227,7 @@ impl GovernanceDaoContract {
             threshold_pct: threshold,
             start_ledger: start,
             end_ledger: start + voting_period,
+            snapshot_ledger: start,
             created_at: env.ledger().timestamp(),
             executed_at: None,
         };
@@ -240,17 +267,6 @@ impl GovernanceDaoContract {
             panic!("already voted");
         }
 
-        let gov_token: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::GovernanceToken)
-            .unwrap();
-        let token_client = token::Client::new(&env, &gov_token);
-        let balance = token_client.balance(&voter);
-        if power > balance {
-            panic!("insufficient governance tokens");
-        }
-
         let mut proposal: Proposal = env
             .storage()
             .persistent()
@@ -265,19 +281,29 @@ impl GovernanceDaoContract {
             panic!("voting period ended");
         }
 
+        let gov_token: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::GovernanceToken)
+            .unwrap();
+
+        // Weight the vote by the power held strictly BEFORE this proposal's
+        // snapshot ledger, not by the voter's live balance. A live read let an
+        // attacker borrow tokens, vote on the inflated balance, and repay in the
+        // same transaction; power acquired at or after the snapshot ledger now
+        // resolves to the pre-existing checkpoint instead.
+        let voting_power = GovTokenClient::new(&env, &gov_token)
+            .get_past_votes(&voter, &proposal.snapshot_ledger);
+        if power > voting_power {
+            panic!("insufficient governance tokens");
+        }
+
         if power <= 0 {
             panic!("invalid voting power");
         }
 
-        // Record vote
-        match choice {
-            VoteChoice::For => proposal.votes_for += power,
-            VoteChoice::Against => proposal.votes_against += power,
-            VoteChoice::Abstain => proposal.votes_abstain += power,
-        }
-
         let vote = Vote {
-            choice,
+            choice: choice.clone(),
             power,
             voted_at: env.ledger().timestamp(),
         };
@@ -296,12 +322,36 @@ impl GovernanceDaoContract {
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
         );
+
+        // Record locked tokens
+        let _ttl_key = DataKey::LockedTokens(proposal_id, voter.clone());
+        env.storage().persistent().set(&_ttl_key, &power);
+        env.storage().persistent().extend_ttl(
+            &_ttl_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+
+        // Record vote
+        match choice {
+            VoteChoice::For => proposal.votes_for += power,
+            VoteChoice::Against => proposal.votes_against += power,
+            VoteChoice::Abstain => proposal.votes_abstain += power,
+        }
+
         let _ttl_key = DataKey::Proposal(proposal_id);
         env.storage().persistent().set(&_ttl_key, &proposal);
         env.storage().persistent().extend_ttl(
             &_ttl_key,
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
+        );
+
+        // Lock tokens after recording the vote guard.
+        token::Client::new(&env, &gov_token).transfer(
+            &voter,
+            &env.current_contract_address(),
+            &power,
         );
 
         env.events().publish(
@@ -344,13 +394,13 @@ impl GovernanceDaoContract {
 
         let quorum_met = (total_votes * 10_000) >= (total_supply * (proposal.quorum_bps as i128));
 
-        let for_pct = if total_votes > 0 {
-            (proposal.votes_for * 100) / total_votes
+        let for_bps = if total_votes > 0 {
+            (proposal.votes_for * 10_000) / total_votes
         } else {
             0
         };
 
-        proposal.status = if quorum_met && for_pct as u32 >= proposal.threshold_pct {
+        proposal.status = if quorum_met && for_bps as u32 >= proposal.threshold_pct * 100 {
             ProposalStatus::Passed
         } else if !quorum_met {
             ProposalStatus::Rejected
@@ -410,6 +460,62 @@ impl GovernanceDaoContract {
         // Any execution side effects (e.g. calling proposal.target_contract)
         // must be placed here — after the status has been committed — so they
         // cannot be replayed if they succeed but the status write were to fail.
+        if let Some(ref target) = proposal.target_contract {
+            env.invoke_contract::<()>(
+                target,
+                &soroban_sdk::Symbol::new(&env, "execute_governance"),
+                soroban_sdk::vec![&env, proposal_id.into_val(&env)],
+            );
+        }
+
+        env.events().publish(
+            (symbol_short!("proposal"), symbol_short!("executed")),
+            (proposal_id, proposal.target_contract),
+        );
+    }
+
+    /// Unlock tokens after proposal is finalized
+    pub fn unlock_tokens(env: Env, voter: Address, proposal_id: u64) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        voter.require_auth();
+
+        let proposal: Proposal = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Proposal(proposal_id))
+            .expect("proposal not found");
+
+        // Can only unlock if the proposal is no longer Active
+        if proposal.status == ProposalStatus::Active
+            && env.ledger().sequence() <= proposal.end_ledger
+        {
+            panic!("proposal still active");
+        }
+
+        let key = DataKey::LockedTokens(proposal_id, voter.clone());
+        let amount: i128 = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .expect("no tokens locked for this proposal");
+
+        // Remove record before transfer (CEI)
+        env.storage().persistent().remove(&key);
+
+        let gov_token: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::GovernanceToken)
+            .unwrap();
+        let token_client = token::Client::new(&env, &gov_token);
+        token_client.transfer(&env.current_contract_address(), &voter, &amount);
+
+        env.events().publish(
+            (symbol_short!("gov"), symbol_short!("unlocked")),
+            (proposal_id, voter, amount),
+        );
     }
 
     /// Cancel a proposal (proposer or admin)
@@ -428,6 +534,10 @@ impl GovernanceDaoContract {
 
         if caller != proposal.proposer && caller != admin {
             panic!("unauthorized");
+        }
+
+        if proposal.status != ProposalStatus::Active {
+            panic!("can only cancel an active proposal");
         }
 
         proposal.status = ProposalStatus::Cancelled;

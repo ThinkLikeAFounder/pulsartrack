@@ -3,6 +3,7 @@
 
 #![no_std]
 use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, token, Address, Env};
+use pulsar_common_fees::{calculate_fee_bps, checked_add};
 
 #[contracttype]
 #[derive(Clone)]
@@ -11,7 +12,8 @@ pub struct RevenuePool {
     pub platform_share: i128,  // platform fee portion
     pub publisher_share: i128, // publisher earnings portion
     pub treasury_share: i128,  // DAO treasury portion
-    pub burn_amount: i128,     // tokens to burn
+    pub burn_amount: i128,     // tokens pending burn (cleared after each distribution)
+    pub total_burned: i128,    // cumulative tokens burned on-chain across all distributions
     pub platform_pct: u32,     // basis points
     pub publisher_pct: u32,
     pub treasury_pct: u32,
@@ -87,6 +89,7 @@ impl RevenueSettlementContract {
                 publisher_share: 0,
                 treasury_share: 0,
                 burn_amount: 0,
+                total_burned: 0,
                 platform_pct: 250,    // 2.5%
                 publisher_pct: 9_000, // 90%
                 treasury_pct: 500,    // 5%
@@ -112,11 +115,15 @@ impl RevenueSettlementContract {
             panic!("unauthorized");
         }
 
+        if amount <= 0 {
+            panic!("revenue amount must be positive");
+        }
+
         let mut pool: RevenuePool = env.storage().instance().get(&DataKey::RevenuePool).unwrap();
 
-        let platform_fee = (amount * pool.platform_pct as i128) / 10_000;
-        let treasury_fee = (amount * pool.treasury_pct as i128) / 10_000;
-        let burn_fee = (amount * pool.burn_pct as i128) / 10_000;
+        let platform_fee = calculate_fee_bps(amount, pool.platform_pct);
+        let treasury_fee = calculate_fee_bps(amount, pool.treasury_pct);
+        let burn_fee = calculate_fee_bps(amount, pool.burn_pct);
         let publisher_amount = amount - platform_fee - treasury_fee - burn_fee;
 
         // Any rounding dust (1-3 stroops per tx) from integer division is captured
@@ -125,11 +132,11 @@ impl RevenueSettlementContract {
         let total_distributed = platform_fee + treasury_fee + burn_fee + publisher_amount;
         let dust = amount - total_distributed;
 
-        pool.total_revenue += amount;
-        pool.platform_share += platform_fee;
-        pool.publisher_share += publisher_amount;
-        pool.treasury_share += treasury_fee + dust; // dust absorbed by treasury
-        pool.burn_amount += burn_fee;
+        pool.total_revenue = checked_add(pool.total_revenue, amount);
+        pool.platform_share = checked_add(pool.platform_share, platform_fee);
+        pool.publisher_share = checked_add(pool.publisher_share, publisher_amount);
+        pool.treasury_share = checked_add(pool.treasury_share, treasury_fee + dust); // dust absorbed by treasury
+        pool.burn_amount = checked_add(pool.burn_amount, burn_fee);
 
         env.storage().instance().set(&DataKey::RevenuePool, &pool);
 
@@ -138,7 +145,7 @@ impl RevenueSettlementContract {
         let current_balance: i128 = env.storage().persistent().get(&pub_key).unwrap_or(0);
         env.storage()
             .persistent()
-            .set(&pub_key, &(current_balance + publisher_amount));
+            .set(&pub_key, &checked_add(current_balance, publisher_amount));
         env.storage().persistent().extend_ttl(
             &pub_key,
             PERSISTENT_LIFETIME_THRESHOLD,
@@ -223,6 +230,7 @@ impl RevenueSettlementContract {
         }
 
         if pool.burn_amount > 0 {
+            pool.total_burned += pool.burn_amount; // accumulate before resetting
             token_client.burn(&env.current_contract_address(), &pool.burn_amount);
             pool.burn_amount = 0;
         }

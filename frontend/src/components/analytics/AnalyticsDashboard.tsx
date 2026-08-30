@@ -19,21 +19,22 @@ export function AnalyticsDashboard({
   timeframe = "30d",
   onTimeframeChange,
 }: AnalyticsDashboardProps) {
-  const totalImpressions = campaigns.reduce(
-    (a, c) => a + Number(c.impressions),
-    0,
-  );
-  const totalClicks = campaigns.reduce((a, c) => a + Number(c.clicks), 0);
-  const totalSpent = campaigns.reduce((a, c) => a + Number(c.spent), 0);
-  const ctr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
-  const cpm =
-    totalImpressions > 0
-      ? (Number(totalSpent) / 1e7 / (totalImpressions / 1000)).toFixed(4)
-      : "0";
+  const totalImpressions = campaigns.reduce((a, c) => a + c.impressions, 0n);
+  const totalClicks = campaigns.reduce((a, c) => a + c.clicks, 0n);
+  const totalSpent = campaigns.reduce((a, c) => a + c.spent, 0n);
+  
+  const ctrVal = totalImpressions > 0n ? (Number(totalClicks) / Number(totalImpressions)) * 100 : 0;
+  const ctr = Number.isFinite(ctrVal) ? ctrVal : 0;
+
+  const rawCpm =
+    totalImpressions > 0n
+      ? (Number(totalSpent) / 1e7 / Number(totalImpressions)) * 1000
+      : 0;
+  const cpm = Number.isFinite(rawCpm) ? rawCpm.toFixed(4) : "0.0000";
 
   const days = timeframe === "7d" ? 7 : timeframe === "30d" ? 30 : 90;
   const campaignIds = campaigns.map(c => c.campaign_id.toString());
-  const { data: timeseries, loading, error } = useAnalyticsTimeseries({ campaignIds, timeframe: days === 7 ? "7d" : "30d" });
+  const { data: timeseries, loading, error } = useAnalyticsTimeseries({ campaignIds, timeframe });
 
   return (
     <div className="space-y-6">
@@ -122,16 +123,17 @@ export function AnalyticsDashboard({
             </thead>
             <tbody>
               {campaigns.map((c) => {
-                const campaignCtr =
-                  c.impressions > 0
+                const campaignCtrVal =
+                  c.impressions > 0n
                     ? (
                       (Number(c.clicks) / Number(c.impressions)) *
                       100
-                    ).toFixed(2)
-                    : "0.00";
+                    )
+                    : 0;
+                const campaignCtr = Number.isFinite(campaignCtrVal) ? campaignCtrVal.toFixed(2) : "0.00";
                 return (
                   <tr
-                    key={c.campaign_id}
+                    key={c.campaign_id.toString()}
                     className="border-b border-gray-700/50 hover:bg-gray-700/30"
                   >
                     <td className="py-2 text-white truncate max-w-[160px]">

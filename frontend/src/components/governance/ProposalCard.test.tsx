@@ -20,10 +20,10 @@ describe('ProposalCard', () => {
     it('should render proposal details correctly', () => {
         render(<ProposalCard proposal={mockProposal} />);
 
-        expect(screen.getByText('PIP-1')).toBeDefined();
-        expect(screen.getByText('Upgrade Protocol')).toBeDefined();
-        expect(screen.getByText('Active')).toBeDefined();
-        expect(screen.getByText(/62.5% For/i)).toBeDefined(); // 1000 / (1000+500+100) = 0.625
+        expect(screen.getByText('PIP-1')).toBeInTheDocument();
+        expect(screen.getByText('Upgrade Protocol')).toBeInTheDocument();
+        expect(screen.getByText('Active')).toBeInTheDocument();
+        expect(screen.getByText(/62.5% For/i)).toBeInTheDocument(); // 1000 / (1000+500+100) = 0.625
     });
 
     it('should call onVote when a vote button is clicked', () => {
@@ -39,8 +39,8 @@ describe('ProposalCard', () => {
     it('should show user vote if already voted', () => {
         render(<ProposalCard proposal={mockProposal} userVote="against" />);
 
-        expect(screen.getByText(/You voted:/i)).toBeDefined();
-        expect(screen.getByText('against')).toBeDefined();
+        expect(screen.getByText(/You voted:/i)).toBeInTheDocument();
+        expect(screen.getByText('against')).toBeInTheDocument();
         expect(screen.queryByText('For')).toBeNull(); // Buttons should be hidden
     });
 

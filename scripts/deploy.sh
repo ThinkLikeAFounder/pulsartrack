@@ -56,20 +56,56 @@ if [ "$DRY_RUN" = false ]; then
   
   if [ "$NETWORK" = "testnet" ]; then
     echo "[Funding] Requesting testnet XLM from Friendbot..."
-    curl -s "https://friendbot.stellar.org?addr=$DEPLOYER_ADDRESS" > /dev/null || true
-    sleep 2
+    FUND_RESULT=$(curl -s -w "%{http_code}" "https://friendbot.stellar.org?addr=$DEPLOYER_ADDRESS")
+    if [ "${FUND_RESULT: -3}" != "200" ]; then
+      echo "[Warning] Friendbot request may have failed"
+    fi
+
+    echo "[Waiting] Confirming account is funded..."
+    for i in $(seq 1 30); do
+      if stellar keys show "$IDENTITY" --network "$NETWORK" 2>/dev/null | grep -q "sequence"; then
+        echo "[OK] Account funded"
+        break
+      fi
+      [ "$i" -eq 30 ] && echo "[Error] Account not funded after 60s" && exit 1
+      sleep 2
+    done
   fi
 else
   DEPLOYER_ADDRESS="DRY_RUN_ADDRESS"
   echo "[Info] Dry run mode - skipping identity check/funding"
 fi
 
-# Stabilized deployment file
-DEPLOY_FILE="$OUTPUT_DIR/deployed-$NETWORK.json"
+# Stabilized deployment file (avoid writing records during dry-run)
 mkdir -p "$OUTPUT_DIR"
-
-if [ ! -f "$DEPLOY_FILE" ]; then
+if [ "$DRY_RUN" = true ]; then
+  DEPLOY_FILE="$(mktemp -t "pulsartrack-deployed-$NETWORK.XXXXXX.json")"
   echo '{"network": "'"$NETWORK"'", "deployer": "'"$DEPLOYER_ADDRESS"'", "contracts": {}}' > "$DEPLOY_FILE"
+  echo "[Info] Dry run mode - not writing deployment record to $OUTPUT_DIR"
+else
+  DEPLOY_FILE="$OUTPUT_DIR/deployed-$NETWORK.json"
+  if [ ! -f "$DEPLOY_FILE" ]; then
+    echo '{"network": "'"$NETWORK"'", "deployer": "'"$DEPLOYER_ADDRESS"'", "contracts": {}}' > "$DEPLOY_FILE"
+  fi
+
+  # Ensure we never persist the dry-run placeholder as a deployer address
+  python3 -c '
+import json
+import sys
+
+deploy_file, deployer = sys.argv[1], sys.argv[2]
+with open(deploy_file, encoding="utf-8") as f:
+    data = json.load(f)
+
+if data.get("deployer") == "DRY_RUN_ADDRESS":
+    raise SystemExit("Deployment file has DRY_RUN_ADDRESS as deployer; aborting. Update the record or re-deploy without --dry-run.")
+
+if not data.get("deployer"):
+    data["deployer"] = deployer
+    with open(deploy_file, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+        f.write("\n")
+' "$DEPLOY_FILE" "$DEPLOYER_ADDRESS"
 fi
 
 # Build all contracts (unless already built or dry run)
@@ -87,7 +123,17 @@ deploy_contract() {
 
   # Check if already deployed
   local EXISTING_ID
-  EXISTING_ID=$(python3 -c "import json; d=json.load(open('$DEPLOY_FILE')); print(d['contracts'].get('$NAME',''))" 2>/dev/null || echo "")
+  EXISTING_ID=$(
+    python3 - "$DEPLOY_FILE" "$NAME" <<'PY' 2>/dev/null || echo ""
+import json
+import sys
+
+deploy_file, name = sys.argv[1], sys.argv[2]
+with open(deploy_file, encoding="utf-8") as f:
+    data = json.load(f)
+print(data["contracts"].get(name, ""))
+PY
+  )
 
   if [ -n "$EXISTING_ID" ] && [ "$FORCE" = false ]; then
     echo "[Skip] $NAME already deployed: $EXISTING_ID"
@@ -118,14 +164,18 @@ deploy_contract() {
   echo "  -> $CONTRACT_ID"
 
   # Update deploy file
-  python3 -c "
+  python3 - "$NAME" "$CONTRACT_ID" "$DEPLOY_FILE" <<'PY'
 import json
-with open('$DEPLOY_FILE') as f:
-    d = json.load(f)
-d['contracts']['$NAME'] = '$CONTRACT_ID'
-with open('$DEPLOY_FILE', 'w') as f:
-    json.dump(d, f, indent=2)
-"
+import sys
+
+name, contract_id, deploy_file = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(deploy_file, encoding="utf-8") as f:
+    data = json.load(f)
+data["contracts"][name] = contract_id
+with open(deploy_file, "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+PY
 }
 
 # Core contracts
@@ -183,8 +233,18 @@ deploy_contract "dispute_resolution"    "pulsar_dispute_resolution"
 deploy_contract "budget_optimizer"      "pulsar_budget_optimizer"
 deploy_contract "anomaly_detector"      "pulsar_anomaly_detector"
 
-echo ""
-echo "=============================================="
-echo "  Deployment complete!"
-echo "  Results saved to: $DEPLOY_FILE"
-echo "=============================================="
+# Access Control & Treasury
+deploy_contract "access_control"        "pulsar_access_control"
+deploy_contract "treasury_manager"      "pulsar_treasury_manager"
+deploy_contract "vesting_schedule"      "pulsar_vesting_schedule"
+deploy_contract "whitelist_registry"    "pulsar_whitelist_registry"
+
+	echo ""
+	echo "=============================================="
+	echo "  Deployment complete!"
+	if [ "$DRY_RUN" = true ]; then
+	  echo "  Dry run complete (no deployment record written)"
+	else
+	  echo "  Results saved to: $DEPLOY_FILE"
+	fi
+	echo "=============================================="

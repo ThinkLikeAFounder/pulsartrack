@@ -1,12 +1,13 @@
 'use client';
 
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import { Component, ErrorInfo, ReactNode } from 'react';
+import Link from 'next/link';
 import { AlertTriangle, RefreshCw, Home } from 'lucide-react';
 
 interface Props {
     children: ReactNode;
     fallback?: ReactNode;
-    resetKeys?: any[];
+    resetKeys?: unknown[];
     onReset?: () => void;
     name?: string;
 }
@@ -38,7 +39,7 @@ export class ErrorBoundary extends Component<Props, State> {
         }
     }
 
-    private hasChanged(prev?: any[], next?: any[]) {
+    private hasChanged(prev?: unknown[], next?: unknown[]) {
         if (!prev || !next) return false;
         if (prev.length !== next.length) return true;
         for (let i = 0; i < prev.length; i++) {
@@ -84,13 +85,13 @@ export class ErrorBoundary extends Component<Props, State> {
                                 Try Again
                             </button>
 
-                            <a
+                            <Link
                                 href="/"
                                 className="flex items-center justify-center gap-2 w-full py-3 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
                             >
                                 <Home className="w-4 h-4" />
                                 Return Home
-                            </a>
+                            </Link>
                         </div>
                     </div>
                 </div>

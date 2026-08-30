@@ -270,6 +270,14 @@
                     },
                     {
                       "key": {
+                        "symbol": "snapshot_ledger"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
                         "symbol": "start_ledger"
                       },
                       "val": {
@@ -349,7 +357,7 @@
             },
             "ext": "v0"
           },
-          259200
+          1051200
         ]
       ],
       [
@@ -437,6 +445,14 @@
                     },
                     {
                       "key": {
+                        "symbol": "snapshot_ledger"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
                         "symbol": "start_ledger"
                       },
                       "val": {
@@ -516,7 +532,7 @@
             },
             "ext": "v0"
           },
-          259200
+          1051200
         ]
       ],
       [

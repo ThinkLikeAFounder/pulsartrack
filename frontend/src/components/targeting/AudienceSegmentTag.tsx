@@ -70,6 +70,7 @@ export function SegmentGroup({
         ))}
         {onAdd && remaining.length > 0 && (
           <select
+            aria-label={`Add ${label}`}
             onChange={(e) => { if (e.target.value) { onAdd(e.target.value); e.target.value = ''; } }}
             className="text-xs bg-gray-700 border border-gray-600 text-gray-400 rounded-full px-2 py-0.5 cursor-pointer focus:outline-none"
             defaultValue=""

@@ -40,6 +40,20 @@ pub struct AnomalyReport {
     pub resolved_at: Option<u64>,
 }
 
+/// Parameters for reporting an anomaly — groups the per-report fields to keep
+/// `report_anomaly` within clippy's argument-count limit (#751).
+#[contracttype]
+#[derive(Clone)]
+pub struct AnomalyParams {
+    pub anomaly_type: AnomalyType,
+    pub severity: AnomalySeverity,
+    pub description: String,
+    pub metrics_snapshot: String,
+    pub auto_action: bool,
+    pub current_impressions_per_hour: u64,
+    pub current_clicks_per_hour: u64,
+}
+
 #[contracttype]
 #[derive(Clone)]
 pub struct TrafficBaseline {
@@ -63,10 +77,11 @@ pub enum DataKey {
     FlaggedPublisher(Address),
 }
 
-const INSTANCE_LIFETIME_THRESHOLD: u32 = 17_280;
-const INSTANCE_BUMP_AMOUNT: u32 = 86_400;
+const INSTANCE_LIFETIME_THRESHOLD: u32 = 120_960;
+const INSTANCE_BUMP_AMOUNT: u32 = 1_051_200;
 const PERSISTENT_LIFETIME_THRESHOLD: u32 = 34_560;
 const PERSISTENT_BUMP_AMOUNT: u32 = 259_200;
+const MAX_BASELINE_MULTIPLIER: u64 = 3; // Max 3x increase per update
 
 #[contract]
 pub struct AnomalyDetectorContract;
@@ -112,6 +127,13 @@ impl AnomalyDetectorContract {
             panic!("unauthorized");
         }
 
+        if avg_impressions == 0 || avg_clicks == 0 {
+            panic!("baseline averages must be positive");
+        }
+        if spike_threshold < 100 {
+            panic!("spike_threshold must be at least 100");
+        }
+
         let baseline = TrafficBaseline {
             campaign_id,
             avg_impressions_per_hour: avg_impressions,
@@ -129,18 +151,74 @@ impl AnomalyDetectorContract {
         );
     }
 
+    pub fn update_baseline(
+        env: Env,
+        admin: Address,
+        campaign_id: u64,
+        new_impressions: u64,
+        new_clicks: u64,
+    ) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+
+        let _ttl_key = DataKey::Baseline(campaign_id);
+        let current: Option<TrafficBaseline> = env.storage().persistent().get(&_ttl_key);
+
+        if let Some(baseline) = current {
+            let max_impressions = baseline
+                .avg_impressions_per_hour
+                .saturating_mul(MAX_BASELINE_MULTIPLIER);
+            let max_clicks = baseline
+                .avg_clicks_per_hour
+                .saturating_mul(MAX_BASELINE_MULTIPLIER);
+
+            if new_impressions > max_impressions {
+                panic!("baseline change too large");
+            }
+            if new_clicks > max_clicks {
+                panic!("baseline change too large");
+            }
+
+            env.events().publish(
+                (symbol_short!("baseline"), symbol_short!("updated")),
+                (
+                    campaign_id,
+                    baseline.avg_impressions_per_hour,
+                    new_impressions,
+                ),
+            );
+        }
+
+        let new_baseline = TrafficBaseline {
+            campaign_id,
+            avg_impressions_per_hour: new_impressions,
+            avg_clicks_per_hour: new_clicks,
+            spike_threshold_pct: 300,
+            last_updated: env.ledger().timestamp(),
+        };
+
+        env.storage().persistent().set(&_ttl_key, &new_baseline);
+        env.storage().persistent().extend_ttl(
+            &_ttl_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+    }
+
+    /// Report an anomaly for a campaign. Related fields are bundled in `params`
+    /// to keep the argument count within clippy's `too_many_arguments` limit (#751).
     pub fn report_anomaly(
         env: Env,
         oracle: Address,
         campaign_id: u64,
         publisher: Option<Address>,
-        anomaly_type: AnomalyType,
-        severity: AnomalySeverity,
-        description: String,
-        metrics_snapshot: String,
-        auto_action: bool,
-        current_impressions_per_hour: u64,
-        current_clicks_per_hour: u64,
+        params: AnomalyParams,
     ) -> u64 {
         env.storage()
             .instance()
@@ -160,23 +238,23 @@ impl AnomalyDetectorContract {
             .storage()
             .persistent()
             .get(&DataKey::Baseline(campaign_id));
-        
+
         if let Some(b) = baseline {
-            // Calculate threshold multiplier (e.g., 300% = 3.0x)
             let threshold_multiplier = b.spike_threshold_pct as u64;
-            
-            // Check if current metrics exceed baseline thresholds
-            let impressions_threshold = b.avg_impressions_per_hour
+
+            let impressions_threshold = b
+                .avg_impressions_per_hour
                 .saturating_mul(threshold_multiplier)
                 .saturating_div(100);
-            let clicks_threshold = b.avg_clicks_per_hour
+            let clicks_threshold = b
+                .avg_clicks_per_hour
                 .saturating_mul(threshold_multiplier)
                 .saturating_div(100);
-            
-            // Validate that at least one metric exceeds the threshold
-            let impressions_exceeded = current_impressions_per_hour > impressions_threshold;
-            let clicks_exceeded = current_clicks_per_hour > clicks_threshold;
-            
+
+            let impressions_exceeded =
+                params.current_impressions_per_hour > impressions_threshold;
+            let clicks_exceeded = params.current_clicks_per_hour > clicks_threshold;
+
             if !impressions_exceeded && !clicks_exceeded {
                 panic!("metrics do not exceed baseline thresholds");
             }
@@ -191,17 +269,14 @@ impl AnomalyDetectorContract {
 
         // Auto-flag critical publisher anomalies
         if let Some(ref pub_addr) = publisher {
-            match severity {
-                AnomalySeverity::Critical => {
-                    let _ttl_key = DataKey::FlaggedPublisher(pub_addr.clone());
-                    env.storage().persistent().set(&_ttl_key, &true);
-                    env.storage().persistent().extend_ttl(
-                        &_ttl_key,
-                        PERSISTENT_LIFETIME_THRESHOLD,
-                        PERSISTENT_BUMP_AMOUNT,
-                    );
-                }
-                _ => {}
+            if let AnomalySeverity::Critical = params.severity {
+                let _ttl_key = DataKey::FlaggedPublisher(pub_addr.clone());
+                env.storage().persistent().set(&_ttl_key, &true);
+                env.storage().persistent().extend_ttl(
+                    &_ttl_key,
+                    PERSISTENT_LIFETIME_THRESHOLD,
+                    PERSISTENT_BUMP_AMOUNT,
+                );
             }
         }
 
@@ -209,11 +284,11 @@ impl AnomalyDetectorContract {
             report_id,
             campaign_id,
             publisher,
-            anomaly_type,
-            severity,
-            description,
-            metrics_snapshot,
-            auto_action_taken: auto_action,
+            anomaly_type: params.anomaly_type,
+            severity: params.severity,
+            description: params.description,
+            metrics_snapshot: params.metrics_snapshot,
+            auto_action_taken: params.auto_action,
             reported_at: env.ledger().timestamp(),
             resolved: false,
             resolved_at: None,
@@ -254,8 +329,20 @@ impl AnomalyDetectorContract {
             .get(&DataKey::Report(report_id))
             .expect("report not found");
 
+        if report.resolved {
+            panic!("anomaly report is already resolved");
+        }
+
         report.resolved = true;
         report.resolved_at = Some(env.ledger().timestamp());
+
+        // Clear the persistent publisher flag so the publisher is no longer blocked
+        if let Some(ref pub_addr) = report.publisher {
+            env.storage()
+                .persistent()
+                .remove(&DataKey::FlaggedPublisher(pub_addr.clone()));
+        }
+
         let _ttl_key = DataKey::Report(report_id);
         env.storage().persistent().set(&_ttl_key, &report);
         env.storage().persistent().extend_ttl(

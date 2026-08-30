@@ -2,6 +2,7 @@
 //! Multi-token payment support with fee distribution on Stellar.
 
 #![no_std]
+use pulsar_common_fees::{calculate_fee_bps, checked_add};
 use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, token, Address, Env};
 
 // ============================================================
@@ -36,7 +37,6 @@ pub struct TokenConfig {
     pub enabled: bool,
     pub min_amount: i128,
     pub daily_limit: i128,
-    pub daily_volume: i128,
 }
 
 #[contracttype]
@@ -72,6 +72,7 @@ pub enum DataKey {
     UserStats(Address),
     RevenueStats(Address),
     DailyVolume(Address, u64),
+    Paused,
 }
 
 // ============================================================
@@ -82,6 +83,8 @@ const INSTANCE_LIFETIME_THRESHOLD: u32 = 17_280;
 const INSTANCE_BUMP_AMOUNT: u32 = 86_400;
 const PERSISTENT_LIFETIME_THRESHOLD: u32 = 120_960;
 const PERSISTENT_BUMP_AMOUNT: u32 = 1_051_200;
+const SECONDS_PER_DAY: u64 = 86_400;
+const APPROX_SECONDS_PER_LEDGER: u64 = 5;
 
 #[contract]
 pub struct PaymentProcessorContract;
@@ -98,6 +101,7 @@ impl PaymentProcessorContract {
         }
         admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage().instance().set(&DataKey::Paused, &false);
         env.storage()
             .instance()
             .set(&DataKey::TreasuryAddress, &treasury);
@@ -128,7 +132,6 @@ impl PaymentProcessorContract {
             enabled: true,
             min_amount,
             daily_limit,
-            daily_volume: 0,
         };
 
         let _ttl_key = DataKey::TokenConfig(token);
@@ -164,6 +167,7 @@ impl PaymentProcessorContract {
         token: Address,
         amount: i128,
     ) -> u64 {
+        Self::require_not_paused(&env);
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -192,11 +196,12 @@ impl PaymentProcessorContract {
         }
 
         // Check daily limit
-        let current_day = env.ledger().timestamp() / 86_400;
+        let current_day = env.ledger().timestamp() / SECONDS_PER_DAY;
         let daily_key = DataKey::DailyVolume(token.clone(), current_day);
         let daily_vol: i128 = env.storage().temporary().get(&daily_key).unwrap_or(0);
 
-        if daily_vol + amount > config.daily_limit {
+        let new_daily_vol = checked_add(daily_vol, amount);
+        if new_daily_vol > config.daily_limit {
             panic!("daily limit exceeded");
         }
 
@@ -206,7 +211,7 @@ impl PaymentProcessorContract {
             .instance()
             .get(&DataKey::PlatformFeeBps)
             .unwrap_or(250);
-        let fee = (amount * fee_bps as i128) / 10_000;
+        let fee = calculate_fee_bps(amount, fee_bps);
         let net_amount = amount - fee;
 
         let payment_id: u64 = env
@@ -223,6 +228,31 @@ impl PaymentProcessorContract {
             panic!("insufficient balance");
         }
 
+        // FIX #559: Record payment BEFORE executing transfers (CEI pattern)
+        // This ensures the payment exists in storage before any external calls
+        let payment = Payment {
+            payer: payer.clone(),
+            recipient: recipient.clone(),
+            token: token.clone(),
+            amount,
+            fee_charged: fee,
+            status: PaymentStatus::Processing,
+            created_at: env.ledger().timestamp(),
+            processed_at: None,
+        };
+
+        let _ttl_key = DataKey::Payment(payment_id);
+        env.storage().persistent().set(&_ttl_key, &payment);
+        env.storage().persistent().extend_ttl(
+            &_ttl_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+        env.storage()
+            .instance()
+            .set(&DataKey::NextPaymentId, &(payment_id + 1));
+
+        // Now execute token transfers
         // Transfer the full amount to the contract first so that both outgoing
         // distributions share a single payer authorization.  If either
         // distribution fails the entire transaction rolls back, including this
@@ -239,33 +269,25 @@ impl PaymentProcessorContract {
             token_client.transfer(&contract_address, &treasury, &fee);
         }
 
-        // Record payment
-        let payment = Payment {
-            payer: payer.clone(),
-            recipient: recipient.clone(),
-            token: token.clone(),
-            amount,
-            fee_charged: fee,
-            status: PaymentStatus::Completed,
-            created_at: env.ledger().timestamp(),
-            processed_at: Some(env.ledger().timestamp()),
-        };
-
-        let _ttl_key = DataKey::Payment(payment_id);
-        env.storage().persistent().set(&_ttl_key, &payment);
+        // Update payment status to Completed after successful transfers
+        let mut completed_payment = payment;
+        completed_payment.status = PaymentStatus::Completed;
+        completed_payment.processed_at = Some(env.ledger().timestamp());
+        env.storage()
+            .persistent()
+            .set(&_ttl_key, &completed_payment);
         env.storage().persistent().extend_ttl(
             &_ttl_key,
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
         );
-        env.storage()
-            .instance()
-            .set(&DataKey::NextPaymentId, &(payment_id + 1));
 
         // Update daily volume
+        env.storage().temporary().set(&daily_key, &new_daily_vol);
+        let remaining_ledgers = Self::daily_volume_ttl_ledgers(&env);
         env.storage()
             .temporary()
-            .set(&daily_key, &(daily_vol + amount));
+            .extend_ttl(&daily_key, remaining_ledgers, remaining_ledgers);
 
         // Update user stats
         Self::_update_user_stats(&env, &payer, amount);
@@ -335,6 +357,14 @@ impl PaymentProcessorContract {
         env.storage().persistent().get(&DataKey::TokenConfig(token))
     }
 
+    pub fn get_daily_volume(env: Env, token: Address) -> i128 {
+        let day = env.ledger().timestamp() / SECONDS_PER_DAY;
+        env.storage()
+            .temporary()
+            .get(&DataKey::DailyVolume(token, day))
+            .unwrap_or(0)
+    }
+
     // ============================================================
     // Internal Helpers
     // ============================================================
@@ -383,6 +413,56 @@ impl PaymentProcessorContract {
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
         );
+    }
+
+    fn daily_volume_ttl_ledgers(env: &Env) -> u32 {
+        let seconds_elapsed_today = env.ledger().timestamp() % SECONDS_PER_DAY;
+        let seconds_left_today = SECONDS_PER_DAY - seconds_elapsed_today;
+
+        // Keep the temporary daily-volume key alive through the end of the
+        // current day so the limit cannot reset early.
+        ((seconds_left_today / APPROX_SECONDS_PER_LEDGER) + 1) as u32
+    }
+
+    /// Pause the contract. Only callable by the admin.
+    ///
+    /// While paused every fund-moving entrypoint panics. Read-only getters
+    /// and administrative functions remain available so the contract can be
+    /// inspected and unpaused once a fix is ready.
+    pub fn set_paused(env: Env, admin: Address, paused: bool) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+        env.storage().instance().set(&DataKey::Paused, &paused);
+        env.events()
+            .publish((symbol_short!("pause"), symbol_short!("set")), paused);
+    }
+
+    /// Whether the contract is currently paused.
+    pub fn is_paused(env: Env) -> bool {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        env.storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false)
+    }
+
+    fn require_not_paused(env: &Env) {
+        let paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+        if paused {
+            panic!("contract is paused");
+        }
     }
 
     pub fn propose_admin(env: Env, current_admin: Address, new_admin: Address) {

@@ -19,7 +19,7 @@ fn setup(env: &Env) -> (EscrowVaultContractClient<'_>, Address, Address, Address
     let oracle = Address::generate(env);
 
     let token_addr = deploy_token(env, &token_admin);
-    let contract_id = env.register_contract(None, EscrowVaultContract);
+    let contract_id = env.register(EscrowVaultContract, ());
     let client = EscrowVaultContractClient::new(env, &contract_id);
     client.initialize(&admin, &token_addr, &oracle);
 
@@ -29,6 +29,15 @@ fn setup(env: &Env) -> (EscrowVaultContractClient<'_>, Address, Address, Address
 fn mint(env: &Env, _token_admin: &Address, token_addr: &Address, to: &Address, amount: i128) {
     let sac = StellarAssetClient::new(env, token_addr);
     sac.mint(to, &amount);
+}
+
+/// Minimum valid `time_lock_duration` (contract rejects 0).
+const MIN_TIME_LOCK_SECS: u64 = 1;
+
+fn advance_ledger(env: &Env, seconds: u64) {
+    env.ledger().with_mut(|li| {
+        li.timestamp += seconds;
+    });
 }
 
 // ─── initialize ──────────────────────────────────────────────────────────────
@@ -41,7 +50,7 @@ fn test_initialize() {
     let token = deploy_token(&env, &admin);
     let oracle = Address::generate(&env);
 
-    let contract_id = env.register_contract(None, EscrowVaultContract);
+    let contract_id = env.register(EscrowVaultContract, ());
     let client = EscrowVaultContractClient::new(&env, &contract_id);
     client.initialize(&admin, &token, &oracle);
 }
@@ -55,7 +64,7 @@ fn test_initialize_twice() {
     let token = deploy_token(&env, &admin);
     let oracle = Address::generate(&env);
 
-    let contract_id = env.register_contract(None, EscrowVaultContract);
+    let contract_id = env.register(EscrowVaultContract, ());
     let client = EscrowVaultContractClient::new(&env, &contract_id);
     client.initialize(&admin, &token, &oracle);
     client.initialize(&admin, &token, &oracle);
@@ -70,7 +79,7 @@ fn test_initialize_non_admin_fails() {
     let token = deploy_token(&env, &admin);
     let oracle = Address::generate(&env);
 
-    let contract_id = env.register_contract(None, EscrowVaultContract);
+    let contract_id = env.register(EscrowVaultContract, ());
     let client = EscrowVaultContractClient::new(&env, &contract_id);
     client.initialize(&admin, &token, &oracle);
 }
@@ -87,7 +96,7 @@ fn test_create_escrow() {
     let admin = Address::generate(&env);
     let oracle = Address::generate(&env);
 
-    let contract_id = env.register_contract(None, EscrowVaultContract);
+    let contract_id = env.register(EscrowVaultContract, ());
     let client = EscrowVaultContractClient::new(&env, &contract_id);
     client.initialize(&admin, &token_addr, &oracle);
 
@@ -96,16 +105,16 @@ fn test_create_escrow() {
     let approver = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    let escrow_id = client.create_escrow(
-        &depositor,
-        &1u64,
-        &beneficiary,
-        &100_000i128,
-        &0u64, // no time lock
-        &0u32, // 0% performance threshold
-        &86_400u64,
-        &vec![&env, approver.clone()],
-    );
+    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+        depositor: depositor.clone(),
+        campaign_id: 1u64,
+        beneficiary: beneficiary.clone(),
+        amount: 100_000i128,
+        time_lock_duration: MIN_TIME_LOCK_SECS,
+        performance_threshold: 0u32,
+        expires_in: 86_400u64,
+        required_approvers: vec![&env, approver.clone()],
+    });
 
     assert_eq!(escrow_id, 1);
 
@@ -131,16 +140,16 @@ fn test_create_escrow_zero_amount() {
     let depositor = Address::generate(&env);
     let beneficiary = Address::generate(&env);
 
-    client.create_escrow(
-        &depositor,
-        &1u64,
-        &beneficiary,
-        &0i128,
-        &0u64,
-        &0u32,
-        &86_400u64,
-        &vec![&env],
-    );
+    c.create_escrow(&EscrowCreateArgs {
+        depositor: depositor.clone(),
+        campaign_id: 1u64,
+        beneficiary: beneficiary.clone(),
+        amount: 0i128,
+        time_lock_duration: 0u64,
+        performance_threshold: 0u32,
+        expires_in: 86_400u64,
+        required_approvers: vec![&env],
+    });
 }
 
 #[test]
@@ -153,7 +162,7 @@ fn test_create_escrow_invalid_performance_threshold() {
     let admin = Address::generate(&env);
     let oracle = Address::generate(&env);
 
-    let contract_id = env.register_contract(None, EscrowVaultContract);
+    let contract_id = env.register(EscrowVaultContract, ());
     let client = EscrowVaultContractClient::new(&env, &contract_id);
     client.initialize(&admin, &token_addr, &oracle);
 
@@ -161,22 +170,50 @@ fn test_create_escrow_invalid_performance_threshold() {
     let beneficiary = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    client.create_escrow(
-        &depositor,
-        &1u64,
-        &beneficiary,
-        &100_000i128,
-        &0u64,
-        &101u32, // > 100 → invalid
-        &86_400u64,
-        &vec![&env],
-    );
+    c.create_escrow(&EscrowCreateArgs {
+        depositor: depositor.clone(),
+        campaign_id: 1u64,
+        beneficiary: beneficiary.clone(),
+        amount: 100_000i128,
+        time_lock_duration: MIN_TIME_LOCK_SECS,
+        performance_threshold: 101u32,
+        expires_in: 86_400u64,
+        required_approvers: vec![&env],
+    });
 }
 
-// ─── approve_release ─────────────────────────────────────────────────────────
+#[test]
+#[should_panic(expected = "time_lock_duration must be at least 1 second")]
+fn test_create_escrow_zero_time_lock_duration() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let token_admin = Address::generate(&env);
+    let token_addr = deploy_token(&env, &token_admin);
+    let admin = Address::generate(&env);
+    let oracle = Address::generate(&env);
+    let contract_id = env.register(EscrowVaultContract, ());
+    let client = EscrowVaultContractClient::new(&env, &contract_id);
+    client.initialize(&admin, &token_addr, &oracle);
+
+    let depositor = Address::generate(&env);
+    let beneficiary = Address::generate(&env);
+    mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
+
+    c.create_escrow(&EscrowCreateArgs {
+        depositor: depositor.clone(),
+        campaign_id: 1u64,
+        beneficiary: beneficiary.clone(),
+        amount: 100_000i128,
+        time_lock_duration: 0u64,
+        performance_threshold: 0u32,
+        expires_in: 86_400u64,
+        required_approvers: vec![&env],
+    });
+}
 
 #[test]
-fn test_approve_release() {
+#[should_panic(expected = "time_lock_until overflow")]
+fn test_create_escrow_time_lock_overflow() {
     let env = Env::default();
     env.mock_all_auths();
     let token_admin = Address::generate(&env);
@@ -192,16 +229,87 @@ fn test_approve_release() {
     let approver = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    let escrow_id = client.create_escrow(
-        &depositor,
-        &1u64,
-        &beneficiary,
-        &100_000i128,
-        &0u64,
-        &0u32,
-        &86_400u64,
-        &vec![&env, approver.clone()],
-    );
+    env.ledger().with_mut(|li| {
+        li.timestamp = 1_000;
+    });
+
+    // now + time_lock_duration wraps past u64::MAX
+    c.create_escrow(&EscrowCreateArgs {
+        depositor: depositor.clone(),
+        campaign_id: 1u64,
+        beneficiary: beneficiary.clone(),
+        amount: 100_000i128,
+        time_lock_duration: u64::MAX - 500,
+        performance_threshold: 0u32,
+        expires_in: u64::MAX,
+        required_approvers: vec![&env, approver],
+    }); // should panic
+}
+
+#[test]
+#[should_panic(expected = "expires_at overflow")]
+fn test_create_escrow_expires_at_overflow() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let token_admin = Address::generate(&env);
+    let token_addr = deploy_token(&env, &token_admin);
+    let admin = Address::generate(&env);
+    let oracle = Address::generate(&env);
+    let contract_id = env.register_contract(None, EscrowVaultContract);
+    let client = EscrowVaultContractClient::new(&env, &contract_id);
+    client.initialize(&admin, &token_addr, &oracle);
+
+    let depositor = Address::generate(&env);
+    let beneficiary = Address::generate(&env);
+    let approver = Address::generate(&env);
+    mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
+
+    env.ledger().with_mut(|li| {
+        li.timestamp = 1_000;
+    });
+
+    // now + expires_in wraps past u64::MAX while time lock stays valid
+    c.create_escrow(&EscrowCreateArgs {
+        depositor: depositor.clone(),
+        campaign_id: 1u64,
+        beneficiary: beneficiary.clone(),
+        amount: 100_000i128,
+        time_lock_duration: MIN_TIME_LOCK_SECS,
+        performance_threshold: 0u32,
+        expires_in: u64::MAX - 500,
+        required_approvers: vec![&env, approver],
+    }); // should panic
+}
+
+// ─── approve_release ─────────────────────────────────────────────────────────
+
+#[test]
+fn test_approve_release() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let token_admin = Address::generate(&env);
+    let token_addr = deploy_token(&env, &token_admin);
+    let admin = Address::generate(&env);
+    let oracle = Address::generate(&env);
+    let contract_id = env.register(EscrowVaultContract, ());
+    let client = EscrowVaultContractClient::new(&env, &contract_id);
+    client.initialize(&admin, &token_addr, &oracle);
+
+    let depositor = Address::generate(&env);
+    let beneficiary = Address::generate(&env);
+    let approver = Address::generate(&env);
+    mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
+
+    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+        depositor: depositor.clone(),
+        campaign_id: 1u64,
+        beneficiary: beneficiary.clone(),
+        amount: 100_000i128,
+        time_lock_duration: MIN_TIME_LOCK_SECS,
+        performance_threshold: 0u32,
+        expires_in: 86_400u64,
+        required_approvers: vec![&env, approver.clone()],
+    });
 
     assert_eq!(client.get_approval_count(&escrow_id), 0);
     client.approve_release(&approver, &escrow_id);
@@ -219,20 +327,25 @@ fn test_approve_release_duplicate_fails() {
     let depositor = Address::generate(&env);
     let beneficiary = Address::generate(&env);
     let approver = Address::generate(&env);
-    
+
     // Use setup directly to avoid redundant boilerplate
     let sac = StellarAssetClient::new(&env, &token_addr);
     sac.mint(&depositor, &1_000_000);
 
-    let escrow_id = client.create_escrow(
-        &depositor, &1u64, &beneficiary, &100_000i128,
-        &0u64, &0u32, &86_400u64,
-        &vec![&env, approver.clone()],
-    );
+    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+        depositor: depositor.clone(),
+        campaign_id: 1u64,
+        beneficiary: beneficiary.clone(),
+        amount: 100_000i128,
+        time_lock_duration: MIN_TIME_LOCK_SECS,
+        performance_threshold: 0u32,
+        expires_in: 86_400u64,
+        required_approvers: vec![&env, approver.clone()],
+    });
 
     client.approve_release(&approver, &escrow_id);
     assert_eq!(client.get_approval_count(&escrow_id), 1);
-    
+
     // Attempt second approval from same address
     client.approve_release(&approver, &escrow_id); // should panic
 }
@@ -246,33 +359,33 @@ fn test_approve_release_unauthorized() {
     let token_addr = deploy_token(&env, &token_admin);
     let admin = Address::generate(&env);
     let oracle = Address::generate(&env);
-    let contract_id = env.register_contract(None, EscrowVaultContract);
+    let contract_id = env.register(EscrowVaultContract, ());
     let client = EscrowVaultContractClient::new(&env, &contract_id);
     client.initialize(&admin, &token_addr, &oracle);
 
     let depositor = Address::generate(&env);
     let beneficiary = Address::generate(&env);
+    let approver = Address::generate(&env);
     let stranger = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    let escrow_id = client.create_escrow(
-        &depositor,
-        &1u64,
-        &beneficiary,
-        &100_000i128,
-        &0u64,
-        &0u32,
-        &86_400u64,
-        &vec![&env], // no required approvers
-    );
+    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+        depositor: depositor.clone(),
+        campaign_id: 1u64,
+        beneficiary: beneficiary.clone(),
+        amount: 100_000i128,
+        time_lock_duration: MIN_TIME_LOCK_SECS,
+        performance_threshold: 0u32,
+        expires_in: 86_400u64,
+        required_approvers: vec![&env, approver],
+    });
 
     client.approve_release(&stranger, &escrow_id); // should panic
 }
 
-// ─── release_escrow ──────────────────────────────────────────────────────────
-
 #[test]
-fn test_release_escrow() {
+#[should_panic(expected = "escrow is not in an approvable state")]
+fn test_approve_release_refunded_fails() {
     let env = Env::default();
     env.mock_all_auths();
     let token_admin = Address::generate(&env);
@@ -288,18 +401,94 @@ fn test_release_escrow() {
     let approver = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    let escrow_id = client.create_escrow(
-        &depositor,
-        &1u64,
-        &beneficiary,
-        &100_000i128,
-        &0u64,
-        &0u32,
-        &999_999u64, // far-future expiry
-        &vec![&env, approver.clone()],
-    );
+    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+        depositor: depositor.clone(),
+        campaign_id: 1u64,
+        beneficiary: beneficiary.clone(),
+        amount: 100_000i128,
+        time_lock_duration: MIN_TIME_LOCK_SECS,
+        performance_threshold: 0u32,
+        expires_in: 100u64,
+        required_approvers: vec![&env, approver.clone()],
+    });
+
+    // Expire and refund the escrow
+    env.ledger().with_mut(|li| {
+        li.timestamp = 200;
+    });
+    client.refund_escrow(&depositor, &escrow_id);
+
+    client.approve_release(&approver, &escrow_id); // should panic
+}
+
+#[test]
+#[should_panic(expected = "escrow is not in an approvable state")]
+fn test_approve_release_disputed_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let token_admin = Address::generate(&env);
+    let token_addr = deploy_token(&env, &token_admin);
+    let admin = Address::generate(&env);
+    let oracle = Address::generate(&env);
+    let contract_id = env.register_contract(None, EscrowVaultContract);
+    let client = EscrowVaultContractClient::new(&env, &contract_id);
+    client.initialize(&admin, &token_addr, &oracle);
+
+    let fraud_contract = Address::generate(&env);
+    client.set_fraud_contract(&admin, &fraud_contract);
+
+    let depositor = Address::generate(&env);
+    let beneficiary = Address::generate(&env);
+    let approver = Address::generate(&env);
+    mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
+
+    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+        depositor: depositor.clone(),
+        campaign_id: 1u64,
+        beneficiary: beneficiary.clone(),
+        amount: 100_000i128,
+        time_lock_duration: MIN_TIME_LOCK_SECS,
+        performance_threshold: 0u32,
+        expires_in: 999_999u64,
+        required_approvers: vec![&env, approver.clone()],
+    });
+
+    client.hold_for_fraud(&fraud_contract, &escrow_id);
+    client.approve_release(&approver, &escrow_id); // should panic
+}
+
+// ─── release_escrow ──────────────────────────────────────────────────────────
+
+#[test]
+fn test_release_escrow() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let token_admin = Address::generate(&env);
+    let token_addr = deploy_token(&env, &token_admin);
+    let admin = Address::generate(&env);
+    let oracle = Address::generate(&env);
+    let contract_id = env.register(EscrowVaultContract, ());
+    let client = EscrowVaultContractClient::new(&env, &contract_id);
+    client.initialize(&admin, &token_addr, &oracle);
+
+    let depositor = Address::generate(&env);
+    let beneficiary = Address::generate(&env);
+    let approver = Address::generate(&env);
+    mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
+
+    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+        depositor: depositor.clone(),
+        campaign_id: 1u64,
+        beneficiary: beneficiary.clone(),
+        amount: 100_000i128,
+        time_lock_duration: MIN_TIME_LOCK_SECS,
+        performance_threshold: 0u32,
+        expires_in: 999_999u64,
+        required_approvers: vec![&env, approver.clone()],
+    });
 
     client.approve_release(&approver, &escrow_id);
+    advance_ledger(&env, MIN_TIME_LOCK_SECS);
     client.release_escrow(&depositor, &escrow_id);
 
     let escrow = client.get_escrow(&escrow_id).unwrap();
@@ -320,7 +509,7 @@ fn test_release_escrow_time_lock_active() {
     let token_addr = deploy_token(&env, &token_admin);
     let admin = Address::generate(&env);
     let oracle = Address::generate(&env);
-    let contract_id = env.register_contract(None, EscrowVaultContract);
+    let contract_id = env.register(EscrowVaultContract, ());
     let client = EscrowVaultContractClient::new(&env, &contract_id);
     client.initialize(&admin, &token_addr, &oracle);
 
@@ -329,16 +518,16 @@ fn test_release_escrow_time_lock_active() {
     let approver = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    let escrow_id = client.create_escrow(
-        &depositor,
-        &1u64,
-        &beneficiary,
-        &100_000i128,
-        &3600u64, // 1 hour time lock — still active
-        &0u32,
-        &999_999u64,
-        &vec![&env, approver.clone()],
-    );
+    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+        depositor: depositor.clone(),
+        campaign_id: 1u64,
+        beneficiary: beneficiary.clone(),
+        amount: 100_000i128,
+        time_lock_duration: 3600u64,
+        performance_threshold: 0u32,
+        expires_in: 999_999u64,
+        required_approvers: vec![&env, approver.clone()],
+    });
 
     client.approve_release(&approver, &escrow_id);
     client.release_escrow(&depositor, &escrow_id); // panics: time lock active
@@ -353,26 +542,28 @@ fn test_release_escrow_no_approval() {
     let token_addr = deploy_token(&env, &token_admin);
     let admin = Address::generate(&env);
     let oracle = Address::generate(&env);
-    let contract_id = env.register_contract(None, EscrowVaultContract);
+    let contract_id = env.register(EscrowVaultContract, ());
     let client = EscrowVaultContractClient::new(&env, &contract_id);
     client.initialize(&admin, &token_addr, &oracle);
 
     let depositor = Address::generate(&env);
     let beneficiary = Address::generate(&env);
+    let approver = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    let escrow_id = client.create_escrow(
-        &depositor,
-        &1u64,
-        &beneficiary,
-        &100_000i128,
-        &0u64,
-        &0u32,
-        &999_999u64,
-        &vec![&env], // no approvers registered → count stays 0
-    );
+    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+        depositor: depositor.clone(),
+        campaign_id: 1u64,
+        beneficiary: beneficiary.clone(),
+        amount: 100_000i128,
+        time_lock_duration: MIN_TIME_LOCK_SECS,
+        performance_threshold: 0u32,
+        expires_in: 999_999u64,
+        required_approvers: vec![&env, approver],
+    });
 
     // min_threshold = 1, approvals = 0 → panic
+    advance_ledger(&env, MIN_TIME_LOCK_SECS);
     client.release_escrow(&depositor, &escrow_id);
 }
 
@@ -385,7 +576,7 @@ fn test_release_escrow_unauthorized_caller() {
     let token_addr = deploy_token(&env, &token_admin);
     let admin = Address::generate(&env);
     let oracle = Address::generate(&env);
-    let contract_id = env.register_contract(None, EscrowVaultContract);
+    let contract_id = env.register(EscrowVaultContract, ());
     let client = EscrowVaultContractClient::new(&env, &contract_id);
     client.initialize(&admin, &token_addr, &oracle);
 
@@ -395,16 +586,16 @@ fn test_release_escrow_unauthorized_caller() {
     let stranger = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    let escrow_id = client.create_escrow(
-        &depositor,
-        &1u64,
-        &beneficiary,
-        &100_000i128,
-        &0u64,
-        &0u32,
-        &999_999u64,
-        &vec![&env, approver.clone()],
-    );
+    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+        depositor: depositor.clone(),
+        campaign_id: 1u64,
+        beneficiary: beneficiary.clone(),
+        amount: 100_000i128,
+        time_lock_duration: MIN_TIME_LOCK_SECS,
+        performance_threshold: 0u32,
+        expires_in: 999_999u64,
+        required_approvers: vec![&env, approver.clone()],
+    });
 
     client.approve_release(&approver, &escrow_id);
     client.release_escrow(&stranger, &escrow_id); // not depositor or admin
@@ -420,7 +611,7 @@ fn test_release_partial() {
     let token_addr = deploy_token(&env, &token_admin);
     let admin = Address::generate(&env);
     let oracle = Address::generate(&env);
-    let contract_id = env.register_contract(None, EscrowVaultContract);
+    let contract_id = env.register(EscrowVaultContract, ());
     let client = EscrowVaultContractClient::new(&env, &contract_id);
     client.initialize(&admin, &token_addr, &oracle);
 
@@ -429,18 +620,19 @@ fn test_release_partial() {
     let approver = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    let escrow_id = client.create_escrow(
-        &depositor,
-        &1u64,
-        &beneficiary,
-        &100_000i128,
-        &0u64,
-        &0u32,
-        &999_999u64,
-        &vec![&env, approver.clone()],
-    );
+    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+        depositor: depositor.clone(),
+        campaign_id: 1u64,
+        beneficiary: beneficiary.clone(),
+        amount: 100_000i128,
+        time_lock_duration: MIN_TIME_LOCK_SECS,
+        performance_threshold: 0u32,
+        expires_in: 999_999u64,
+        required_approvers: vec![&env, approver.clone()],
+    });
 
     client.approve_release(&approver, &escrow_id);
+    advance_ledger(&env, MIN_TIME_LOCK_SECS);
     client.release_partial(&depositor, &escrow_id, &40_000i128);
 
     let escrow = client.get_escrow(&escrow_id).unwrap();
@@ -460,7 +652,7 @@ fn test_release_partial_exceeds_locked() {
     let token_addr = deploy_token(&env, &token_admin);
     let admin = Address::generate(&env);
     let oracle = Address::generate(&env);
-    let contract_id = env.register_contract(None, EscrowVaultContract);
+    let contract_id = env.register(EscrowVaultContract, ());
     let client = EscrowVaultContractClient::new(&env, &contract_id);
     client.initialize(&admin, &token_addr, &oracle);
 
@@ -469,18 +661,19 @@ fn test_release_partial_exceeds_locked() {
     let approver = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    let escrow_id = client.create_escrow(
-        &depositor,
-        &1u64,
-        &beneficiary,
-        &100_000i128,
-        &0u64,
-        &0u32,
-        &999_999u64,
-        &vec![&env, approver.clone()],
-    );
+    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+        depositor: depositor.clone(),
+        campaign_id: 1u64,
+        beneficiary: beneficiary.clone(),
+        amount: 100_000i128,
+        time_lock_duration: MIN_TIME_LOCK_SECS,
+        performance_threshold: 0u32,
+        expires_in: 999_999u64,
+        required_approvers: vec![&env, approver.clone()],
+    });
 
     client.approve_release(&approver, &escrow_id);
+    advance_ledger(&env, MIN_TIME_LOCK_SECS);
     client.release_partial(&depositor, &escrow_id, &200_000i128); // more than locked
 }
 
@@ -492,7 +685,7 @@ fn test_release_after_partial_released_amount_correct() {
     let token_addr = deploy_token(&env, &token_admin);
     let admin = Address::generate(&env);
     let oracle = Address::generate(&env);
-    let contract_id = env.register_contract(None, EscrowVaultContract);
+    let contract_id = env.register(EscrowVaultContract, ());
     let client = EscrowVaultContractClient::new(&env, &contract_id);
     client.initialize(&admin, &token_addr, &oracle);
 
@@ -501,18 +694,19 @@ fn test_release_after_partial_released_amount_correct() {
     let approver = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    let escrow_id = client.create_escrow(
-        &depositor,
-        &1u64,
-        &beneficiary,
-        &100_000i128,
-        &0u64,
-        &0u32,
-        &999_999u64,
-        &vec![&env, approver.clone()],
-    );
+    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+        depositor: depositor.clone(),
+        campaign_id: 1u64,
+        beneficiary: beneficiary.clone(),
+        amount: 100_000i128,
+        time_lock_duration: MIN_TIME_LOCK_SECS,
+        performance_threshold: 0u32,
+        expires_in: 999_999u64,
+        required_approvers: vec![&env, approver.clone()],
+    });
 
     client.approve_release(&approver, &escrow_id);
+    advance_ledger(&env, MIN_TIME_LOCK_SECS);
     client.release_partial(&depositor, &escrow_id, &40_000i128);
     client.release_escrow(&depositor, &escrow_id);
 
@@ -534,25 +728,26 @@ fn test_refund_escrow() {
     let token_addr = deploy_token(&env, &token_admin);
     let admin = Address::generate(&env);
     let oracle = Address::generate(&env);
-    let contract_id = env.register_contract(None, EscrowVaultContract);
+    let contract_id = env.register(EscrowVaultContract, ());
     let client = EscrowVaultContractClient::new(&env, &contract_id);
     client.initialize(&admin, &token_addr, &oracle);
 
     let depositor = Address::generate(&env);
     let beneficiary = Address::generate(&env);
+    let approver = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
     // expires_in = 100 seconds from now (ledger timestamp = 0 by default)
-    let escrow_id = client.create_escrow(
-        &depositor,
-        &1u64,
-        &beneficiary,
-        &100_000i128,
-        &0u64,
-        &0u32,
-        &100u64,
-        &vec![&env],
-    );
+    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+        depositor: depositor.clone(),
+        campaign_id: 1u64,
+        beneficiary: beneficiary.clone(),
+        amount: 100_000i128,
+        time_lock_duration: MIN_TIME_LOCK_SECS,
+        performance_threshold: 0u32,
+        expires_in: 100u64,
+        required_approvers: vec![&env, approver],
+    });
 
     // advance ledger past expiry
     env.ledger().with_mut(|li| {
@@ -578,24 +773,25 @@ fn test_refund_escrow_not_expired() {
     let token_addr = deploy_token(&env, &token_admin);
     let admin = Address::generate(&env);
     let oracle = Address::generate(&env);
-    let contract_id = env.register_contract(None, EscrowVaultContract);
+    let contract_id = env.register(EscrowVaultContract, ());
     let client = EscrowVaultContractClient::new(&env, &contract_id);
     client.initialize(&admin, &token_addr, &oracle);
 
     let depositor = Address::generate(&env);
     let beneficiary = Address::generate(&env);
+    let approver = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    let escrow_id = client.create_escrow(
-        &depositor,
-        &1u64,
-        &beneficiary,
-        &100_000i128,
-        &0u64,
-        &0u32,
-        &999_999u64, // far future expiry
-        &vec![&env],
-    );
+    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+        depositor: depositor.clone(),
+        campaign_id: 1u64,
+        beneficiary: beneficiary.clone(),
+        amount: 100_000i128,
+        time_lock_duration: MIN_TIME_LOCK_SECS,
+        performance_threshold: 0u32,
+        expires_in: 999_999u64,
+        required_approvers: vec![&env, approver],
+    });
 
     client.refund_escrow(&depositor, &escrow_id); // too early
 }
@@ -610,7 +806,7 @@ fn test_update_performance() {
     let token_addr = deploy_token(&env, &token_admin);
     let admin = Address::generate(&env);
     let oracle = Address::generate(&env);
-    let contract_id = env.register_contract(None, EscrowVaultContract);
+    let contract_id = env.register(EscrowVaultContract, ());
     let client = EscrowVaultContractClient::new(&env, &contract_id);
     client.initialize(&admin, &token_addr, &oracle);
 
@@ -619,16 +815,16 @@ fn test_update_performance() {
     let approver = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    let escrow_id = client.create_escrow(
-        &depositor,
-        &1u64,
-        &beneficiary,
-        &100_000i128,
-        &0u64,
-        &80u32,
-        &999_999u64,
-        &vec![&env, approver.clone()],
-    );
+    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+        depositor: depositor.clone(),
+        campaign_id: 1u64,
+        beneficiary: beneficiary.clone(),
+        amount: 100_000i128,
+        time_lock_duration: MIN_TIME_LOCK_SECS,
+        performance_threshold: 80u32,
+        expires_in: 999_999u64,
+        required_approvers: vec![&env, approver.clone()],
+    });
 
     client.update_performance(&oracle, &escrow_id, &90u32, &1000u64, &50u64);
 
@@ -647,24 +843,25 @@ fn test_update_performance_unauthorized() {
     let token_addr = deploy_token(&env, &token_admin);
     let admin = Address::generate(&env);
     let oracle = Address::generate(&env);
-    let contract_id = env.register_contract(None, EscrowVaultContract);
+    let contract_id = env.register(EscrowVaultContract, ());
     let client = EscrowVaultContractClient::new(&env, &contract_id);
     client.initialize(&admin, &token_addr, &oracle);
 
     let depositor = Address::generate(&env);
     let beneficiary = Address::generate(&env);
+    let approver = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    let escrow_id = client.create_escrow(
-        &depositor,
-        &1u64,
-        &beneficiary,
-        &100_000i128,
-        &0u64,
-        &0u32,
-        &999_999u64,
-        &vec![&env],
-    );
+    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+        depositor: depositor.clone(),
+        campaign_id: 1u64,
+        beneficiary: beneficiary.clone(),
+        amount: 100_000i128,
+        time_lock_duration: MIN_TIME_LOCK_SECS,
+        performance_threshold: 0u32,
+        expires_in: 999_999u64,
+        required_approvers: vec![&env, approver],
+    });
 
     let fake_oracle = Address::generate(&env);
     client.update_performance(&fake_oracle, &escrow_id, &50u32, &100u64, &5u64);
@@ -679,7 +876,7 @@ fn test_release_blocked_by_performance_threshold() {
     let token_addr = deploy_token(&env, &token_admin);
     let admin = Address::generate(&env);
     let oracle = Address::generate(&env);
-    let contract_id = env.register_contract(None, EscrowVaultContract);
+    let contract_id = env.register(EscrowVaultContract, ());
     let client = EscrowVaultContractClient::new(&env, &contract_id);
     client.initialize(&admin, &token_addr, &oracle);
 
@@ -689,19 +886,20 @@ fn test_release_blocked_by_performance_threshold() {
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
     // performance_threshold = 80, but we'll record only 50
-    let escrow_id = client.create_escrow(
-        &depositor,
-        &1u64,
-        &beneficiary,
-        &100_000i128,
-        &0u64,
-        &80u32,
-        &999_999u64,
-        &vec![&env, approver.clone()],
-    );
+    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+        depositor: depositor.clone(),
+        campaign_id: 1u64,
+        beneficiary: beneficiary.clone(),
+        amount: 100_000i128,
+        time_lock_duration: MIN_TIME_LOCK_SECS,
+        performance_threshold: 80u32,
+        expires_in: 999_999u64,
+        required_approvers: vec![&env, approver.clone()],
+    });
 
     client.update_performance(&oracle, &escrow_id, &50u32, &500u64, &10u64); // below threshold
     client.approve_release(&approver, &escrow_id);
+    advance_ledger(&env, MIN_TIME_LOCK_SECS);
     client.release_escrow(&depositor, &escrow_id); // should panic
 }
 
@@ -715,7 +913,7 @@ fn test_hold_for_fraud() {
     let token_addr = deploy_token(&env, &token_admin);
     let admin = Address::generate(&env);
     let oracle = Address::generate(&env);
-    let contract_id = env.register_contract(None, EscrowVaultContract);
+    let contract_id = env.register(EscrowVaultContract, ());
     let client = EscrowVaultContractClient::new(&env, &contract_id);
     client.initialize(&admin, &token_addr, &oracle);
 
@@ -724,18 +922,19 @@ fn test_hold_for_fraud() {
 
     let depositor = Address::generate(&env);
     let beneficiary = Address::generate(&env);
+    let approver = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    let escrow_id = client.create_escrow(
-        &depositor,
-        &1u64,
-        &beneficiary,
-        &100_000i128,
-        &0u64,
-        &0u32,
-        &999_999u64,
-        &vec![&env],
-    );
+    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+        depositor: depositor.clone(),
+        campaign_id: 1u64,
+        beneficiary: beneficiary.clone(),
+        amount: 100_000i128,
+        time_lock_duration: MIN_TIME_LOCK_SECS,
+        performance_threshold: 0u32,
+        expires_in: 999_999u64,
+        required_approvers: vec![&env, approver],
+    });
 
     client.hold_for_fraud(&fraud_contract, &escrow_id);
 
@@ -752,7 +951,7 @@ fn test_release_disputed_escrow_fails() {
     let token_addr = deploy_token(&env, &token_admin);
     let admin = Address::generate(&env);
     let oracle = Address::generate(&env);
-    let contract_id = env.register_contract(None, EscrowVaultContract);
+    let contract_id = env.register(EscrowVaultContract, ());
     let client = EscrowVaultContractClient::new(&env, &contract_id);
     client.initialize(&admin, &token_addr, &oracle);
 
@@ -764,19 +963,19 @@ fn test_release_disputed_escrow_fails() {
     let approver = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    let escrow_id = client.create_escrow(
-        &depositor,
-        &1u64,
-        &beneficiary,
-        &100_000i128,
-        &0u64,
-        &0u32,
-        &999_999u64,
-        &vec![&env, approver.clone()],
-    );
+    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+        depositor: depositor.clone(),
+        campaign_id: 1u64,
+        beneficiary: beneficiary.clone(),
+        amount: 100_000i128,
+        time_lock_duration: MIN_TIME_LOCK_SECS,
+        performance_threshold: 0u32,
+        expires_in: 999_999u64,
+        required_approvers: vec![&env, approver.clone()],
+    });
 
-    client.hold_for_fraud(&fraud_contract, &escrow_id);
     client.approve_release(&approver, &escrow_id);
+    client.hold_for_fraud(&fraud_contract, &escrow_id);
     client.release_escrow(&depositor, &escrow_id); // should panic
 }
 
@@ -790,7 +989,7 @@ fn test_can_release_returns_true_when_conditions_met() {
     let token_addr = deploy_token(&env, &token_admin);
     let admin = Address::generate(&env);
     let oracle = Address::generate(&env);
-    let contract_id = env.register_contract(None, EscrowVaultContract);
+    let contract_id = env.register(EscrowVaultContract, ());
     let client = EscrowVaultContractClient::new(&env, &contract_id);
     client.initialize(&admin, &token_addr, &oracle);
 
@@ -799,19 +998,21 @@ fn test_can_release_returns_true_when_conditions_met() {
     let approver = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    let escrow_id = client.create_escrow(
-        &depositor,
-        &1u64,
-        &beneficiary,
-        &100_000i128,
-        &0u64,
-        &0u32,
-        &999_999u64,
-        &vec![&env, approver.clone()],
-    );
+    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+        depositor: depositor.clone(),
+        campaign_id: 1u64,
+        beneficiary: beneficiary.clone(),
+        amount: 100_000i128,
+        time_lock_duration: MIN_TIME_LOCK_SECS,
+        performance_threshold: 0u32,
+        expires_in: 999_999u64,
+        required_approvers: vec![&env, approver.clone()],
+    });
 
     assert!(!client.can_release(&escrow_id)); // no approval yet
     client.approve_release(&approver, &escrow_id);
+    assert!(!client.can_release(&escrow_id)); // time lock still active
+    advance_ledger(&env, MIN_TIME_LOCK_SECS);
     assert!(client.can_release(&escrow_id)); // now it can
 }
 #[test]
@@ -822,6 +1023,10 @@ fn test_admin_transfer_flow() {
     let new_admin = Address::generate(&env);
 
     c.propose_admin(&admin, &new_admin);
+    // common-admin enforces a minimum delay (17280 ledgers) before accept_admin
+    env.ledger().with_mut(|li| {
+        li.sequence_number += 17_280;
+    });
     c.accept_admin(&new_admin);
 
     // Verify new admin can perform admin actions
@@ -852,4 +1057,28 @@ fn test_accept_admin_unauthorized() {
 
     c.propose_admin(&admin, &new_admin);
     c.accept_admin(&stranger);
+}
+
+// ─── set_dispute_contract ────────────────────────────────────────────────────
+
+#[test]
+fn test_set_dispute_contract() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin, _, _) = setup(&env);
+    let dispute_addr = Address::generate(&env);
+
+    c.set_dispute_contract(&admin, &dispute_addr);
+}
+
+#[test]
+#[should_panic(expected = "unauthorized")]
+fn test_set_dispute_contract_unauthorized() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _, _, _) = setup(&env);
+    let stranger = Address::generate(&env);
+    let dispute_addr = Address::generate(&env);
+
+    c.set_dispute_contract(&stranger, &dispute_addr);
 }

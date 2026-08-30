@@ -66,6 +66,7 @@ pub enum DataKey {
     PendingAdmin,
     TokenAddress,
     TreasuryAddress,
+    OrchestratorContract,
     Plan(SubscriptionTier),
     Subscription(Address),
 }
@@ -184,6 +185,20 @@ fn charge(env: &Env, from: &Address, amount: i128) {
     }
 }
 
+/// Transfers `amount` using allowance where this contract is the spender.
+#[inline]
+fn charge_with_allowance(env: &Env, from: &Address, amount: i128) {
+    if amount > 0 {
+        let (token_addr, treasury) = load_token_and_treasury(env);
+        let token_client = token::Client::new(env, &token_addr);
+        let spender = env.current_contract_address();
+        if token_client.allowance(from, &spender) < amount {
+            panic!("insufficient allowance for auto-renewal");
+        }
+        token_client.transfer_from(&spender, from, &treasury, &amount);
+    }
+}
+
 #[inline]
 fn plan_price(plan: &SubscriptionPlan, is_annual: bool) -> i128 {
     if is_annual {
@@ -206,7 +221,13 @@ impl SubscriptionManagerContract {
     // Admin
     // ----------------------------------------------------------
 
-    pub fn initialize(env: Env, admin: Address, token: Address, treasury: Address) {
+    pub fn initialize(
+        env: Env,
+        admin: Address,
+        token: Address,
+        treasury: Address,
+        orchestrator: Address,
+    ) {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -219,6 +240,9 @@ impl SubscriptionManagerContract {
         env.storage()
             .instance()
             .set(&DataKey::TreasuryAddress, &treasury);
+        env.storage()
+            .instance()
+            .set(&DataKey::OrchestratorContract, &orchestrator);
         Self::_init_plans(&env);
     }
 
@@ -429,8 +453,8 @@ impl SubscriptionManagerContract {
             panic!("insufficient balance for auto-renewal");
         }
 
-        // Transfer funds (requires subscriber to have authorized the contract, e.g., via allowance)
-        charge(&env, &subscriber, amount);
+        // Transfer funds using allowance where this contract is spender.
+        charge_with_allowance(&env, &subscriber, amount);
 
         let base = sub.expires_at.max(now);
         sub.expires_at = base + period;
@@ -475,6 +499,13 @@ impl SubscriptionManagerContract {
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
 
+        let authorized: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::OrchestratorContract)
+            .expect("orchestrator not set");
+        authorized.require_auth();
+
         let mut sub = load_subscription(&env, &subscriber)
             .unwrap_or_else(|| panic!("subscription not found"));
 
@@ -488,6 +519,13 @@ impl SubscriptionManagerContract {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+
+        let authorized: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::OrchestratorContract)
+            .expect("orchestrator not set");
+        authorized.require_auth();
 
         let mut sub = load_subscription(&env, &subscriber)
             .unwrap_or_else(|| panic!("subscription not found"));

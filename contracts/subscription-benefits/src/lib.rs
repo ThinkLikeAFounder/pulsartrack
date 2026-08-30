@@ -33,6 +33,7 @@ pub enum DataKey {
     Benefit(u32),
     BenefitUsage(Address, u32), // subscriber, benefit_id
     TierBenefits(u32),          // tier -> list of benefit IDs
+    SubscriberTier(Address),    // subscriber -> tier
 }
 
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17_280;
@@ -104,21 +105,47 @@ impl SubscriptionBenefitsContract {
         benefit_id
     }
 
+    pub fn update_subscriber_tier(env: Env, admin: Address, subscriber: Address, tier: u32) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+        
+        let _ttl_key = DataKey::SubscriberTier(subscriber);
+        env.storage().persistent().set(&_ttl_key, &tier);
+        env.storage().persistent().extend_ttl(
+            &_ttl_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+    }
+
     pub fn check_benefit_access(
         env: Env,
-        _subscriber: Address,
+        subscriber: Address,
         benefit_id: u32,
-        subscriber_tier: u32,
+        _subscriber_tier: u32,
     ) -> bool {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+            
+        let actual_tier: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::SubscriberTier(subscriber))
+            .unwrap_or(0);
+
         if let Some(benefit) = env
             .storage()
             .persistent()
             .get::<DataKey, Benefit>(&DataKey::Benefit(benefit_id))
         {
-            benefit.is_active && subscriber_tier >= benefit.min_tier
+            benefit.is_active && actual_tier >= benefit.min_tier
         } else {
             false
         }
@@ -137,6 +164,9 @@ impl SubscriptionBenefitsContract {
 
         let now = env.ledger().timestamp();
         let period_secs = 30 * 24 * 3600u64;
+        let period_reset_at = now
+            .checked_add(period_secs)
+            .expect("period_reset_at overflow");
 
         let key = DataKey::BenefitUsage(subscriber.clone(), benefit_id);
         let mut usage: BenefitUsage =
@@ -148,13 +178,13 @@ impl SubscriptionBenefitsContract {
                     benefit_id,
                     uses_this_period: 0,
                     max_uses_per_period: 100,
-                    period_reset_at: now + period_secs,
+                    period_reset_at,
                 });
 
         // Reset period if expired
         if now > usage.period_reset_at {
             usage.uses_this_period = 0;
-            usage.period_reset_at = now + period_secs;
+            usage.period_reset_at = period_reset_at;
         }
 
         if usage.uses_this_period >= usage.max_uses_per_period {

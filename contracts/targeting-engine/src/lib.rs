@@ -65,6 +65,7 @@ const INSTANCE_LIFETIME_THRESHOLD: u32 = 17_280;
 const INSTANCE_BUMP_AMOUNT: u32 = 86_400;
 const PERSISTENT_LIFETIME_THRESHOLD: u32 = 120_960;
 const PERSISTENT_BUMP_AMOUNT: u32 = 1_051_200;
+const MAX_TARGETING_SCORE: u32 = 1000;
 
 #[contract]
 pub struct TargetingEngineContract;
@@ -124,6 +125,17 @@ impl TargetingEngineContract {
             panic!("invalid age range");
         }
 
+        let config_key = DataKey::TargetingConfig(campaign_id);
+        if let Some(existing) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, TargetingConfig>(&config_key)
+        {
+            if existing.advertiser != advertiser {
+                panic!("unauthorized: campaign belongs to a different advertiser");
+            }
+        }
+
         let config = TargetingConfig {
             campaign_id,
             advertiser: advertiser.clone(),
@@ -143,10 +155,9 @@ impl TargetingEngineContract {
             last_updated: env.ledger().timestamp(),
         };
 
-        let _ttl_key = DataKey::TargetingConfig(campaign_id);
-        env.storage().persistent().set(&_ttl_key, &config);
+        env.storage().persistent().set(&config_key, &config);
         env.storage().persistent().extend_ttl(
-            &_ttl_key,
+            &config_key,
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
         );
@@ -170,12 +181,21 @@ impl TargetingEngineContract {
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
         oracle.require_auth();
 
+        let oracle_key = DataKey::AuthorizedOracle(oracle.clone());
         if !env
             .storage()
             .persistent()
-            .has(&DataKey::AuthorizedOracle(oracle.clone()))
+            .has(&oracle_key)
         {
             panic!("unauthorized");
+        }
+        // Bump TTL on oracle authorization entry
+        env.storage()
+            .persistent()
+            .extend_ttl(&oracle_key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
+
+        if score > MAX_TARGETING_SCORE {
+            panic!("score must be 0-1000");
         }
 
         let targeting_score = TargetingScore {

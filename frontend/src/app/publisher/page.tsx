@@ -5,7 +5,6 @@ import {
   Radio,
   DollarSign,
   Star,
-  Shield,
   TrendingUp,
   Clock,
   CheckCircle,
@@ -21,8 +20,23 @@ import {
   usePublisherAuctions,
   useSubscribe,
 } from '@/hooks/useContract';
-import { formatAddress, formatScore } from '@/lib/display-utils';
+import { formatAddress } from '@/lib/display-utils';
 import { stroopsToXlm } from '@/lib/stellar-config';
+
+type PublisherTab = 'overview' | 'auctions' | 'earnings' | 'subscription';
+
+interface PublisherReputation {
+  score?: number;
+}
+
+interface PublisherInfo {
+  status?: unknown;
+  impressions_served?: number | string;
+}
+
+interface PublisherKyc {
+  verified?: boolean;
+}
 
 const SUBSCRIPTION_PLANS = [
   {
@@ -80,21 +94,20 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 export default function PublisherPage() {
   const { address, isConnected } = useWalletStore();
-  const [activeTab, setActiveTab] = useState<
-    'overview' | 'auctions' | 'earnings' | 'subscription'
-  >('overview');
-  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<PublisherTab>('overview');
 
   // Fetch publisher data
-  const { data: reputation } = usePublisherReputation(address || '');
+  const { data: reputation } = usePublisherReputation(address || '') as {
+    data: PublisherReputation | undefined;
+  };
   const { data: publisherData, isLoading: publisherLoading } = usePublisherData(
     address || '',
     isConnected,
-  );
+  ) as { data: PublisherInfo | undefined; isLoading: boolean };
   const { data: kycData, isLoading: kycLoading } = usePublisherKyc(
     address || '',
     isConnected,
-  );
+  ) as { data: PublisherKyc | undefined; isLoading: boolean };
   const { data: earnings, isLoading: earningsLoading } = usePublisherEarnings(
     address || '',
     isConnected,
@@ -127,7 +140,7 @@ export default function PublisherPage() {
     );
   }
 
-  const reputationScore = reputation ? ((reputation as any).score ?? 500) : 500;
+  const reputationScore = reputation ? (reputation.score ?? 500) : 500;
 
   return (
     <ErrorBoundary name="PublisherPage" resetKeys={[activeTab]}>
@@ -146,7 +159,7 @@ export default function PublisherPage() {
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1 px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-sm font-medium">
                 <Star className="w-3.5 h-3.5" />
-                Rep: {reputation ? ((reputation as any).score ?? 500) : 500}
+                Rep: {reputation ? (reputation.score ?? 500) : 500}
                 /1000
               </div>
               <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">
@@ -174,14 +187,14 @@ export default function PublisherPage() {
                 label: 'Impressions Served',
                 value: publisherLoading
                   ? 'Loading...'
-                  : ((publisherData as any)?.impressions_served ?? '0'),
+                  : (publisherData?.impressions_served ?? '0'),
                 bgClass: 'bg-blue-100',
                 iconClass: 'text-blue-600',
               },
               {
                 icon: Star,
                 label: 'Reputation Score',
-                value: `${reputation ? ((reputation as any).score ?? 500) : 500}`,
+                value: `${reputation ? (reputation.score ?? 500) : 500}`,
                 bgClass: 'bg-amber-100',
                 iconClass: 'text-amber-600',
               },
@@ -214,15 +227,15 @@ export default function PublisherPage() {
 
           {/* Tabs */}
           <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit flex-wrap">
-            {[
+            {([
               { id: 'overview', label: 'Overview' },
               { id: 'auctions', label: 'RTB Auctions' },
               { id: 'earnings', label: 'Earnings' },
               { id: 'subscription', label: 'Subscription Plans' },
-            ].map(({ id, label }) => (
+            ] as Array<{ id: PublisherTab; label: string }>).map(({ id, label }) => (
               <button
                 key={id}
-                onClick={() => setActiveTab(id as any)}
+                onClick={() => setActiveTab(id)}
                 className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                   activeTab === id
                     ? 'bg-white text-indigo-600 shadow-sm'
@@ -250,17 +263,17 @@ export default function PublisherPage() {
                       label: 'Publisher Registered',
                       done: publisherLoading
                         ? null
-                        : !!(publisherData && (publisherData as any).status),
+                        : !!(publisherData && publisherData.status),
                     },
                     {
                       label: 'KYC Verified',
                       done: kycLoading
                         ? null
-                        : !!(kycData && (kycData as any).verified),
+                        : !!(kycData && kycData.verified),
                     },
                     {
                       label: 'Reputation Initialized',
-                      done: !!(reputation && (reputation as any).score),
+                      done: !!(reputation && reputation.score),
                     },
                   ].map(({ label, done }) => (
                     <div key={label} className="flex items-center gap-3">
@@ -295,28 +308,35 @@ export default function PublisherPage() {
                   Publisher Tiers
                 </h3>
                 <div className="space-y-2">
-                  {[
-                    { tier: 'Bronze', min: 0, max: 399, color: 'amber' },
-                    { tier: 'Silver', min: 400, max: 599, color: 'gray' },
-                    { tier: 'Gold', min: 600, max: 799, color: 'yellow' },
-                    { tier: 'Platinum', min: 800, max: 1000, color: 'blue' },
-                  ].map(({ tier, min, max, color }) => (
-                    <div
-                      key={tier}
-                      className={`flex items-center justify-between px-3 py-2 rounded-lg ${
-                        reputationScore >= min && reputationScore <= max
-                          ? 'bg-indigo-50 border border-indigo-200'
-                          : 'bg-gray-50'
-                      }`}
-                    >
-                      <span className="text-sm font-medium text-gray-900">
-                        {tier}
-                      </span>
-                      <span className="text-xs text-gray-500">
-                        {min} - {max} score
-                      </span>
-                    </div>
-                  ))}
+                  {/* Issue #370 — Platinum uses Infinity as upper bound so scores
+                      above 1000 still resolve to a tier. Negative scores are clamped
+                      to 0 before matching so they always land in Bronze. */}
+                  {([
+                    { tier: 'Bronze',   min: 0,   max: 399,      color: 'amber'  },
+                    { tier: 'Silver',   min: 400,  max: 599,      color: 'gray'   },
+                    { tier: 'Gold',     min: 600,  max: 799,      color: 'yellow' },
+                    { tier: 'Platinum', min: 800,  max: Infinity, color: 'blue'   },
+                  ] as Array<{ tier: string; min: number; max: number; color: string }>).map(({ tier, min, max }) => {
+                    const score = Math.max(reputationScore, 0);
+                    const isActive = score >= min && score <= max;
+                    const rangeLabel =
+                      max === Infinity ? `${min}+ score` : `${min} – ${max} score`;
+                    return (
+                      <div
+                        key={tier}
+                        className={`flex items-center justify-between px-3 py-2 rounded-lg ${
+                          isActive
+                            ? 'bg-indigo-50 border border-indigo-200'
+                            : 'bg-gray-50'
+                        }`}
+                      >
+                        <span className="text-sm font-medium text-gray-900">
+                          {tier}
+                        </span>
+                        <span className="text-xs text-gray-500">{rangeLabel}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>

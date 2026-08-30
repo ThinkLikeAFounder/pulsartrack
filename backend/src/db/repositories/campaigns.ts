@@ -14,7 +14,10 @@ export async function findByCampaignId(campaignId: bigint) {
 }
 
 export async function getStats() {
-  const [total, active, agg] = await Promise.all([
+  // Issue #371 — use Promise.allSettled so a single failing query (e.g. a
+  // transient connection error or table lock on the expensive aggregate) does
+  // not discard results from the queries that succeeded.
+  const [totalResult, activeResult, aggResult] = await Promise.allSettled([
     prisma.campaign.count(),
     prisma.campaign.count({ where: { status: 'Active' } }),
     prisma.campaign.aggregate({
@@ -23,11 +26,31 @@ export async function getStats() {
   ]);
 
   return {
-    totalCampaigns: total,
-    activeCampaigns: active,
-    totalImpressions: Number(agg._sum.impressions ?? 0),
-    totalClicks: Number(agg._sum.clicks ?? 0),
-    totalSpentStroops: Number(agg._sum.spentStroops ?? 0),
+    totalCampaigns:
+      totalResult.status === 'fulfilled' ? totalResult.value : null,
+    activeCampaigns:
+      activeResult.status === 'fulfilled' ? activeResult.value : null,
+    totalImpressions:
+      aggResult.status === 'fulfilled'
+        ? Number(aggResult.value._sum.impressions ?? 0)
+        : null,
+    totalClicks:
+      aggResult.status === 'fulfilled'
+        ? Number(aggResult.value._sum.clicks ?? 0)
+        : null,
+    totalSpentStroops:
+      aggResult.status === 'fulfilled'
+        ? Number(aggResult.value._sum.spentStroops ?? 0)
+        : null,
+    // Expose which sub-queries failed so callers can show partial-data notices.
+    _partial:
+      [totalResult, activeResult, aggResult].some((r) => r.status === 'rejected')
+        ? {
+            total: totalResult.status === 'rejected',
+            active: activeResult.status === 'rejected',
+            aggregate: aggResult.status === 'rejected',
+          }
+        : undefined,
   };
 }
 

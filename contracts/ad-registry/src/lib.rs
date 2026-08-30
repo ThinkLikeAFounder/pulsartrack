@@ -85,6 +85,7 @@ pub enum DataKey {
     Metadata(u64),
     Performance(u64),
     Flag(u64, Address),
+    ViewerSeen(u64, Address),
     CampaignContents(u64),
     ContentVariants(u64),
 }
@@ -285,16 +286,20 @@ impl AdRegistryContract {
             panic!("cannot flag own content");
         }
 
+        let flag_key = DataKey::Flag(content_id, reporter.clone());
+        if env.storage().persistent().has(&flag_key) {
+            panic!("already flagged by this reporter");
+        }
+
         let flag = FlagRecord {
             reason,
             timestamp: env.ledger().timestamp(),
             verified: false,
         };
 
-        let _ttl_key = DataKey::Flag(content_id, reporter.clone());
-        env.storage().persistent().set(&_ttl_key, &flag);
+        env.storage().persistent().set(&flag_key, &flag);
         env.storage().persistent().extend_ttl(
-            &_ttl_key,
+            &flag_key,
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
         );
@@ -326,11 +331,13 @@ impl AdRegistryContract {
         );
     }
 
-    /// Track a content view
-    pub fn track_view(env: Env, content_id: u64) {
+    /// Track a content view with viewer deduplication
+    pub fn track_view(env: Env, content_id: u64, viewer: Address) {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        viewer.require_auth();
+
         let content: AdContent = env
             .storage()
             .persistent()
@@ -348,8 +355,13 @@ impl AdRegistryContract {
             .get(&DataKey::Performance(content_id))
             .expect("performance not found");
 
+        let viewer_key = DataKey::ViewerSeen(content_id, viewer.clone());
+        if !env.storage().temporary().has(&viewer_key) {
+            perf.unique_viewers += 1;
+            env.storage().temporary().set(&viewer_key, &true);
+        }
+
         perf.total_views += 1;
-        perf.unique_viewers += 1;
         perf.last_shown = env.ledger().timestamp();
 
         if perf.total_views > 0 {
@@ -371,10 +383,12 @@ impl AdRegistryContract {
     }
 
     /// Track a content click
-    pub fn track_click(env: Env, content_id: u64) {
+    pub fn track_click(env: Env, content_id: u64, viewer: Address) {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        viewer.require_auth();
+
         let mut perf: ContentPerformance = env
             .storage()
             .persistent()

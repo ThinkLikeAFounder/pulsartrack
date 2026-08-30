@@ -1,4 +1,10 @@
-import { Networks } from '@stellar/stellar-sdk';
+// Network passphrases — copied from @stellar/stellar-sdk Networks to avoid
+// importing the full Node.js SDK bundle in a shared config file.
+const StellarNetworks = {
+  PUBLIC: 'Public Global Stellar Network ; September 2015',
+  TESTNET: 'Test SDF Network ; September 2015',
+  FUTURENET: 'Test SDF Future Network ; October 2022',
+} as const;
 
 /**
  * Network Configuration for PulsarTrack on Stellar
@@ -6,24 +12,32 @@ import { Networks } from '@stellar/stellar-sdk';
 
 export const NETWORKS = {
   mainnet: {
-    network: Networks.PUBLIC,
+    network: StellarNetworks.PUBLIC,
     horizonUrl: 'https://horizon.stellar.org',
     sorobanRpcUrl: 'https://mainnet.sorobanrpc.com',
-    passphrase: Networks.PUBLIC,
+    passphrase: StellarNetworks.PUBLIC,
   },
   testnet: {
-    network: Networks.TESTNET,
+    network: StellarNetworks.TESTNET,
     horizonUrl: 'https://horizon-testnet.stellar.org',
     sorobanRpcUrl: 'https://soroban-testnet.stellar.org',
-    passphrase: Networks.TESTNET,
+    passphrase: StellarNetworks.TESTNET,
   },
   futurenet: {
-    network: Networks.FUTURENET,
+    network: StellarNetworks.FUTURENET,
     horizonUrl: 'https://horizon-futurenet.stellar.org',
     sorobanRpcUrl: 'https://rpc-futurenet.stellar.org',
-    passphrase: Networks.FUTURENET,
+    passphrase: StellarNetworks.FUTURENET,
   },
 } as const;
+
+/**
+ * Fallback source account used for read-only contract simulations when
+ * NEXT_PUBLIC_SIMULATION_ACCOUNT is not set. Development only — production
+ * callers must provide their own account via the environment variable.
+ */
+export const FALLBACK_SIMULATION_ACCOUNT =
+  'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN';
 
 export type NetworkType = keyof typeof NETWORKS;
 
@@ -62,7 +76,7 @@ export const CONTRACT_IDS = {
  */
 function validateContractIds() {
   const missing = Object.entries(CONTRACT_IDS)
-    .filter(([_, id]) => !id)
+    .filter(([, id]) => !id)
     .map(([name]) => name);
 
   if (missing.length > 0) {
@@ -152,4 +166,48 @@ export function getSorobanRpcUrl(): string {
 
 export function getNetworkPassphrase(): string {
   return NETWORK_CONFIG.passphrase;
+}
+
+// Required NEXT_PUBLIC_* env vars, validated at startup so a missing or
+// malformed one fails loudly here instead of surfacing later inside
+// whichever feature happens to need it.
+const REQUIRED_ENV_VARS = [
+  'NEXT_PUBLIC_NETWORK',
+  'NEXT_PUBLIC_WS_URL',
+  'NEXT_PUBLIC_CONTRACT_AD_REGISTRY',
+  'NEXT_PUBLIC_CONTRACT_ANALYTICS_AGGREGATOR',
+  'NEXT_PUBLIC_CONTRACT_AUCTION_ENGINE',
+  'NEXT_PUBLIC_CONTRACT_CAMPAIGN_ORCHESTRATOR',
+  'NEXT_PUBLIC_CONTRACT_DISPUTE_RESOLUTION',
+  'NEXT_PUBLIC_CONTRACT_ESCROW_VAULT',
+  'NEXT_PUBLIC_CONTRACT_FRAUD_PREVENTION',
+  'NEXT_PUBLIC_CONTRACT_GOVERNANCE_DAO',
+  'NEXT_PUBLIC_CONTRACT_GOVERNANCE_TOKEN',
+  'NEXT_PUBLIC_CONTRACT_IDENTITY_REGISTRY',
+  'NEXT_PUBLIC_CONTRACT_PAYMENT_PROCESSOR',
+  'NEXT_PUBLIC_CONTRACT_PRIVACY_LAYER',
+  'NEXT_PUBLIC_CONTRACT_PUBLISHER_REPUTATION',
+  'NEXT_PUBLIC_CONTRACT_PUBLISHER_VERIFICATION',
+  'NEXT_PUBLIC_CONTRACT_REVENUE_SETTLEMENT',
+  'NEXT_PUBLIC_CONTRACT_REWARDS_DISTRIBUTOR',
+  'NEXT_PUBLIC_CONTRACT_SUBSCRIPTION_MANAGER',
+  'NEXT_PUBLIC_CONTRACT_TARGETING_ENGINE',
+] as const;
+
+/**
+ * Verifies every required NEXT_PUBLIC_* env var is present. Throws naming
+ * the specific missing variable(s) instead of letting each feature fail
+ * separately whenever it happens to be used.
+ */
+export function validateRequiredEnv(): void {
+  const missing = REQUIRED_ENV_VARS.filter((key) => !process.env[key]);
+  if (missing.length > 0) {
+    throw new Error(
+      `Missing required environment variable(s): ${missing.join(', ')}`
+    );
+  }
+}
+
+if (process.env.NODE_ENV === 'production') {
+  validateRequiredEnv();
 }

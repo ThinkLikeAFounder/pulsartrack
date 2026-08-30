@@ -27,8 +27,8 @@ pub struct UserRewards {
     pub total_claimed: i128,
     pub pending: i128,
     pub last_earned: u64,
-    pub vesting_start: u64,     // timestamp when vesting begins
-    pub vesting_duration: u64,  // total vesting period in seconds
+    pub vesting_start: u64,    // timestamp when vesting begins
+    pub vesting_duration: u64, // total vesting period in seconds
 }
 
 #[contracttype]
@@ -85,6 +85,15 @@ impl RewardsDistributorContract {
         if admin != stored_admin {
             panic!("unauthorized");
         }
+        if budget <= 0 {
+            panic!("budget must be positive");
+        }
+        if reward_per_unit <= 0 {
+            panic!("reward_per_unit must be positive");
+        }
+        if duration_ledgers == 0 {
+            panic!("duration_ledgers must be positive");
+        }
 
         let counter: u32 = env
             .storage()
@@ -134,6 +143,9 @@ impl RewardsDistributorContract {
         if admin != stored_admin {
             panic!("unauthorized");
         }
+        if amount <= 0 {
+            panic!("distribution amount must be positive");
+        }
 
         let mut program: RewardProgram = env
             .storage()
@@ -165,7 +177,10 @@ impl RewardsDistributorContract {
         // Update user rewards with vesting schedule
         let key = DataKey::UserRewards(recipient.clone());
         let now = env.ledger().timestamp();
-        let vesting_duration = 365 * 24 * 3600; // 365 days in seconds
+        let ledger_duration = program.end_ledger - program.start_ledger;
+        let vesting_duration: u64 = (ledger_duration as u64)
+            .checked_mul(5)
+            .expect("vesting_duration overflow"); // ~5 seconds per ledger
         let mut rewards: UserRewards =
             env.storage().persistent().get(&key).unwrap_or(UserRewards {
                 user: recipient.clone(),
@@ -173,17 +188,18 @@ impl RewardsDistributorContract {
                 total_claimed: 0,
                 pending: 0,
                 last_earned: 0,
-                vesting_start: now,
+                vesting_start: 0,
                 vesting_duration,
             });
 
-        // Initialize vesting_start on first distribution if not set
-        if rewards.total_earned == 0 {
+        // Initialize vesting_start on first distribution using vesting_start == 0 as sentinel
+        if rewards.vesting_start == 0 {
             rewards.vesting_start = now;
             rewards.vesting_duration = vesting_duration;
         }
 
         rewards.total_earned += amount;
+        rewards.pending += amount;
         rewards.last_earned = now;
         env.storage().persistent().set(&key, &rewards);
         env.storage().persistent().extend_ttl(
@@ -207,16 +223,25 @@ impl RewardsDistributorContract {
         let key = DataKey::UserRewards(user.clone());
         let mut rewards: UserRewards = env.storage().persistent().get(&key).expect("no rewards");
 
-        if rewards.total_earned <= 0 {
-            panic!("no available rewards");
+        if rewards.pending <= 0 {
+            panic!("no pending rewards to claim");
         }
 
         // Calculate vested amount based on linear vesting schedule
         let now = env.ledger().timestamp();
         let elapsed = now.saturating_sub(rewards.vesting_start);
         let vesting_fraction = elapsed.min(rewards.vesting_duration);
-        let vested_total = (rewards.total_earned as u128 * vesting_fraction as u128
-            / rewards.vesting_duration as u128) as i128;
+        let vested_total = if rewards.vesting_duration == 0 {
+            rewards.total_earned
+        } else {
+            // Use a 10_000 bps scaling factor to preserve precision for small rewards
+            // with long vesting durations, preventing integer division truncation to 0.
+            let vested_bps = rewards.total_earned as u128
+                * vesting_fraction as u128
+                * 10_000
+                / rewards.vesting_duration as u128;
+            (vested_bps / 10_000) as i128
+        };
         let claimable = vested_total.saturating_sub(rewards.total_claimed);
 
         if claimable <= 0 {
@@ -225,6 +250,7 @@ impl RewardsDistributorContract {
 
         // --- CEI: Effects before Interactions ---
         rewards.total_claimed += claimable;
+        rewards.pending = rewards.pending.saturating_sub(claimable);
         env.storage().persistent().set(&key, &rewards);
         env.storage().persistent().extend_ttl(
             &key,

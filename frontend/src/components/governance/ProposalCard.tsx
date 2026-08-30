@@ -60,8 +60,13 @@ export function ProposalCard({ proposal, onVote, isVoting, userVote }: ProposalC
   const forPct = total > BigInt(0)
     ? ((Number(proposal.votes_for) / Number(total)) * 100).toFixed(1)
     : '0.0';
+  const againstPct = total > BigInt(0)
+    ? ((Number(proposal.votes_against) / Number(total)) * 100).toFixed(1)
+    : '0.0';
+  const abstainPct = total > BigInt(0)
+    ? ((Number(proposal.votes_abstain) / Number(total)) * 100).toFixed(1)
+    : '0.0';
   const isActive = proposal.status === 'Active';
-  const deadline = new Date(Number(proposal.voting_ends_at) * 1000);
   const now = Date.now();
   const timeLeft = Number(proposal.voting_ends_at) * 1000 - now;
   const daysLeft = Math.max(0, Math.floor(timeLeft / 86400000));
@@ -107,11 +112,8 @@ export function ProposalCard({ proposal, onVote, isVoting, userVote }: ProposalC
         <span className="text-gray-400">
           {Number(total).toLocaleString()} votes total
         </span>
-        <span className="text-red-400">
-          {total > BigInt(0)
-            ? (100 - parseFloat(forPct)).toFixed(1)
-            : '0.0'}% Against
-        </span>
+        <span className="text-red-400">{againstPct}% Against</span>
+        <span className="text-gray-500">{abstainPct}% Abstain</span>
       </div>
 
       {/* Footer */}

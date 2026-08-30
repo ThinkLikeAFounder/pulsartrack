@@ -10,8 +10,6 @@ interface FraudStatsProps {
   onDismiss?: (id: string) => void;
 }
 
-type SeverityFilter = 'all' | FraudSeverity;
-
 const SEVERITY_ORDER: FraudSeverity[] = ['critical', 'high', 'medium', 'low'];
 
 export function FraudStats({ alerts, onResolve, onDismiss }: FraudStatsProps) {

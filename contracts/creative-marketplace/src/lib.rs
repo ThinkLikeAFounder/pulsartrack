@@ -5,6 +5,7 @@
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, token, Address, Env, String,
 };
+use pulsar_common_fees::calculate_fee_bps;
 
 #[contracttype]
 #[derive(Clone, PartialEq)]
@@ -107,7 +108,7 @@ impl CreativeMarketplaceContract {
         creator.require_auth();
 
         if price <= 0 {
-            panic!("invalid price");
+            panic!("listing price must be positive");
         }
 
         // Check for duplicate content hash with exclusive license
@@ -191,13 +192,18 @@ impl CreativeMarketplaceContract {
             panic!("listing not active");
         }
 
-        // Check not already licensed
-        if env
+        // Check not already licensed with an active license
+        if let Some(existing_license) = env
             .storage()
             .persistent()
-            .has(&DataKey::License(listing_id, buyer.clone()))
+            .get::<DataKey, License>(&DataKey::License(listing_id, buyer.clone()))
         {
-            panic!("already licensed");
+            // Only block if the license is still valid (not expired)
+            let is_valid = existing_license.expires_at.is_none_or(|exp| exp > env.ledger().timestamp());
+            if is_valid {
+                panic!("already licensed");
+            }
+            // If expired, we allow re-purchase (fall through to create new license)
         }
 
         // Calculate fee
@@ -206,26 +212,18 @@ impl CreativeMarketplaceContract {
             .instance()
             .get(&DataKey::PlatformFeeBps)
             .unwrap_or(250);
-        let fee = (listing.price * fee_bps as i128) / 10_000;
+        let fee = calculate_fee_bps(listing.price, fee_bps);
         let creator_amount = listing.price - fee;
 
-        // Process payment
         let token_addr: Address = env
             .storage()
             .instance()
             .get(&DataKey::TokenAddress)
             .unwrap();
         let token_client = token::Client::new(&env, &token_addr);
-        token_client.transfer(&buyer, &listing.creator, &creator_amount);
-
-        // Fee to admin
-        if fee > 0 {
-            let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
-            token_client.transfer(&buyer, &admin, &fee);
-        }
 
         let now = env.ledger().timestamp();
-        let expires_at = license_duration_secs.map(|d| now + d);
+        let expires_at = license_duration_secs.map(|d| now.checked_add(d).expect("license expiry timestamp overflows u64"));
 
         let license = License {
             listing_id,
@@ -236,7 +234,7 @@ impl CreativeMarketplaceContract {
             expires_at,
         };
 
-        let _ttl_key = DataKey::License(listing_id, buyer);
+        let _ttl_key = DataKey::License(listing_id, buyer.clone());
         env.storage().persistent().set(&_ttl_key, &license);
         env.storage().persistent().extend_ttl(
             &_ttl_key,
@@ -260,6 +258,15 @@ impl CreativeMarketplaceContract {
             PERSISTENT_BUMP_AMOUNT,
         );
 
+        // Process payment after license and listing state are recorded.
+        token_client.transfer(&buyer, &listing.creator, &creator_amount);
+
+        // Fee to admin
+        if fee > 0 {
+            let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+            token_client.transfer(&buyer, &admin, &fee);
+        }
+
         env.events().publish(
             (symbol_short!("license"), symbol_short!("purchased")),
             (listing_id, listing.price),
@@ -280,6 +287,11 @@ impl CreativeMarketplaceContract {
 
         if listing.creator != creator {
             panic!("unauthorized");
+        }
+
+        // Prevent removal of sold exclusive listings to avoid double-sale exploit
+        if listing.status == ListingStatus::Sold {
+            panic!("cannot remove a sold exclusive listing");
         }
 
         // If this was an exclusive license, clear the content owner

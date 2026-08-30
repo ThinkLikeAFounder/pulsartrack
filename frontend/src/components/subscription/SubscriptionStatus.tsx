@@ -1,6 +1,8 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { Subscription } from '@/types/contracts';
+import { stroopsToXlm } from '@/lib/stellar-config';
 import { clsx } from 'clsx';
 
 interface SubscriptionStatusProps {
@@ -17,6 +19,13 @@ const TIER_COLORS: Record<string, string> = {
 };
 
 export function SubscriptionStatus({ subscription, onCancel, onRenew }: SubscriptionStatusProps) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60000);
+    return () => clearInterval(id);
+  }, []);
+
   if (!subscription) {
     return (
       <div className="bg-gray-800 border border-gray-700 rounded-xl p-5 text-center">
@@ -26,13 +35,13 @@ export function SubscriptionStatus({ subscription, onCancel, onRenew }: Subscrip
     );
   }
 
-  const expiresDate = new Date(Number(subscription.expires_at) * 1000);
-  const now = Date.now();
-  const daysLeft = Math.max(0, Math.floor((Number(subscription.expires_at) * 1000 - now) / 86400000));
-  const isExpiringSoon = daysLeft <= 7 && daysLeft > 0;
-  const isExpired = daysLeft === 0;
+  const expiresMs = Number(subscription.expires_at) * 1000;
+  const expiresDate = new Date(expiresMs);
+  const isExpired = expiresMs <= now;
+  const daysLeft = isExpired ? 0 : Math.ceil((expiresMs - now) / 86400000);
+  const isExpiringSoon = !isExpired && daysLeft <= 7;
   const tierStyle = TIER_COLORS[subscription.tier] || TIER_COLORS.Starter;
-  const pricePaid = (Number(subscription.amount_paid) / 1e7).toFixed(2);
+  const pricePaid = stroopsToXlm(subscription.amount_paid).toFixed(2);
 
   return (
     <div className="bg-gray-800 border border-gray-700 rounded-xl p-5 space-y-4">

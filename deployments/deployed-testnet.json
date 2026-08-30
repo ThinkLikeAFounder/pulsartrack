@@ -1,6 +1,6 @@
 {
   "network": "testnet",
-  "deployer": "DRY_RUN_ADDRESS",
+  "deployer": "",
   "contracts": {
     "ad_registry": "CBA3AA7OV4WPZ56JDAL5JGMARAFLYCTDGLI3SF5CWNLSG3QSWBAB77BO",
     "campaign_orchestrator": "CDTGPLYOTCHU2UDFEVVDXUCYSF6VVUVT364DMZV7T4WGOTDZ74GF6FQB",

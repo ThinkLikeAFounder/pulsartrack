@@ -4,42 +4,9 @@ import crypto from "crypto";
 import { RateLimiterRedis } from "rate-limiter-flexible";
 import type Redis from "ioredis";
 import redisClient from "../config/redis";
-
-const JWT_SECRET =
-  process.env.JWT_SECRET || crypto.randomBytes(32).toString("hex");
-const TOKEN_EXPIRY = 3600;
+import { createJwt, decodeJwt, TOKEN_EXPIRY } from "../lib/jwt";
 const NONCE_TTL_SECONDS = 300; // 5 minutes
 const NONCE_KEY_PREFIX = "nonce:";
-
-function createJwt(payload: Record<string, any>): string {
-  const header = Buffer.from(
-    JSON.stringify({ alg: "HS256", typ: "JWT" }),
-  ).toString("base64url");
-  const now = Math.floor(Date.now() / 1000);
-  const body = Buffer.from(
-    JSON.stringify({ ...payload, iat: now, exp: now + TOKEN_EXPIRY }),
-  ).toString("base64url");
-  const sig = crypto
-    .createHmac("sha256", JWT_SECRET)
-    .update(`${header}.${body}`)
-    .digest("base64url");
-  return `${header}.${body}.${sig}`;
-}
-
-function decodeJwt(token: string): Record<string, any> {
-  const parts = token.split(".");
-  if (parts.length !== 3) throw new Error("Malformed token");
-  const [header, body, sig] = parts;
-  const expected = crypto
-    .createHmac("sha256", JWT_SECRET)
-    .update(`${header}.${body}`)
-    .digest("base64url");
-  if (sig !== expected) throw new Error("Invalid token signature");
-  const payload = JSON.parse(Buffer.from(body, "base64url").toString());
-  if (payload.exp < Math.floor(Date.now() / 1000))
-    throw new Error("Token expired");
-  return payload;
-}
 
 async function getChallenge(req: Request, res: Response): Promise<void> {
   const address = req.query.address as string;
@@ -115,7 +82,7 @@ export function requireAuth(
 
   try {
     const payload = decodeJwt(authHeader.slice(7));
-    (req as any).stellarAddress = payload.sub;
+    req.stellarAddress = payload.sub;
     next();
   } catch (err: any) {
     res.status(401).json({ error: err.message });
@@ -174,7 +141,7 @@ export function rateLimit() {
       return;
     }
 
-    const address = (req as any).stellarAddress;
+    const address = req.stellarAddress;
     if (address) {
       try {
         await accountLimiter.consume(address);
@@ -194,7 +161,7 @@ export function rateLimitWrite() {
     res: Response,
     next: NextFunction,
   ): Promise<void> => {
-    const address = (req as any).stellarAddress;
+    const address = req.stellarAddress;
     if (!address) {
       next();
       return;
@@ -222,7 +189,9 @@ export function errorHandler(
   _next: NextFunction,
 ): void {
   req.log?.error(err, "Internal server error");
-  res
-    .status(500)
-    .json({ error: "Internal server error", message: err.message });
+  const response: Record<string, string> = { error: "Internal server error" };
+  if (process.env.NODE_ENV === "development") {
+    response.message = err.message;
+  }
+  res.status(500).json(response);
 }

@@ -36,7 +36,7 @@ fn setup(
     let token_admin = Address::generate(env);
     let token_addr = deploy_token(env, &token_admin);
 
-    let contract_id = env.register_contract(None, MultisigTreasuryContract);
+    let contract_id = env.register(MultisigTreasuryContract, ());
     let client = MultisigTreasuryContractClient::new(env, &contract_id);
     client.initialize(&admin, &signers, &2u32); // require 2 of 3
 
@@ -57,7 +57,7 @@ fn test_initialize() {
     let signer = Address::generate(&env);
     let signers = vec![&env, signer.clone()];
 
-    let contract_id = env.register_contract(None, MultisigTreasuryContract);
+    let contract_id = env.register(MultisigTreasuryContract, ());
     let client = MultisigTreasuryContractClient::new(&env, &contract_id);
     client.initialize(&admin, &signers, &1u32);
 
@@ -74,7 +74,7 @@ fn test_initialize_twice() {
     let signer = Address::generate(&env);
     let signers = vec![&env, signer.clone()];
 
-    let contract_id = env.register_contract(None, MultisigTreasuryContract);
+    let contract_id = env.register(MultisigTreasuryContract, ());
     let client = MultisigTreasuryContractClient::new(&env, &contract_id);
     client.initialize(&admin, &signers, &1u32);
     client.initialize(&admin, &signers, &1u32);
@@ -88,7 +88,7 @@ fn test_initialize_non_admin_fails() {
     let signer = Address::generate(&env);
     let signers = vec![&env, signer.clone()];
 
-    let contract_id = env.register_contract(None, MultisigTreasuryContract);
+    let contract_id = env.register(MultisigTreasuryContract, ());
     let client = MultisigTreasuryContractClient::new(&env, &contract_id);
     client.initialize(&admin, &signers, &1u32);
 }
@@ -102,7 +102,7 @@ fn test_initialize_zero_required() {
     let signer = Address::generate(&env);
     let signers = vec![&env, signer.clone()];
 
-    let contract_id = env.register_contract(None, MultisigTreasuryContract);
+    let contract_id = env.register(MultisigTreasuryContract, ());
     let client = MultisigTreasuryContractClient::new(&env, &contract_id);
     client.initialize(&admin, &signers, &0u32);
 }
@@ -116,7 +116,7 @@ fn test_initialize_required_exceeds_signers() {
     let signer = Address::generate(&env);
     let signers = vec![&env, signer.clone()];
 
-    let contract_id = env.register_contract(None, MultisigTreasuryContract);
+    let contract_id = env.register(MultisigTreasuryContract, ());
     let client = MultisigTreasuryContractClient::new(&env, &contract_id);
     client.initialize(&admin, &signers, &5u32);
 }
@@ -200,6 +200,7 @@ fn test_approve_transaction() {
 
     let proposer = signers.get(0).unwrap();
     let signer2 = signers.get(1).unwrap();
+    let signer3 = signers.get(2).unwrap();
     let recipient = Address::generate(&env);
 
     let tx_id = client.propose_transaction(
@@ -211,20 +212,20 @@ fn test_approve_transaction() {
         &86_400u64,
     );
 
-    client.approve_transaction(&proposer, &tx_id);
+    client.approve_transaction(&signer2, &tx_id);
     let tx = client.get_transaction(&tx_id).unwrap();
     assert_eq!(tx.approvals, 1);
     assert!(matches!(tx.status, TxStatus::Pending));
 
-    client.approve_transaction(&signer2, &tx_id);
+    client.approve_transaction(&signer3, &tx_id);
     let tx = client.get_transaction(&tx_id).unwrap();
     assert_eq!(tx.approvals, 2);
     assert!(matches!(tx.status, TxStatus::Approved));
 }
 
 #[test]
-#[should_panic(expected = "already voted")]
-fn test_approve_twice() {
+#[should_panic(expected = "proposer cannot approve their own transaction")]
+fn test_proposer_cannot_approve_own_transaction() {
     let env = Env::default();
     env.mock_all_auths();
     let (client, _, signers, _, token_addr) = setup(&env);
@@ -242,7 +243,30 @@ fn test_approve_twice() {
     );
 
     client.approve_transaction(&proposer, &tx_id);
-    client.approve_transaction(&proposer, &tx_id);
+}
+
+#[test]
+#[should_panic(expected = "already voted")]
+fn test_approve_twice() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _, signers, _, token_addr) = setup(&env);
+
+    let proposer = signers.get(0).unwrap();
+    let signer2 = signers.get(1).unwrap();
+    let recipient = Address::generate(&env);
+
+    let tx_id = client.propose_transaction(
+        &proposer,
+        &recipient,
+        &token_addr,
+        &10_000i128,
+        &make_desc(&env),
+        &86_400u64,
+    );
+
+    client.approve_transaction(&signer2, &tx_id);
+    client.approve_transaction(&signer2, &tx_id);
 }
 
 #[test]
@@ -276,6 +300,7 @@ fn test_approve_expired_transaction() {
     let (client, _, signers, _, token_addr) = setup(&env);
 
     let proposer = signers.get(0).unwrap();
+    let signer2 = signers.get(1).unwrap();
     let recipient = Address::generate(&env);
 
     let tx_id = client.propose_transaction(
@@ -291,7 +316,7 @@ fn test_approve_expired_transaction() {
         li.timestamp = 200;
     });
 
-    client.approve_transaction(&proposer, &tx_id);
+    client.approve_transaction(&signer2, &tx_id);
 }
 
 // ─── execute_transaction ─────────────────────────────────────────────────────
@@ -304,11 +329,12 @@ fn test_execute_transaction() {
     let admin = Address::generate(&env);
     let signer1 = Address::generate(&env);
     let signer2 = Address::generate(&env);
-    let signers = vec![&env, signer1.clone(), signer2.clone()];
+    let signer3 = Address::generate(&env);
+    let signers = vec![&env, signer1.clone(), signer2.clone(), signer3.clone()];
     let token_admin = Address::generate(&env);
     let token_addr = deploy_token(&env, &token_admin);
 
-    let contract_id = env.register_contract(None, MultisigTreasuryContract);
+    let contract_id = env.register(MultisigTreasuryContract, ());
     let client = MultisigTreasuryContractClient::new(&env, &contract_id);
     client.initialize(&admin, &signers, &2u32);
 
@@ -325,8 +351,8 @@ fn test_execute_transaction() {
         &86_400u64,
     );
 
-    client.approve_transaction(&signer1, &tx_id);
     client.approve_transaction(&signer2, &tx_id);
+    client.approve_transaction(&signer3, &tx_id);
     client.execute_transaction(&signer1, &tx_id);
 
     let tx = client.get_transaction(&tx_id).unwrap();
@@ -395,6 +421,31 @@ fn test_reject_transaction() {
 }
 
 #[test]
+fn test_non_proposer_rejection_auto_rejects_doomed_transaction() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _, signers, _, token_addr) = setup(&env);
+
+    let proposer = signers.get(0).unwrap();
+    let signer2 = signers.get(1).unwrap();
+    let recipient = Address::generate(&env);
+
+    let tx_id = client.propose_transaction(
+        &proposer,
+        &recipient,
+        &token_addr,
+        &10_000i128,
+        &make_desc(&env),
+        &86_400u64,
+    );
+
+    client.reject_transaction(&signer2, &tx_id);
+    let tx = client.get_transaction(&tx_id).unwrap();
+    assert_eq!(tx.rejections, 1);
+    assert!(matches!(tx.status, TxStatus::Rejected));
+}
+
+#[test]
 #[should_panic(expected = "not a signer")]
 fn test_reject_by_non_signer() {
     let env = Env::default();
@@ -415,6 +466,54 @@ fn test_reject_by_non_signer() {
     );
 
     client.reject_transaction(&stranger, &tx_id);
+}
+
+#[test]
+#[should_panic(expected = "already voted")]
+fn test_reject_after_approve_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _, signers, _, token_addr) = setup(&env);
+
+    let proposer = signers.get(0).unwrap();
+    let signer2 = signers.get(1).unwrap();
+    let recipient = Address::generate(&env);
+
+    let tx_id = client.propose_transaction(
+        &proposer,
+        &recipient,
+        &token_addr,
+        &10_000i128,
+        &make_desc(&env),
+        &86_400u64,
+    );
+
+    client.approve_transaction(&signer2, &tx_id);
+    client.reject_transaction(&signer2, &tx_id);
+}
+
+#[test]
+#[should_panic(expected = "already voted")]
+fn test_reject_twice_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _, signers, _, token_addr) = setup(&env);
+
+    let proposer = signers.get(0).unwrap();
+    let signer2 = signers.get(1).unwrap();
+    let recipient = Address::generate(&env);
+
+    let tx_id = client.propose_transaction(
+        &proposer,
+        &recipient,
+        &token_addr,
+        &10_000i128,
+        &make_desc(&env),
+        &86_400u64,
+    );
+
+    client.reject_transaction(&signer2, &tx_id);
+    client.reject_transaction(&signer2, &tx_id);
 }
 
 // ─── read-only ───────────────────────────────────────────────────────────────

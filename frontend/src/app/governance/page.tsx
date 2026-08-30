@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import {
   Vote,
-  Plus,
   Clock,
   CheckCircle,
   XCircle,
@@ -19,8 +18,11 @@ import {
   useCreateProposal,
 } from '@/hooks/useContract';
 import { stroopsToXlm } from '@/lib/stellar-config';
+import { useToast } from '@/contexts/ToastContext';
 
 type ProposalStatus = 'Active' | 'Passed' | 'Rejected' | 'Executed';
+
+type GovernanceTab = 'proposals' | 'create' | 'my_votes';
 
 const STATUS_COLORS: Record<ProposalStatus, string> = {
   Active: 'bg-blue-100 text-blue-700',
@@ -31,11 +33,17 @@ const STATUS_COLORS: Record<ProposalStatus, string> = {
 
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
+function toVotePercentage(votes: bigint, total: bigint) {
+  if (total === 0n) {
+    return 0;
+  }
+
+  return Number((votes * 10_000n) / total) / 100;
+}
+
 export default function GovernancePage() {
   const { address, isConnected } = useWalletStore();
-  const [activeTab, setActiveTab] = useState<
-    'proposals' | 'create' | 'my_votes'
-  >('proposals');
+  const [activeTab, setActiveTab] = useState<GovernanceTab>('proposals');
   const [proposalData, setProposalData] = useState({
     title: '',
     description: '',
@@ -50,6 +58,7 @@ export default function GovernancePage() {
   const { data: proposalCount } = useProposalCount(isConnected);
   const { data: proposals, isLoading: proposalsLoading } =
     useGovernanceProposals(proposalCount, isConnected);
+  const { success, error: toastError } = useToast();
   const { castVote, isPending: voteLoading } = useCastVote();
   const { createProposal, isPending: createLoading } = useCreateProposal();
 
@@ -125,14 +134,14 @@ export default function GovernancePage() {
 
           {/* Tabs */}
           <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit">
-            {[
+            {([
               { id: 'proposals', label: 'Proposals' },
               { id: 'create', label: 'Create Proposal' },
               { id: 'my_votes', label: 'My Votes' },
-            ].map(({ id, label }) => (
+            ] as Array<{ id: GovernanceTab; label: string }>).map(({ id, label }) => (
               <button
                 key={id}
-                onClick={() => setActiveTab(id as any)}
+                onClick={() => setActiveTab(id)}
                 className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                   activeTab === id
                     ? 'bg-white text-indigo-600 shadow-sm'
@@ -152,18 +161,12 @@ export default function GovernancePage() {
                 </div>
               ) : proposals && proposals.length > 0 ? (
                 proposals.map((proposal) => {
-                  const total =
-                    (proposal.votes_for || 0n) +
-                    (proposal.votes_against || 0n) +
-                    (proposal.votes_abstain || 0n);
-                  const forPct =
-                    total > 0n
-                      ? Number(((proposal.votes_for || 0n) * 100n) / total)
-                      : 0;
-                  const againstPct =
-                    total > 0n
-                      ? Number(((proposal.votes_against || 0n) * 100n) / total)
-                      : 0;
+                  const votesFor = proposal.votes_for || 0n;
+                  const votesAgainst = proposal.votes_against || 0n;
+                  const votesAbstain = proposal.votes_abstain || 0n;
+                  const total = votesFor + votesAgainst + votesAbstain;
+                  const forPct = toVotePercentage(votesFor, total);
+                  const againstPct = toVotePercentage(votesAgainst, total);
 
                   return (
                     <div
@@ -316,8 +319,16 @@ export default function GovernancePage() {
                         votingPeriodDays: proposalData.votingPeriodDays,
                       });
                       setProposalData({ title: '', description: '', votingPeriodDays: 7 });
+                      success('Proposal submitted', 'Your governance proposal has been created.');
                     } catch (error) {
+                      // Issue #791 — surface the failure to the user, not just the console.
+                      // The form data is intentionally left intact so they can retry;
+                      // the submit button re-enables on its own once the mutation settles.
                       console.error('Failed to create proposal:', error);
+                      toastError(
+                        'Proposal submission failed',
+                        error instanceof Error ? error.message : 'Please try again.',
+                      );
                     }
                   }}
                 >

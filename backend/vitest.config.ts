@@ -14,7 +14,7 @@ export default defineConfig({
         include: ['src/**/*.test.ts'],
         env: {
             NODE_ENV: 'test',
-            DATABASE_URL: 'postgresql://postgres:password@localhost:5433/pulsartrack_test?schema=public',
+            DATABASE_URL: 'postgresql://pulsartrack:pulsartrack_dev_password@localhost:5432/pulsartrack_test',
             REDIS_URL: 'redis://localhost:6379',
             JWT_SECRET: 'test-secret-key-12345',
         },

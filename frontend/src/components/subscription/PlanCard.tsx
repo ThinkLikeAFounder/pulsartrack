@@ -33,6 +33,7 @@ const TIER_BUTTON: Record<string, string> = {
 };
 
 export function PlanCard({ plan, isCurrentPlan, isAnnual = false, onSubscribe, isLoading }: PlanCardProps) {
+  const features = (plan as SubscriptionPlan & { features?: string[] }).features;
   const priceXlm = (Number(isAnnual ? plan.price_annual : plan.price_monthly) / 1e7).toFixed(0);
   const annualSavings = isAnnual
     ? Math.round(
@@ -68,9 +69,9 @@ export function PlanCard({ plan, isCurrentPlan, isAnnual = false, onSubscribe, i
         <span className="text-gray-400 text-sm ml-1">XLM / {isAnnual ? 'year' : 'month'}</span>
       </div>
 
-      {(plan as any).features && (
+      {features && (
         <ul className="space-y-2 mb-5">
-          {(plan as any).features.map((feature: string) => (
+          {features.map((feature: string) => (
             <li key={feature} className="flex items-start gap-2 text-sm text-gray-300">
               <span className="text-green-400 flex-shrink-0 mt-0.5">✓</span>
               {feature}

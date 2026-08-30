@@ -4,7 +4,7 @@ use soroban_sdk::{testutils::Address as _, Address, Env, String};
 
 fn setup(env: &Env) -> (AudienceSegmentsContractClient<'_>, Address) {
     let admin = Address::generate(env);
-    let id = env.register_contract(None, AudienceSegmentsContract);
+    let id = env.register(AudienceSegmentsContract, ());
     let c = AudienceSegmentsContractClient::new(env, &id);
     c.initialize(&admin);
     (c, admin)
@@ -25,7 +25,7 @@ fn test_initialize() {
 fn test_initialize_twice() {
     let env = Env::default();
     env.mock_all_auths();
-    let id = env.register_contract(None, AudienceSegmentsContract);
+    let id = env.register(AudienceSegmentsContract, ());
     let c = AudienceSegmentsContractClient::new(&env, &id);
     let a = Address::generate(&env);
     c.initialize(&a);
@@ -90,6 +90,35 @@ fn test_remove_member() {
     c.remove_member(&admin, &sid, &member);
     assert!(!c.is_member(&sid, &member));
     assert_eq!(c.get_member_count(&sid), 0);
+}
+
+#[test]
+fn test_segment_member_count_stays_in_sync() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin) = setup(&env);
+    let creator = Address::generate(&env);
+    let sid = c.create_segment(
+        &creator,
+        &s(&env, "Segment"),
+        &s(&env, "Desc"),
+        &s(&env, "QmC"),
+        &true,
+    );
+    assert_eq!(c.get_segment(&sid).unwrap().member_count, 0);
+
+    let m1 = Address::generate(&env);
+    let m2 = Address::generate(&env);
+    c.add_member(&admin, &sid, &m1, &75u32);
+    assert_eq!(c.get_segment(&sid).unwrap().member_count, 1);
+    c.add_member(&admin, &sid, &m2, &50u32);
+    assert_eq!(c.get_segment(&sid).unwrap().member_count, 2);
+    assert_eq!(c.get_member_count(&sid), 2);
+
+    c.remove_member(&admin, &sid, &m1);
+    let seg = c.get_segment(&sid).unwrap();
+    assert_eq!(seg.member_count, 1);
+    assert_eq!(c.get_member_count(&sid), seg.member_count);
 }
 
 #[test]

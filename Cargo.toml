@@ -41,11 +41,17 @@ members = [
   "contracts/budget-optimizer",
   "contracts/anomaly-detector",
   "contracts/common-admin",
+  "contracts/vesting-schedule",
+  "contracts/access-control",
+  "contracts/treasury-manager",
+  "contracts/whitelist-registry",
+  "contracts/common-fees",
 ]
 
 [workspace.dependencies]
 soroban-sdk = "22.0.0"
 pulsar-common-admin = { path = "contracts/common-admin" }
+pulsar-common-fees = { path = "contracts/common-fees" }
 
 [profile.release]
 opt-level = "z"

@@ -8,13 +8,36 @@ import {
   xdr,
   Address,
 } from "@stellar/stellar-sdk";
-import { stellarConfig } from "../config/stellar";
+import { STELLAR_REQUEST_TIMEOUT_MS, stellarConfig } from "../config/stellar";
+
+import { logger } from "../lib/logger";
 
 const SIMULATION_ACCOUNT =
-  "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
+  process.env.SIMULATION_ACCOUNT || "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
+
+/**
+ * Validate that the simulation account exists and is funded on the target network.
+ * In production, we fail hard if it doesn't exist.
+ */
+export async function validateSimulationAccount() {
+  const server = getServer();
+  try {
+    await server.getAccount(SIMULATION_ACCOUNT);
+    logger.info(`[Soroban] Simulation account ${SIMULATION_ACCOUNT} validated`);
+  } catch (err) {
+    logger.error(`[Soroban] Simulation account ${SIMULATION_ACCOUNT} not found or unfunded. Read-only calls will fail.`);
+    if (process.env.NODE_ENV === "production") {
+      logger.fatal("[Soroban] Aborting due to missing simulation account in production");
+      process.exit(1);
+    }
+  }
+}
 
 export function getServer(): rpc.Server {
-  return new rpc.Server(stellarConfig.sorobanRpcUrl, { allowHttp: false });
+  return new rpc.Server(stellarConfig.sorobanRpcUrl, {
+    allowHttp: false,
+    timeout: STELLAR_REQUEST_TIMEOUT_MS,
+  });
 }
 
 /**

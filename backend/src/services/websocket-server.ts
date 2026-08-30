@@ -2,29 +2,61 @@ import { WebSocketServer, WebSocket } from "ws";
 import { IncomingMessage, Server } from "http";
 import { streamLedgers } from "./horizon";
 import { logger } from "../lib/logger";
+import { decodeJwt } from "../lib/jwt";
 
 interface PulsarEvent {
   type: string;
   payload: any;
   timestamp: number;
   txHash?: string;
+  targetAccounts?: string[];
 }
 
-const clients = new Set<WebSocket>();
+// Allowed incoming message types
+type ClientMessageType = "subscribe" | "unsubscribe" | "ping";
 
-const INITIAL_BACKOFF_MS = 1000;
-const MAX_BACKOFF_MS = 30000;
-let currentBackoff = INITIAL_BACKOFF_MS;
+interface ClientMessage {
+  type: ClientMessageType;
+  channel?: string;
+}
+
+// Valid broadcast channels clients can subscribe to
+const VALID_CHANNELS = new Set(["ledger", "campaigns", "auctions"]);
+
+interface ClientState {
+  ws: WebSocket;
+  subscriptions: Set<string>;
+  stellarAddress: string;
+}
+
+const clients = new Map<WebSocket, ClientState>();
+
+// Per-IP connection tracking for rate limiting
+const connectionsPerIp = new Map<string, number>();
+const MAX_CONNECTIONS_PER_IP = 5;
+
 let stopStream: (() => void) | null = null;
-let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Parse and validate an incoming client message.
+ * Returns the typed message or null if invalid.
+ */
+function parseClientMessage(raw: string): ClientMessage | null {
+  try {
+    const msg = JSON.parse(raw);
+    if (typeof msg !== "object" || msg === null) return null;
+    if (!["subscribe", "unsubscribe", "ping"].includes(msg.type)) return null;
+    if (msg.channel !== undefined && typeof msg.channel !== "string") return null;
+    return msg as ClientMessage;
+  } catch {
+    return null;
+  }
+}
 
 function startLedgerStream(): void {
   stopStream = streamLedgers(
     (ledger) => {
-      // Stream is alive — reset backoff on successful message
-      currentBackoff = INITIAL_BACKOFF_MS;
-
-      broadcast({
+      broadcastToChannel("ledger", {
         type: "LEDGER_CLOSED",
         payload: {
           sequence: ledger.sequence,
@@ -35,46 +67,67 @@ function startLedgerStream(): void {
       });
     },
     (err: any) => {
-      logger.error(err, "[WS] Ledger stream error");
-      scheduleReconnect();
+      logger.error(err, "[WS] Ledger stream error notified");
+      broadcastToChannel("ledger", {
+        type: "reconnecting",
+        payload: {
+          message: "Horizon stream dropped, reconnecting build-in...",
+        },
+        timestamp: Date.now(),
+      });
     },
   );
 }
 
-function scheduleReconnect(): void {
-  if (reconnectTimer) return;
+export function setupWebSocketServer(server: Server): WebSocketServer {
+  const wss = new WebSocketServer({ server, path: "/ws" });
 
-  broadcast({
-    type: "reconnecting",
-    payload: {
-      message: "Horizon stream dropped, reconnecting...",
-      retryMs: currentBackoff,
-    },
-    timestamp: Date.now(),
-  });
+  wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
+    // --- Per-IP connection limiting ---
+    const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0].trim()
+      ?? req.socket.remoteAddress
+      ?? "unknown";
 
-  logger.info(`[WS] Reconnecting in ${currentBackoff}ms...`);
+    const ipCount = connectionsPerIp.get(ip) ?? 0;
+    if (ipCount >= MAX_CONNECTIONS_PER_IP) {
+      logger.warn(`[WS] Connection limit reached for IP ${ip}, rejecting`);
+      ws.close(4029, "Too many connections");
+      return;
+    }
+    connectionsPerIp.set(ip, ipCount + 1);
 
-  reconnectTimer = setTimeout(() => {
-    reconnectTimer = null;
+    // --- JWT authentication ---
+    const host = req.headers.host ?? "localhost";
+    const url = new URL(req.url ?? "", `http://${host}`);
+    const token = url.searchParams.get("token");
 
-    // Clean up previous stream
-    if (stopStream) {
-      try {
-        stopStream();
-      } catch {
-        /* already closed */
+    let payload: Record<string, any>;
+    try {
+      if (!token) throw new Error("Missing token");
+      payload = decodeJwt(token);
+      if (typeof payload.sub !== "string" || !payload.sub) {
+        throw new Error("Invalid token subject");
       }
-      stopStream = null;
+    } catch {
+      logger.warn(`[WS] Unauthenticated connection attempt from ${ip}`);
+      ws.close(4001, "Unauthorized");
+      const remaining = (connectionsPerIp.get(ip) ?? 1) - 1;
+      if (remaining > 0) {
+        connectionsPerIp.set(ip, remaining);
+      } else {
+        connectionsPerIp.delete(ip);
+      }
+      return;
     }
 
-    startLedgerStream();
-
-    broadcast({
-      type: "reconnected",
-      payload: { message: "Horizon stream resumed" },
-      timestamp: Date.now(),
-    });
+    // Register client with empty subscription set
+    const state: ClientState = {
+      ws,
+      subscriptions: new Set(),
+      stellarAddress: payload.sub,
+    };
+    clients.set(ws, state);
+    logger.info(`[WS] Client connected (${payload.sub}). Total: ${clients.size}`);
 
     // Exponential backoff for next failure
     currentBackoff = Math.min(currentBackoff * 2, MAX_BACKOFF_MS);
@@ -104,63 +157,67 @@ export function setupWebSocketServer(server: Server): WebSocketServer {
 
     ws.on("close", () => {
       clients.delete(ws);
+      const remaining = (connectionsPerIp.get(ip) ?? 1) - 1;
+      remaining > 0 ? connectionsPerIp.set(ip, remaining) : connectionsPerIp.delete(ip);
       logger.info(`[WS] Client disconnected. Total: ${clients.size}`);
     });
 
     ws.on("error", (err) => {
       logger.error(err, "[WS] Client error");
       clients.delete(ws);
+      const remaining = (connectionsPerIp.get(ip) ?? 1) - 1;
+      remaining > 0 ? connectionsPerIp.set(ip, remaining) : connectionsPerIp.delete(ip);
     });
 
-    // Handle ping-pong and incoming messages with rate limiting
+    // --- Validated message handling ---
     ws.on("message", (data) => {
-      const now = Date.now();
-      if (now > resetTime) {
-        messageCount = 1;
-        resetTime = now + MESSAGE_RATE_LIMIT_WINDOW_MS;
-      } else {
-        messageCount++;
-      }
-
-      if (messageCount > MAX_MESSAGES_PER_WINDOW) {
-        logger.warn("[WS] Rate limit exceeded for client");
+      const msg = parseClientMessage(data.toString());
+      if (!msg) {
         sendToClient(ws, {
           type: "error",
-          payload: { message: "Rate limit exceeded" },
+          payload: { message: "Invalid message format" },
           timestamp: Date.now(),
         });
-        ws.close(1008, "Rate limit exceeded");
         return;
       }
 
-      try {
-        const msg = JSON.parse(data.toString());
-        if (msg.type === "ping") {
-          sendToClient(ws, {
-            type: "pong",
-            payload: {},
-            timestamp: Date.now(),
-          });
-        }
-      } catch {
-        // ignore
+      if (msg.type === "ping") {
+        sendToClient(ws, { type: "pong", payload: {}, timestamp: Date.now() });
+        return;
+      }
+
+      const channel = msg.channel ?? "";
+      if (!VALID_CHANNELS.has(channel)) {
+        sendToClient(ws, {
+          type: "error",
+          payload: { message: `Unknown channel: ${channel}` },
+          timestamp: Date.now(),
+        });
+        return;
+      }
+
+      if (msg.type === "subscribe") {
+        state.subscriptions.add(channel);
+        sendToClient(ws, {
+          type: "subscribed",
+          payload: { channel },
+          timestamp: Date.now(),
+        });
+      } else if (msg.type === "unsubscribe") {
+        state.subscriptions.delete(channel);
+        sendToClient(ws, {
+          type: "unsubscribed",
+          payload: { channel },
+          timestamp: Date.now(),
+        });
       }
     });
   });
 
-  // Start streaming Stellar ledger events with reconnection
   startLedgerStream();
 
-  // Clean up on server close
   wss.on("close", () => {
-    if (reconnectTimer) {
-      clearTimeout(reconnectTimer);
-      reconnectTimer = null;
-    }
-    if (stopStream) {
-      stopStream();
-      stopStream = null;
-    }
+    if (stopStream) { stopStream(); stopStream = null; }
   });
 
   return wss;
@@ -172,31 +229,60 @@ function sendToClient(ws: WebSocket, event: PulsarEvent): void {
   }
 }
 
-export function broadcast(event: PulsarEvent): void {
+/**
+ * Broadcast to all clients subscribed to a specific channel.
+ */
+export function broadcastToChannel(channel: string, event: PulsarEvent): void {
   const msg = JSON.stringify(event);
-  clients.forEach((ws) => {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(msg);
+  clients.forEach((state) => {
+    const isTargeted =
+      Array.isArray(event.targetAccounts) && event.targetAccounts.length > 0;
+    const allowedForClient =
+      !isTargeted || event.targetAccounts?.includes(state.stellarAddress) === true;
+
+    if (
+      allowedForClient
+      && state.subscriptions.has(channel)
+      && state.ws.readyState === WebSocket.OPEN
+    ) {
+      state.ws.send(msg);
     }
   });
 }
 
 /**
- * Broadcast a campaign event
+ * Broadcast to ALL authenticated clients (used for platform-wide events).
+ */
+export function broadcast(event: PulsarEvent): void {
+  const msg = JSON.stringify(event);
+  clients.forEach((state) => {
+    const isTargeted =
+      Array.isArray(event.targetAccounts) && event.targetAccounts.length > 0;
+    const allowedForClient =
+      !isTargeted || event.targetAccounts?.includes(state.stellarAddress) === true;
+
+    if (allowedForClient && state.ws.readyState === WebSocket.OPEN) {
+      state.ws.send(msg);
+    }
+  });
+}
+
+/**
+ * Broadcast a campaign event to the "campaigns" channel.
  */
 export function broadcastCampaignEvent(
   type: "campaign_created" | "view_recorded" | "payment_processed",
   data: Record<string, any>,
 ): void {
-  broadcast({ type, payload: data, timestamp: Date.now() });
+  broadcastToChannel("campaigns", { type, payload: data, timestamp: Date.now() });
 }
 
 /**
- * Broadcast an auction event
+ * Broadcast an auction event to the "auctions" channel.
  */
 export function broadcastAuctionEvent(
   type: "bid_placed" | "auction_created" | "auction_settled",
   data: Record<string, any>,
 ): void {
-  broadcast({ type, payload: data, timestamp: Date.now() });
+  broadcastToChannel("auctions", { type, payload: data, timestamp: Date.now() });
 }

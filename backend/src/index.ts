@@ -1,79 +1,95 @@
 import "dotenv/config";
-import express from "express";
-import cors from "cors";
-import helmet from "helmet";
-import morgan from "morgan";
-import { v4 as uuidv4 } from "uuid";
-import pinoHttp from "pino-http";
-import { logger } from "./lib/logger";
 import { createServer } from "http";
-import apiRoutes from "./api/routes";
-import {
-  errorHandler,
-  rateLimit,
-  configureRateLimiters,
-} from "./middleware/auth";
+import app from "./app";
 import { setupWebSocketServer } from "./services/websocket-server";
-import { checkDbConnection } from "./config/database";
+import pool, { checkDbConnection } from "./config/database";
 import { validateContractIds } from "./config/stellar";
 import prisma from "./db/prisma";
 import redisClient from "./config/redis";
+import { validateSimulationAccount } from "./services/soroban-client";
+import { EnvValidationError, loadEnv } from "./config/env";
+import { logger } from "./lib/logger";
 
-const app = express();
 const PORT = parseInt(process.env.PORT || "4000", 10);
 
-// Trust proxy when behind reverse proxy/load balancer (nginx, Cloudflare, AWS ALB)
-// This ensures req.ip returns the real client IP from X-Forwarded-For header
-if (process.env.NODE_ENV === "production") {
-  app.set("trust proxy", 1); // Trust first proxy
-}
-
-// Initialize Redis-backed rate limiters
-configureRateLimiters(redisClient);
-
-// Middleware
-app.use(helmet());
-app.use(
-  cors({
-    origin: process.env.CORS_ORIGIN || "http://localhost:3000",
-    credentials: true,
-  }),
-);
-
-// Add request-level correlation ID via middleware + structured logging
-app.use(
-  pinoHttp({
-    logger,
-    genReqId: (req: express.Request) => req.headers["x-request-id"] || uuidv4(),
-  }),
-);
-
-app.use(express.json({ limit: "10mb" }));
-app.use(rateLimit());
-
-// API routes
-app.use("/api", apiRoutes);
-
-// 404 handler
-app.use((_req, res) => {
-  res.status(404).json({ error: "Route not found" });
-});
-
-// Error handler
-app.use(errorHandler);
-
-// Create HTTP server for both REST and WebSocket
 const server = createServer(app);
 
-// Attach WebSocket server
 setupWebSocketServer(server);
 
-// Start server
+async function closeResources() {
+  try {
+    await prisma.$disconnect();
+    logger.info("[PulsarTrack] Prisma disconnected");
+  } catch (err) {
+    logger.error({ err }, "[PulsarTrack] Prisma disconnect error");
+  }
+
+  try {
+    await pool.end();
+    logger.info("[PulsarTrack] PostgreSQL pool closed");
+  } catch (err) {
+    logger.error({ err }, "[PulsarTrack] PostgreSQL disconnect error");
+  }
+
+  try {
+    if (redisClient.status !== "end") {
+      await redisClient.quit();
+      logger.info("[PulsarTrack] Redis disconnected");
+    }
+  } catch (err) {
+    logger.error({ err }, "[PulsarTrack] Redis disconnect error");
+  }
+}
+
+async function shutdown(exitCode: number, closeServer = false) {
+  if (closeServer && server.listening) {
+    await new Promise<void>((resolve, reject) => {
+      server.close((err) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        logger.info("[PulsarTrack] HTTP server closed");
+        resolve();
+      });
+    });
+  }
+
+  await closeResources();
+  return exitCode;
+}
+
+async function gracefulShutdown(signal: string) {
+  logger.info(`[PulsarTrack] Received ${signal}, shutting down gracefully...`);
+
+  const forceShutdownTimer = setTimeout(() => {
+    logger.error("[PulsarTrack] Forced shutdown after timeout");
+    process.exit(1);
+  }, 10000);
+
+  try {
+    const exitCode = await shutdown(0, true);
+    clearTimeout(forceShutdownTimer);
+    process.exit(exitCode);
+  } catch (err) {
+    clearTimeout(forceShutdownTimer);
+    logger.error({ err }, "[PulsarTrack] Graceful shutdown failed");
+    process.exit(1);
+  }
+}
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+
 async function start() {
-  // Validate contract IDs — throws in production, warns in development
+  // Validate the whole environment up front so a misconfigured deploy fails
+  // here, naming the offending variables, rather than at request time.
+  loadEnv();
+
   validateContractIds();
 
-  // Verify database connection — fail hard in production
+  await validateSimulationAccount();
+
   const dbOk = await checkDbConnection();
   if (!dbOk) {
     if (process.env.NODE_ENV === "production") {
@@ -87,7 +103,6 @@ async function start() {
     logger.info("[DB] PostgreSQL connected");
   }
 
-  // Verify Prisma client connectivity
   try {
     await prisma.$connect();
     logger.info("[DB] Prisma client connected");
@@ -108,10 +123,17 @@ async function start() {
   });
 }
 
-if (process.env.NODE_ENV !== 'test') {
-  start().catch((err) => {
-    console.error('Failed to start server:', err);
-    process.exit(1);
+if (process.env.NODE_ENV !== "test") {
+  start().catch(async (err) => {
+    if (err instanceof EnvValidationError) {
+      // Config is broken before anything was opened — report and exit
+      // without attempting a resource teardown.
+      console.error(err.message);
+      process.exit(1);
+    }
+    console.error("Failed to start server:", err);
+    const exitCode = await shutdown(1);
+    process.exit(exitCode);
   });
 }
 

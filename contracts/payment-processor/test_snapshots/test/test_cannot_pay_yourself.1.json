@@ -327,17 +327,6 @@
                     },
                     {
                       "key": {
-                        "symbol": "daily_volume"
-                      },
-                      "val": {
-                        "i128": {
-                          "hi": 0,
-                          "lo": 0
-                        }
-                      }
-                    },
-                    {
-                      "key": {
                         "symbol": "enabled"
                       },
                       "val": {

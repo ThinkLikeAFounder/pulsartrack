@@ -111,6 +111,18 @@
                         "key": {
                           "vec": [
                             {
+                              "symbol": "MintingPaused"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "bool": false
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
                               "symbol": "RelayerAddress"
                             }
                           ]

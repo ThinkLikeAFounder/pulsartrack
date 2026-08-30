@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import pool from '../config/database';
 import { callReadOnly } from '../services/soroban-client';
 import { CONTRACT_IDS } from '../config/stellar';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, rateLimitWrite } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 
 const router = Router();
@@ -34,8 +34,8 @@ router.get('/stats', async (_req: Request, res: Response) => {
     }
 
     res.json({
-      total_campaigns: onChainTotal ?? stats.total_campaigns,
-      active_campaigns: stats.active_campaigns,
+      total_campaigns: (onChainTotal != null && onChainTotal > 0) ? onChainTotal : Number(stats.total_campaigns),
+      active_campaigns: Number(stats.active_campaigns),
       total_impressions: Number(stats.total_impressions),
       total_clicks: Number(stats.total_clicks),
       total_spent_xlm: Number(stats.total_spent_stroops) / 1e7,
@@ -47,7 +47,7 @@ router.get('/stats', async (_req: Request, res: Response) => {
   }
 });
 
-router.post('/', requireAuth, validate({
+router.post('/', requireAuth, rateLimitWrite(), validate({
   body: {
     title: { type: 'string', required: true, minLength: 1, maxLength: 200 },
     contentId: { type: 'string', required: true, minLength: 1 },
@@ -56,7 +56,7 @@ router.post('/', requireAuth, validate({
   },
 }), async (req: Request, res: Response) => {
   try {
-    const address = (req as any).stellarAddress;
+    const address = req.stellarAddress;
     const { title, contentId, budgetStroops, dailyBudgetStroops } = req.body;
 
     const { rows } = await pool.query(

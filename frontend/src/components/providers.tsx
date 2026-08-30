@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { useWallet } from '../hooks/useWallet';
 import { ContractProvider } from '@/contexts/ContractContext';
 import { ToastProvider } from '@/contexts/ToastContext';
+import { ThemeProvider } from './theme-provider';
 
 import { ErrorBoundary } from './ErrorBoundary';
 
@@ -34,11 +35,13 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <ErrorBoundary name="GlobalProviders">
       <QueryClientProvider client={queryClient}>
-        <ContractProvider>
-          <ToastProvider>
-            <WalletAutoReconnect>{children}</WalletAutoReconnect>
-          </ToastProvider>
-        </ContractProvider>
+        <ThemeProvider>
+          <ContractProvider>
+            <ToastProvider>
+              <WalletAutoReconnect>{children}</WalletAutoReconnect>
+            </ToastProvider>
+          </ContractProvider>
+        </ThemeProvider>
       </QueryClientProvider>
     </ErrorBoundary>
   );

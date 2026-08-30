@@ -46,8 +46,8 @@ pub enum DataKey {
 
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17_280;
 const INSTANCE_BUMP_AMOUNT: u32 = 86_400;
-const PERSISTENT_LIFETIME_THRESHOLD: u32 = 34_560;
-const PERSISTENT_BUMP_AMOUNT: u32 = 259_200;
+const PERSISTENT_LIFETIME_THRESHOLD: u32 = 120_960;
+const PERSISTENT_BUMP_AMOUNT: u32 = 1_051_200;
 
 #[contract]
 pub struct GovernanceCoreContract;
@@ -96,6 +96,12 @@ impl GovernanceCoreContract {
             panic!("unauthorized");
         }
 
+        if let Some(exp) = expires_at {
+            if exp <= env.ledger().timestamp() {
+                panic!("expires_at must be in the future");
+            }
+        }
+
         let grant = RoleGrant {
             role: role.clone(),
             granted_by: admin,
@@ -134,37 +140,39 @@ impl GovernanceCoreContract {
             panic!("unauthorized");
         }
 
-        env.storage()
-            .persistent()
-            .remove(&DataKey::RoleGrant(account.clone(), role.clone()));
+        // Only remove and decrement if the grant actually exists — it may have
+        // already been cleaned up by has_role's lazy expiry removal, and
+        // decrementing again would corrupt RoleCount.
+        let grant_key = DataKey::RoleGrant(account.clone(), role.clone());
+        if env.storage().persistent().has(&grant_key) {
+            env.storage().persistent().remove(&grant_key);
 
-        let count: u32 = env
-            .storage()
-            .instance()
-            .get(&DataKey::RoleCount(role.clone()))
-            .unwrap_or(0);
-        if count > 0 {
-            env.storage()
+            let count: u32 = env
+                .storage()
                 .instance()
-                .set(&DataKey::RoleCount(role), &(count - 1));
+                .get(&DataKey::RoleCount(role.clone()))
+                .unwrap_or(0);
+            if count > 0 {
+                env.storage()
+                    .instance()
+                    .set(&DataKey::RoleCount(role), &(count - 1));
+            }
         }
+
+        env.events()
+            .publish((symbol_short!("role"), symbol_short!("revoked")), account);
     }
 
     pub fn has_role(env: Env, account: Address, role: Role) -> bool {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-        if let Some(grant) = env
-            .storage()
-            .persistent()
-            .get::<DataKey, RoleGrant>(&DataKey::RoleGrant(account.clone(), role.clone()))
-        {
+        let _ttl_key = DataKey::RoleGrant(account.clone(), role.clone());
+        if let Some(grant) = env.storage().persistent().get::<DataKey, RoleGrant>(&_ttl_key) {
             if let Some(expires) = grant.expires_at {
                 if expires <= env.ledger().timestamp() {
                     // Expired — remove from storage to avoid unbounded rent accumulation
-                    env.storage()
-                        .persistent()
-                        .remove(&DataKey::RoleGrant(account, role.clone()));
+                    env.storage().persistent().remove(&_ttl_key);
 
                     let count: u32 = env
                         .storage()
@@ -178,8 +186,18 @@ impl GovernanceCoreContract {
                     }
                     return false;
                 }
+                env.storage().persistent().extend_ttl(
+                    &_ttl_key,
+                    PERSISTENT_LIFETIME_THRESHOLD,
+                    PERSISTENT_BUMP_AMOUNT,
+                );
                 true
             } else {
+                env.storage().persistent().extend_ttl(
+                    &_ttl_key,
+                    PERSISTENT_LIFETIME_THRESHOLD,
+                    PERSISTENT_BUMP_AMOUNT,
+                );
                 true
             }
         } else {
@@ -188,6 +206,14 @@ impl GovernanceCoreContract {
     }
 
     pub fn update_params(env: Env, admin: Address, params: GovernanceParams) {
+        
+        
+        if params.quorum_pct == 0 || params.quorum_pct > 100 { panic!("invalid quorum_pct"); }
+        if params.pass_threshold_pct == 0 || params.pass_threshold_pct > 100 { panic!("invalid pass_threshold_pct"); }
+        if params.voting_period_ledgers == 0 { panic!("voting_period_ledgers must be positive"); }
+        if params.max_active_proposals == 0 { panic!("max_active_proposals must be positive"); }
+        
+        
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -199,6 +225,9 @@ impl GovernanceCoreContract {
         env.storage()
             .instance()
             .set(&DataKey::GovernanceParams, &params);
+
+        env.events()
+            .publish((symbol_short!("params"), symbol_short!("updated")), admin);
     }
 
     pub fn get_params(env: Env) -> GovernanceParams {
@@ -215,9 +244,17 @@ impl GovernanceCoreContract {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-        env.storage()
-            .persistent()
-            .get(&DataKey::RoleGrant(account, role))
+        let _ttl_key = DataKey::RoleGrant(account, role);
+        if let Some(grant) = env.storage().persistent().get::<DataKey, RoleGrant>(&_ttl_key) {
+            env.storage().persistent().extend_ttl(
+                &_ttl_key,
+                PERSISTENT_LIFETIME_THRESHOLD,
+                PERSISTENT_BUMP_AMOUNT,
+            );
+            Some(grant)
+        } else {
+            None
+        }
     }
 
     pub fn propose_admin(env: Env, current_admin: Address, new_admin: Address) {
@@ -233,6 +270,7 @@ impl GovernanceCoreContract {
     pub fn accept_admin(env: Env, new_admin: Address) {
         pulsar_common_admin::accept_admin(&env, &DataKey::Admin, &DataKey::PendingAdmin, new_admin);
     }
+
 }
 
 mod test;

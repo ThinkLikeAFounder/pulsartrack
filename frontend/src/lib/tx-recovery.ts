@@ -1,8 +1,16 @@
 "use client";
 
-import { rpc } from "@stellar/stellar-sdk";
-import { getSorobanServer } from "./soroban-client";
+import type { rpc, xdr } from "@stellar/stellar-sdk";
 import { useTransactionStore } from "../store/tx-store";
+
+async function getSdk() {
+  return import("@stellar/stellar-sdk");
+}
+
+async function getServer() {
+  const { getSorobanServer } = await import("./soroban-client");
+  return getSorobanServer();
+}
 
 /**
  * Check the status of pending transactions and update the store
@@ -17,9 +25,9 @@ export async function checkPendingTransactions(): Promise<void> {
 
   if (pendingTxs.length === 0) return;
 
-  const server = getSorobanServer();
+  const { rpc } = await getSdk();
+  const server = await getServer();
 
-  // Check each pending transaction
   const checks = pendingTxs.map(async (tx) => {
     try {
       const result = await server.getTransaction(tx.txHash);
@@ -62,8 +70,9 @@ export async function pollTransaction(
   txHash: string,
   maxAttempts: number = 10,
   initialIntervalMs: number = 2000,
-): Promise<{ success: boolean; result?: any; error?: string }> {
-  const server = getSorobanServer();
+): Promise<{ success: boolean; result?: xdr.ScVal; error?: string }> {
+  const { rpc } = await getSdk();
+  const server = await getServer();
   const { updateTransaction } = useTransactionStore.getState();
 
   for (let i = 0; i < maxAttempts; i++) {

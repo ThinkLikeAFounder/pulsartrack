@@ -93,6 +93,13 @@ impl PublisherNetworkContract {
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
         publisher.require_auth();
 
+        if capacity == 0 {
+            panic!("capacity must be positive");
+        }
+        if min_cpm <= 0 {
+            panic!("min_cpm must be positive");
+        }
+
         if env
             .storage()
             .persistent()
@@ -237,13 +244,36 @@ impl PublisherNetworkContract {
         if stats.active_nodes > 0 {
             stats.active_nodes -= 1;
         }
+        stats.total_nodes = stats.total_nodes.saturating_sub(1);
+        stats.total_capacity = stats.total_capacity.saturating_sub(node.capacity);
         env.storage().instance().set(&DataKey::NetworkStats, &stats);
+
+        let count: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::NodeCount)
+            .unwrap_or(0);
+        env.storage()
+            .instance()
+            .set(&DataKey::NodeCount, &count.saturating_sub(1));
     }
 
-    pub fn record_impression(env: Env, _publisher: Address) {
+    pub fn record_impression(env: Env, publisher: Address) {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        publisher.require_auth();
+
+        let node: NetworkNode = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Node(publisher.clone()))
+            .expect("not in network");
+
+        if !node.is_active {
+            panic!("node not active");
+        }
+
         let mut stats: NetworkStats = env
             .storage()
             .instance()

@@ -10,10 +10,13 @@ jobs:
   contracts:
     name: Contracts CI
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
       - name: Build contracts
         run: cargo build --workspace
       - name: Run contract tests
@@ -22,6 +25,7 @@ jobs:
   backend:
     name: Backend CI
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - name: Setup Node.js
@@ -33,6 +37,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
         working-directory: backend
+      - name: Type check backend
+        run: npm run typecheck
+        working-directory: backend
       - name: Build backend
         run: npm run build
         working-directory: backend
@@ -43,6 +50,35 @@ jobs:
   frontend:
     name: Frontend CI
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
+      - name: Type check frontend
+        run: npm run typecheck
+        working-directory: frontend
+      - name: Lint frontend
+        run: npm run lint
+        working-directory: frontend
+      - name: Build frontend
+        run: npm run build
+        working-directory: frontend
+      - name: Run frontend tests
+        run: npm test
+        working-directory: frontend
+
+  e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Setup Node.js
@@ -57,6 +93,9 @@ jobs:
       - name: Build frontend
         run: npm run build
         working-directory: frontend
-      - name: Run frontend tests
-        run: npm test
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - name: Run E2E tests
+        run: npm run test:e2e
         working-directory: frontend

@@ -6,6 +6,8 @@ import {
   callReadOnly,
   ContractCallOptions,
   ReadOnlyOptions,
+  type ContractArg,
+  type ScValArg,
 } from "../lib/soroban-client";
 import { CONTRACT_IDS } from "../lib/stellar-config";
 import { useWalletStore } from "../store/wallet-store";
@@ -39,12 +41,26 @@ export function useContractCall() {
 /**
  * Hook for contract read-only operations
  */
-export function useContractRead<T = any>(
+function isScValArg(arg: ContractArg): arg is ScValArg {
+  return typeof (arg as { __type?: unknown }).__type !== "undefined";
+}
+
+function getArgsKey(args: ContractArg[]): string {
+  return args
+    .map((arg) => {
+      if (!arg || !isScValArg(arg)) return JSON.stringify(arg);
+      return `${arg.__type}:${String(arg.value)}`;
+    })
+    .join(",");
+}
+
+export function useContractRead<T = unknown>(
   options: ReadOnlyOptions,
   enabled = true,
 ) {
+  const argsKey = options.args ? getArgsKey(options.args) : "";
   return useQuery<T, Error>({
-    queryKey: ["contract", options.contractId, options.method, options.args],
+    queryKey: ["contract", options.contractId, options.method, argsKey],
     queryFn: () => callReadOnly(options),
     enabled: enabled && !!options.contractId,
     staleTime: 30_000,
@@ -83,11 +99,18 @@ export function usePublisherReputation(
   );
 }
 
+export interface AdvertiserStats {
+  active_campaigns?: bigint | number;
+  total_views?: bigint | number;
+  total_spent: bigint | number;
+  [key: string]: unknown;
+}
+
 /**
  * Hook to get advertiser stats
  */
 export function useAdvertiserStats(advertiserAddress: string, enabled = true) {
-  return useContractRead(
+  return useContractRead<AdvertiserStats>(
     {
       contractId: CONTRACT_IDS.CAMPAIGN_ORCHESTRATOR,
       method: "get_advertiser_stats",
@@ -111,6 +134,53 @@ export function useCampaignCount(enabled = true) {
   );
 }
 
+export interface AdvertiserCampaign {
+  id: number;
+  advertiser?: string;
+  budget?: bigint | number;
+  target_views?: bigint | number;
+  current_views?: bigint | number;
+  status?: Record<string, unknown> | string;
+}
+
+export interface GovernanceProposal {
+  id: number;
+  title?: string;
+  description?: string;
+  proposer?: string;
+  votes_for?: bigint;
+  votes_against?: bigint;
+  votes_abstain?: bigint;
+  end_time?: bigint | number;
+  is_active?: boolean;
+  [key: string]: unknown;
+}
+
+export interface PublisherAuction {
+  id: number;
+  publisher?: string;
+  status?: string;
+  current_bid?: bigint;
+  [key: string]: unknown;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function toBigintOrNumber(value: unknown): bigint | number | undefined {
+  if (typeof value === "bigint" || typeof value === "number") return value;
+  return undefined;
+}
+
+function normalizeStatus(
+  value: unknown,
+): Record<string, unknown> | string | undefined {
+  if (typeof value === "string") return value;
+  if (isRecord(value)) return value;
+  return undefined;
+}
+
 /**
  * Hook to get all campaigns for an advertiser
  */
@@ -119,11 +189,11 @@ export function useAdvertiserCampaigns(
   campaignCount: number | undefined,
   enabled = true,
 ) {
-  return useQuery({
+  return useQuery<AdvertiserCampaign[]>({
     queryKey: ["advertiser_campaigns", advertiserAddress, campaignCount],
     queryFn: async () => {
       if (!campaignCount) return [];
-      const campaigns: any[] = [];
+      const campaigns: AdvertiserCampaign[] = [];
       // Fetch concurrently for better performance
       const promises = [];
       for (let i = 1; i <= campaignCount; i++) {
@@ -134,11 +204,27 @@ export function useAdvertiserCampaigns(
             args: [u64ToScVal(i)],
           })
             .then((campaign) => {
-              if (campaign && campaign.advertiser === advertiserAddress) {
-                campaigns.push({ id: i, ...campaign });
-              }
+              if (!isRecord(campaign)) return;
+
+              const advertiser =
+                typeof campaign.advertiser === "string"
+                  ? campaign.advertiser
+                  : undefined;
+              if (!advertiser || advertiser !== advertiserAddress) return;
+
+              campaigns.push({
+                id: i,
+                advertiser,
+                budget: toBigintOrNumber(campaign.budget),
+                target_views: toBigintOrNumber(campaign.target_views),
+                current_views: toBigintOrNumber(campaign.current_views),
+                status: normalizeStatus(campaign.status),
+              });
             })
-            .catch(() => null), // Ignore missing or failed campaigns
+            .catch((err) => {
+              console.error(`Failed to fetch campaign ${i}:`, err);
+              return null;
+            }),
         );
       }
       await Promise.all(promises);
@@ -278,6 +364,11 @@ export function useSetConsent() {
     expiresInDays?: number;
   }) => {
     if (!address) return;
+
+    const expirationTs = params.expiresInDays
+      ? Math.floor(Date.now() / 1000) + params.expiresInDays * 86400
+      : 0; // 0 = no expiry
+
     mutate({
       contractId: CONTRACT_IDS.PRIVACY_LAYER,
       method: "set_consent",
@@ -288,6 +379,7 @@ export function useSetConsent() {
         boolToScVal(params.targetedAds),
         boolToScVal(params.analytics),
         boolToScVal(params.thirdPartySharing),
+        u64ToScVal(expirationTs),
       ],
     });
   };
@@ -348,7 +440,7 @@ export function useGovernanceProposals(
     queryKey: ["governance_proposals", proposalCount],
     queryFn: async () => {
       if (!proposalCount || proposalCount === 0) return [];
-      const proposals: any[] = [];
+      const proposals: GovernanceProposal[] = [];
       const promises = [];
       for (let i = 1; i <= proposalCount; i++) {
         promises.push(
@@ -357,9 +449,9 @@ export function useGovernanceProposals(
             method: "get_proposal",
             args: [u64ToScVal(i)],
           })
-            .then((proposal) => {
-              if (proposal) {
-                proposals.push({ id: i, ...proposal });
+            .then((proposal: unknown) => {
+              if (isRecord(proposal)) {
+                proposals.push({ ...proposal, id: i });
               }
             })
             .catch(() => null),
@@ -408,6 +500,8 @@ export function useCreateProposal() {
   const { mutateAsync, ...rest } = useContractCall();
   const { address } = useWalletStore();
 
+  const LEDGERS_PER_DAY = 17_280;
+
   const createProposal = async (params: {
     title: string;
     description: string;
@@ -422,7 +516,7 @@ export function useCreateProposal() {
         addressToScVal(address),
         stringToScVal(params.title),
         stringToScVal(params.description),
-        u64ToScVal(params.votingPeriodDays * 86400),
+        u64ToScVal(params.votingPeriodDays * LEDGERS_PER_DAY),
       ],
     });
   };
@@ -430,11 +524,17 @@ export function useCreateProposal() {
   return { createProposal, ...rest };
 }
 
+export interface PublisherData {
+  status?: unknown;
+  impressions_served?: bigint | number | string;
+  [key: string]: unknown;
+}
+
 /**
  * Hook to get publisher info
  */
 export function usePublisherData(publisherAddress: string, enabled = true) {
-  return useContractRead(
+  return useContractRead<PublisherData>(
     {
       contractId: CONTRACT_IDS.PUBLISHER_VERIFICATION,
       method: "get_publisher",
@@ -444,11 +544,16 @@ export function usePublisherData(publisherAddress: string, enabled = true) {
   );
 }
 
+export interface PublisherKyc {
+  verified?: boolean;
+  [key: string]: unknown;
+}
+
 /**
  * Hook to get KYC record for publisher
  */
 export function usePublisherKyc(publisherAddress: string, enabled = true) {
-  return useContractRead(
+  return useContractRead<PublisherKyc>(
     {
       contractId: CONTRACT_IDS.PUBLISHER_VERIFICATION,
       method: "get_kyc_record",
@@ -498,7 +603,7 @@ export function usePublisherAuctions(
     queryKey: ["publisher_auctions", publisherAddress, auctionCount],
     queryFn: async () => {
       if (!auctionCount || auctionCount === 0) return [];
-      const auctions: any[] = [];
+      const auctions: PublisherAuction[] = [];
       const promises = [];
       for (let i = 1; i <= auctionCount; i++) {
         promises.push(
@@ -507,9 +612,9 @@ export function usePublisherAuctions(
             method: "get_auction",
             args: [u64ToScVal(i)],
           })
-            .then((auction) => {
-              if (auction && auction.publisher === publisherAddress) {
-                auctions.push({ id: i, ...auction });
+            .then((auction: unknown) => {
+              if (isRecord(auction) && auction.publisher === publisherAddress) {
+                auctions.push({ ...auction, id: i });
               }
             })
             .catch(() => null),

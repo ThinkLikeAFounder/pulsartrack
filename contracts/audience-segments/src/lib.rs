@@ -40,8 +40,8 @@ pub enum DataKey {
 
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17_280;
 const INSTANCE_BUMP_AMOUNT: u32 = 86_400;
-const PERSISTENT_LIFETIME_THRESHOLD: u32 = 34_560;
-const PERSISTENT_BUMP_AMOUNT: u32 = 259_200;
+const PERSISTENT_LIFETIME_THRESHOLD: u32 = 120_960; // ~14 days
+const PERSISTENT_BUMP_AMOUNT: u32 = 1_051_200; // ~121 days
 
 #[contract]
 pub struct AudienceSegmentsContract;
@@ -75,6 +75,9 @@ impl AudienceSegmentsContract {
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
         creator.require_auth();
 
+        if criteria_hash.is_empty() {
+            panic!("criteria_hash cannot be empty");
+        }
         let counter: u64 = env
             .storage()
             .instance()
@@ -120,7 +123,7 @@ impl AudienceSegmentsContract {
         admin.require_auth();
         let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
 
-        let segment: Segment = env
+        let mut segment: Segment = env
             .storage()
             .persistent()
             .get(&DataKey::Segment(segment_id))
@@ -166,6 +169,17 @@ impl AudienceSegmentsContract {
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
         );
+
+        // Keep the segment record's member_count in sync
+        segment.member_count = count + 1;
+        segment.last_updated = env.ledger().timestamp();
+        let _ttl_key = DataKey::Segment(segment_id);
+        env.storage().persistent().set(&_ttl_key, &segment);
+        env.storage().persistent().extend_ttl(
+            &_ttl_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
     }
 
     pub fn remove_member(env: Env, admin: Address, segment_id: u64, member: Address) {
@@ -174,8 +188,12 @@ impl AudienceSegmentsContract {
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
         admin.require_auth();
         let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        let mem_key = DataKey::Membership(segment_id, member.clone());
+        if !env.storage().persistent().has(&mem_key) {
+            panic!("address is not a member of this segment");
+        }
 
-        let segment: Segment = env
+        let mut segment: Segment = env
             .storage()
             .persistent()
             .get(&DataKey::Segment(segment_id))
@@ -203,15 +221,38 @@ impl AudienceSegmentsContract {
                 PERSISTENT_BUMP_AMOUNT,
             );
         }
+
+        // Keep the segment record's member_count in sync
+        segment.member_count = count.saturating_sub(1);
+        segment.last_updated = env.ledger().timestamp();
+        let _ttl_key = DataKey::Segment(segment_id);
+        env.storage().persistent().set(&_ttl_key, &segment);
+        env.storage().persistent().extend_ttl(
+            &_ttl_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
     }
 
     pub fn is_member(env: Env, segment_id: u64, member: Address) -> bool {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-        env.storage()
+        let key = DataKey::Membership(segment_id, member);
+        if let Some(_membership) = env
+            .storage()
             .persistent()
-            .has(&DataKey::Membership(segment_id, member))
+            .get::<DataKey, SegmentMembership>(&key)
+        {
+            env.storage().persistent().extend_ttl(
+                &key,
+                PERSISTENT_LIFETIME_THRESHOLD,
+                PERSISTENT_BUMP_AMOUNT,
+            );
+            true
+        } else {
+            false
+        }
     }
 
     pub fn get_segment(env: Env, segment_id: u64) -> Option<Segment> {

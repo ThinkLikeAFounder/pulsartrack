@@ -8,6 +8,7 @@ use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, E
 #[derive(Clone)]
 pub struct BudgetAllocation {
     pub campaign_id: u64,
+    pub advertiser: Address,
     pub total_budget: i128,
     pub daily_budget: i128,
     pub hourly_budget: i128,
@@ -59,6 +60,38 @@ const INSTANCE_BUMP_AMOUNT: u32 = 86_400;
 const PERSISTENT_LIFETIME_THRESHOLD: u32 = 120_960;
 const PERSISTENT_BUMP_AMOUNT: u32 = 1_051_200;
 
+// ============================================================
+// Budget Allocation Arguments
+// ============================================================
+
+#[contracttype]
+#[derive(Clone)]
+pub struct SetBudgetAllocationArgs {
+    pub advertiser: Address,
+    pub campaign_id: u64,
+    pub total_budget: i128,
+    pub daily_budget: i128,
+    pub optimization_mode: OptimizationMode,
+    pub target_cpa: i128,
+    pub target_ctr: u32,
+}
+
+// ============================================================
+// Budget Allocation Arguments
+// ============================================================
+
+#[contracttype]
+#[derive(Clone)]
+pub struct SetBudgetArgs {
+    pub advertiser: Address,
+    pub campaign_id: u64,
+    pub total_budget: i128,
+    pub daily_budget: i128,
+    pub optimization_mode: OptimizationMode,
+    pub target_cpa: i128,
+    pub target_ctr: u32,
+}
+
 #[contract]
 pub struct BudgetOptimizerContract;
 
@@ -78,41 +111,47 @@ impl BudgetOptimizerContract {
             .set(&DataKey::OracleAddress, &oracle);
     }
 
-    pub fn set_budget_allocation(
-        env: Env,
-        advertiser: Address,
-        campaign_id: u64,
-        total_budget: i128,
-        daily_budget: i128,
-        optimization_mode: OptimizationMode,
-        target_cpa: i128,
-        target_ctr: u32,
-    ) {
+    pub fn set_budget_allocation(env: Env, args: SetBudgetAllocationArgs) {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-        advertiser.require_auth();
+        args.advertiser.require_auth();
 
-        if daily_budget > total_budget {
+        if args.daily_budget > args.total_budget {
             panic!("daily budget exceeds total");
         }
 
+        // Ownership check: if an allocation already exists, only the original
+        // Advertiser may overwrite it.
+        if let Some(existing) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, BudgetAllocation>(&DataKey::Allocation(args.campaign_id))
+        {
+            if existing.advertiser != args.advertiser {
+                panic!("unauthorized");
+            }
+        }
+
         let allocation = BudgetAllocation {
-            campaign_id,
-            total_budget,
-            daily_budget,
-            hourly_budget: daily_budget / 24,
-            budget_remainder: daily_budget % 24,
+            campaign_id: args.campaign_id,
+            advertiser: args.advertiser.clone(),
+            total_budget: args.total_budget,
+            daily_budget: args.daily_budget,
+            hourly_budget: args.daily_budget / 24,
+            budget_remainder: args.daily_budget % 24,
             spent_today: 0,
             spent_total: 0,
-            optimization_mode,
-            target_cpa,
-            target_ctr,
+            optimization_mode: args.optimization_mode,
+            target_cpa: args.target_cpa,
+            target_ctr: args.target_ctr,
             last_optimized: env.ledger().timestamp(),
-            last_reset_day: env.ledger().timestamp() / 86_400,
+            last_reset_day: env.ledger().timestamp() / 86_400, // Hourly reset tracking
         };
 
-        let _ttl_key = DataKey::Allocation(campaign_id);
+        // Actually, let me look at this more carefully. The campaign_id should come from args
+
+        let _ttl_key = DataKey::Allocation(args.campaign_id);
         env.storage().persistent().set(&_ttl_key, &allocation);
         env.storage().persistent().extend_ttl(
             &_ttl_key,
@@ -207,6 +246,13 @@ impl BudgetOptimizerContract {
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
         admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+        if amount <= 0 {
+            panic!("amount must be positive");
+        }
 
         let mut allocation: BudgetAllocation = env
             .storage()

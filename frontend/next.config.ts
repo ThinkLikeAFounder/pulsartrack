@@ -1,8 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
-  output: "standalone", // Enable standalone output for Docker
+  output: "standalone",
+  serverExternalPackages: ["@stellar/stellar-sdk", "@stellar/stellar-base"],
 };
 
 export default nextConfig;

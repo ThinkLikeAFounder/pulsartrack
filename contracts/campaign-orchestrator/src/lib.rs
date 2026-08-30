@@ -3,12 +3,90 @@
 
 #![no_std]
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, token, Address, Env, String,
-    IntoVal, Symbol, Val, Vec as SdkVec,
+    contract, contractimpl, contracttype, symbol_short, token, Address, Env, IntoVal, String,
+    Symbol, Val, Vec as SdkVec,
 };
+
+#[contracttype]
+#[derive(Clone, PartialEq)]
+pub enum LifecycleState {
+    Draft,
+    PendingReview,
+    Active,
+    Paused,
+    Completed,
+    Cancelled,
+    Expired,
+    Archived,
+    Rejected,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct CampaignLifecycle {
+    pub campaign_id: u64,
+    pub advertiser: Address,
+    pub state: LifecycleState,
+    pub created_at: u64,
+    pub activated_at: Option<u64>,
+    pub paused_at: Option<u64>,
+    pub completed_at: Option<u64>,
+    pub cancelled_at: Option<u64>,
+    pub pause_count: u32,
+    pub extension_count: u32,
+    pub original_end_ledger: u32,
+    pub current_end_ledger: u32,
+}
+
+#[contracttype]
+#[derive(Clone, PartialEq)]
+pub enum EscrowState {
+    Pending,
+    Locked,
+    Released,
+    Refunded,
+    PartiallyReleased,
+    Disputed,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct Escrow {
+    pub campaign_id: u64,
+    pub depositor: Address,
+    pub beneficiary: Address,
+    pub amount: i128,
+    pub locked_amount: i128,
+    pub released_amount: i128,
+    pub refunded_amount: i128,
+    pub state: EscrowState,
+    pub time_lock_until: u64,
+    pub performance_threshold: u32,
+    pub created_at: u64,
+    pub locked_at: Option<u64>,
+    pub released_at: Option<u64>,
+    pub expires_at: u64,
+}
 
 // Define external contract interfaces for cross-contract calls
 // These match the actual contract implementations
+
+// ============================================================
+// Campaign Creation Arguments
+// ============================================================
+
+#[contracttype]
+#[derive(Clone)]
+pub struct CampaignCreateArgs {
+    pub advertiser: Address,
+    pub campaign_type: u32,
+    pub budget: i128,
+    pub cost_per_view: i128,
+    pub duration: u32,
+    pub target_views: u64,
+    pub daily_view_limit: u64,
+    pub refundable: bool,
+}
 
 // ============================================================
 // Data Types
@@ -166,74 +244,89 @@ impl CampaignOrchestratorContract {
 
     /// Set contract addresses for cross-contract validation (admin only)
     pub fn set_lifecycle_contract(env: Env, admin: Address, contract_address: Address) {
-        env.storage().instance().extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-        admin.require_auth();
-        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
-        if admin != stored_admin {
-            panic!("unauthorized");
-        }
-        env.storage().instance().set(&DataKey::LifecycleContract, &contract_address);
-    }
-
-    pub fn set_escrow_contract(env: Env, admin: Address, contract_address: Address) {
-        env.storage().instance().extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-        admin.require_auth();
-        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
-        if admin != stored_admin {
-            panic!("unauthorized");
-        }
-        env.storage().instance().set(&DataKey::EscrowContract, &contract_address);
-    }
-
-    pub fn set_targeting_contract(env: Env, admin: Address, contract_address: Address) {
-        env.storage().instance().extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-        admin.require_auth();
-        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
-        if admin != stored_admin {
-            panic!("unauthorized");
-        }
-        env.storage().instance().set(&DataKey::TargetingContract, &contract_address);
-    }
-
-    pub fn set_auction_contract(env: Env, admin: Address, contract_address: Address) {
-        env.storage().instance().extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-        admin.require_auth();
-        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
-        if admin != stored_admin {
-            panic!("unauthorized");
-        }
-        env.storage().instance().set(&DataKey::AuctionContract, &contract_address);
-    }
-
-    /// Create a new ad campaign
-    pub fn create_campaign(
-        env: Env,
-        advertiser: Address,
-        campaign_type: u32,
-        budget: i128,
-        cost_per_view: i128,
-        duration: u32,
-        target_views: u64,
-        daily_view_limit: u64,
-        refundable: bool,
-    ) -> u64 {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-        advertiser.require_auth();
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::LifecycleContract, &contract_address);
+    }
+
+    pub fn set_escrow_contract(env: Env, admin: Address, contract_address: Address) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::EscrowContract, &contract_address);
+    }
+
+    pub fn set_targeting_contract(env: Env, admin: Address, contract_address: Address) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::TargetingContract, &contract_address);
+    }
+
+    pub fn set_auction_contract(env: Env, admin: Address, contract_address: Address) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::AuctionContract, &contract_address);
+    }
+
+    /// Create a new ad campaign
+    pub fn create_campaign(env: Env, args: CampaignCreateArgs) -> u64 {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        args.advertiser.require_auth();
 
         let campaign_type_data: CampaignType = env
             .storage()
             .instance()
-            .get(&DataKey::CampaignType(campaign_type))
+            .get(&DataKey::CampaignType(args.campaign_type))
             .expect("campaign type not found");
 
-        if budget < campaign_type_data.min_budget {
+        if args.budget < campaign_type_data.min_budget {
             panic!("budget too low");
         }
-        if duration < campaign_type_data.min_duration || duration > campaign_type_data.max_duration
+        if args.duration < campaign_type_data.min_duration
+            || args.duration > campaign_type_data.max_duration
         {
             panic!("invalid duration");
+        }
+
+        // Validate daily_view_limit and cost_per_view
+        if args.daily_view_limit == 0 {
+            panic!("daily_view_limit must be at least 1");
+        }
+        if args.cost_per_view <= 0 {
+            panic!("cost_per_view must be positive");
         }
 
         let counter: u64 = env
@@ -248,7 +341,10 @@ impl CampaignOrchestratorContract {
             .instance()
             .get(&DataKey::PlatformFeePct)
             .unwrap_or(2);
-        let platform_fee = (budget * platform_fee_pct as i128) / 100;
+        let platform_fee = (args.budget * platform_fee_pct as i128) / 100;
+        if platform_fee <= 0 {
+            panic!("invalid platform fee");
+        }
 
         // Transfer budget + fee from advertiser to this contract
         let token_addr: Address = env
@@ -258,27 +354,27 @@ impl CampaignOrchestratorContract {
             .unwrap();
         let token_client = token::Client::new(&env, &token_addr);
         token_client.transfer(
-            &advertiser,
+            &args.advertiser,
             &env.current_contract_address(),
-            &(budget + platform_fee),
+            &(args.budget + platform_fee),
         );
 
         let start_ledger = env.ledger().sequence();
-        let end_ledger = start_ledger + duration;
+        let end_ledger = start_ledger + args.duration;
 
         let campaign = Campaign {
-            advertiser: advertiser.clone(),
-            campaign_type,
-            budget,
-            remaining_budget: budget,
-            cost_per_view,
+            advertiser: args.advertiser.clone(),
+            campaign_type: args.campaign_type,
+            budget: args.budget,
+            remaining_budget: args.budget,
+            cost_per_view: args.cost_per_view,
             start_ledger,
             end_ledger,
             status: CampaignStatus::Active,
-            target_views,
+            target_views: args.target_views,
             current_views: 0,
-            daily_view_limit,
-            refundable,
+            daily_view_limit: args.daily_view_limit,
+            refundable: args.refundable,
             platform_fee,
             created_at: env.ledger().timestamp(),
             last_updated: env.ledger().timestamp(),
@@ -305,11 +401,11 @@ impl CampaignOrchestratorContract {
             .set(&DataKey::TotalPlatformFees, &(total_fees + platform_fee));
 
         // Update advertiser stats
-        Self::_update_advertiser_stats(&env, &advertiser, campaign_id, budget);
+        Self::_update_advertiser_stats(&env, &args.advertiser, campaign_id, args.budget);
 
         env.events().publish(
             (symbol_short!("campaign"), symbol_short!("created")),
-            (campaign_id, advertiser, budget),
+            (campaign_id, args.advertiser, args.budget),
         );
 
         campaign_id
@@ -376,6 +472,22 @@ impl CampaignOrchestratorContract {
 
         if campaign.current_views >= campaign.target_views {
             campaign.status = CampaignStatus::Completed;
+
+            // Decrement active campaigns count for advertiser
+            let stats_key = DataKey::AdvertiserStats(campaign.advertiser.clone());
+            if let Some(mut stats) = env
+                .storage()
+                .persistent()
+                .get::<DataKey, AdvertiserStats>(&stats_key)
+            {
+                stats.active_campaigns = stats.active_campaigns.saturating_sub(1);
+                env.storage().persistent().set(&stats_key, &stats);
+                env.storage().persistent().extend_ttl(
+                    &stats_key,
+                    PERSISTENT_LIFETIME_THRESHOLD,
+                    PERSISTENT_BUMP_AMOUNT,
+                );
+            }
         }
 
         let _ttl_key = DataKey::Campaign(campaign_id);
@@ -433,6 +545,24 @@ impl CampaignOrchestratorContract {
             panic!("unauthorized");
         }
 
+        // Only decrement stats if it was active
+        if let CampaignStatus::Active = campaign.status {
+            let stats_key = DataKey::AdvertiserStats(advertiser.clone());
+            if let Some(mut stats) = env
+                .storage()
+                .persistent()
+                .get::<DataKey, AdvertiserStats>(&stats_key)
+            {
+                stats.active_campaigns = stats.active_campaigns.saturating_sub(1);
+                env.storage().persistent().set(&stats_key, &stats);
+                env.storage().persistent().extend_ttl(
+                    &stats_key,
+                    PERSISTENT_LIFETIME_THRESHOLD,
+                    PERSISTENT_BUMP_AMOUNT,
+                );
+            }
+        }
+
         campaign.status = CampaignStatus::Paused;
         campaign.last_updated = env.ledger().timestamp();
         let _ttl_key = DataKey::Campaign(campaign_id);
@@ -461,6 +591,27 @@ impl CampaignOrchestratorContract {
             panic!("unauthorized");
         }
 
+        // Only increment stats if it was paused
+        match campaign.status {
+            CampaignStatus::Paused => {
+                let stats_key = DataKey::AdvertiserStats(advertiser.clone());
+                if let Some(mut stats) = env
+                    .storage()
+                    .persistent()
+                    .get::<DataKey, AdvertiserStats>(&stats_key)
+                {
+                    stats.active_campaigns += 1;
+                    env.storage().persistent().set(&stats_key, &stats);
+                    env.storage().persistent().extend_ttl(
+                        &stats_key,
+                        PERSISTENT_LIFETIME_THRESHOLD,
+                        PERSISTENT_BUMP_AMOUNT,
+                    );
+                }
+            }
+            _ => panic!("campaign not paused"),
+        }
+
         campaign.status = CampaignStatus::Active;
         campaign.last_updated = env.ledger().timestamp();
         let _ttl_key = DataKey::Campaign(campaign_id);
@@ -472,7 +623,7 @@ impl CampaignOrchestratorContract {
         );
     }
 
-    /// Cancel campaign and refund remaining budget (if refundable)
+    /// Cancel campaign and refund remaining budget when refundable
     pub fn cancel_campaign(env: Env, advertiser: Address, campaign_id: u64) {
         env.storage()
             .instance()
@@ -489,10 +640,6 @@ impl CampaignOrchestratorContract {
             panic!("unauthorized");
         }
 
-        if !campaign.refundable {
-            panic!("campaign not refundable");
-        }
-
         let refund = campaign.remaining_budget;
         campaign.remaining_budget = 0;
         campaign.status = CampaignStatus::Cancelled;
@@ -506,7 +653,24 @@ impl CampaignOrchestratorContract {
             PERSISTENT_BUMP_AMOUNT,
         );
 
-        if refund > 0 {
+        let stats_key = DataKey::AdvertiserStats(advertiser.clone());
+        if let Some(mut stats) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, AdvertiserStats>(&stats_key)
+        {
+            if stats.active_campaigns > 0 {
+                stats.active_campaigns -= 1;
+            }
+            env.storage().persistent().set(&stats_key, &stats);
+            env.storage().persistent().extend_ttl(
+                &stats_key,
+                PERSISTENT_LIFETIME_THRESHOLD,
+                PERSISTENT_BUMP_AMOUNT,
+            );
+        }
+
+        if campaign.refundable && refund > 0 {
             let token_addr: Address = env
                 .storage()
                 .instance()
@@ -565,8 +729,8 @@ impl CampaignOrchestratorContract {
         if admin != stored_admin {
             panic!("unauthorized");
         }
-        if fee_pct > 10 {
-            panic!("fee too high");
+        if fee_pct == 0 || fee_pct > 10 {
+            panic!("fee must be between 1 and 10");
         }
         env.storage()
             .instance()
@@ -644,39 +808,53 @@ impl CampaignOrchestratorContract {
     /// Validate campaign across all contracts before processing
     fn _validate_campaign_cross_contract(env: &Env, campaign_id: u64, publisher: &Address) {
         // 1. Validate campaign lifecycle status
-        if let Some(lifecycle_addr) = env.storage().instance().get::<DataKey, Address>(&DataKey::LifecycleContract) {
-            // Call get_lifecycle on the lifecycle contract
-            let lifecycle_result: Option<Val> = env.invoke_contract(
+        if let Some(lifecycle_addr) = env
+            .storage()
+            .instance()
+            .get::<DataKey, Address>(&DataKey::LifecycleContract)
+        {
+            let lifecycle_result: Option<CampaignLifecycle> = env.invoke_contract(
                 &lifecycle_addr,
                 &Symbol::new(env, "get_lifecycle"),
                 SdkVec::from_array(env, [campaign_id.into_val(env)]),
             );
-            
-            if lifecycle_result.is_none() {
-                panic!("campaign not found in lifecycle contract");
+
+            match lifecycle_result {
+                Some(lifecycle) => {
+                    if lifecycle.state != LifecycleState::Active {
+                        panic!("campaign is not active");
+                    }
+                }
+                None => panic!("campaign not found in lifecycle contract"),
             }
-            
-            // Note: In production, you would deserialize the result and check the state
-            // For now, we're validating that the campaign exists in the lifecycle contract
         }
 
         // 2. Validate escrow has sufficient budget
-        if let Some(escrow_addr) = env.storage().instance().get::<DataKey, Address>(&DataKey::EscrowContract) {
-            // Call get_escrow on the escrow contract
-            let escrow_result: Option<Val> = env.invoke_contract(
+        if let Some(escrow_addr) = env
+            .storage()
+            .instance()
+            .get::<DataKey, Address>(&DataKey::EscrowContract)
+        {
+            let escrow_result: Option<Escrow> = env.invoke_contract(
                 &escrow_addr,
                 &Symbol::new(env, "get_escrow"),
                 SdkVec::from_array(env, [campaign_id.into_val(env)]),
             );
-            
-            // If escrow exists, validate it can be released (has budget)
-            if escrow_result.is_some() {
+
+            if let Some(escrow) = escrow_result {
+                if escrow.state != EscrowState::Locked && escrow.state != EscrowState::Pending {
+                    panic!("escrow is not in a valid state");
+                }
+                if escrow.amount <= escrow.released_amount + escrow.refunded_amount {
+                    panic!("escrow has insufficient remaining funds");
+                }
+
                 let can_release: bool = env.invoke_contract(
                     &escrow_addr,
                     &Symbol::new(env, "can_release"),
                     SdkVec::from_array(env, [campaign_id.into_val(env)]),
                 );
-                
+
                 if !can_release {
                     panic!("escrow cannot be released - insufficient budget or conditions not met");
                 }
@@ -684,31 +862,25 @@ impl CampaignOrchestratorContract {
         }
 
         // 3. Validate publisher matches targeting rules
-        if let Some(targeting_addr) = env.storage().instance().get::<DataKey, Address>(&DataKey::TargetingContract) {
-            // Call get_targeting to check if targeting config exists
+        if let Some(targeting_addr) = env
+            .storage()
+            .instance()
+            .get::<DataKey, Address>(&DataKey::TargetingContract)
+        {
             let targeting_result: Option<Val> = env.invoke_contract(
                 &targeting_addr,
                 &Symbol::new(env, "get_targeting"),
                 SdkVec::from_array(env, [campaign_id.into_val(env)]),
             );
-            
-            // If targeting config exists, check publisher score
+
             if targeting_result.is_some() {
-                // Try to get the targeting score for this publisher
                 let score_result: Option<Val> = env.invoke_contract(
                     &targeting_addr,
                     &Symbol::new(env, "get_score"),
-                    SdkVec::from_array(env, [
-                        campaign_id.into_val(env),
-                        publisher.into_val(env),
-                    ]),
+                    SdkVec::from_array(env, [campaign_id.into_val(env), publisher.into_val(env)]),
                 );
-                
-                // If no score exists and targeting is configured, publisher may not be eligible
+
                 if score_result.is_none() {
-                    // In production, you might want to compute the score on-the-fly
-                    // or have a more lenient policy
-                    // For now, we'll allow it but log a warning via events
                     env.events().publish(
                         (symbol_short!("warning"), symbol_short!("no_score")),
                         (campaign_id, publisher.clone()),

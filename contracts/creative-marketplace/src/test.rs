@@ -21,7 +21,7 @@ fn setup(
     let admin = Address::generate(env);
     let token_admin = Address::generate(env);
     let token = deploy_token(env, &token_admin);
-    let id = env.register_contract(None, CreativeMarketplaceContract);
+    let id = env.register(CreativeMarketplaceContract, ());
     let c = CreativeMarketplaceContractClient::new(env, &id);
     c.initialize(&admin, &token);
     (c, admin, token_admin, token)
@@ -64,6 +64,40 @@ fn test_create_listing() {
     let listing = c.get_listing(&listing_id).unwrap();
     assert_eq!(listing.price, 10_000);
     assert!(matches!(listing.status, ListingStatus::Active));
+}
+
+#[test]
+#[should_panic(expected = "listing price must be positive")]
+fn test_create_listing_rejects_zero_price() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _, _, _) = setup(&env);
+    let creator = Address::generate(&env);
+    c.create_listing(
+        &creator,
+        &s(&env, "QmZeroPrice"),
+        &s(&env, "Free Banner"),
+        &s(&env, "Should fail"),
+        &0i128,
+        &LicenseType::OneTime,
+    );
+}
+
+#[test]
+#[should_panic(expected = "listing price must be positive")]
+fn test_create_listing_rejects_negative_price() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _, _, _) = setup(&env);
+    let creator = Address::generate(&env);
+    c.create_listing(
+        &creator,
+        &s(&env, "QmNegativePrice"),
+        &s(&env, "Negative Banner"),
+        &s(&env, "Should fail"),
+        &-1i128,
+        &LicenseType::OneTime,
+    );
 }
 
 #[test]

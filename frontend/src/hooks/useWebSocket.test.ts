@@ -42,12 +42,12 @@ describe('useWebSocket', () => {
     });
 
     it('should update connection status when websocket connects', () => {
-        const mockWs = getPulsarWebSocket() as any;
-        let connectedHandler: Function = () => { };
+        const mockWs = getPulsarWebSocket();
+        let connectedHandler: (...args: unknown[]) => void = () => { };
 
         // Capture the connected handler
-        vi.mocked(mockWs.on).mockImplementation((event: string, handler: Function) => {
-            if (event === 'connected') connectedHandler = handler;
+        vi.mocked(mockWs.on).mockImplementation((event, handler) => {
+            if (event === 'connected') connectedHandler = handler as (...args: unknown[]) => void;
             return vi.fn();
         });
 
@@ -61,11 +61,11 @@ describe('useWebSocket', () => {
     });
 
     it('should update last event when a message is received', () => {
-        const mockWs = getPulsarWebSocket() as any;
-        let allHandler: Function = () => { };
+        const mockWs = getPulsarWebSocket();
+        let allHandler: (...args: unknown[]) => void = () => { };
 
-        vi.mocked(mockWs.on).mockImplementation((event: string, handler: Function) => {
-            if (event === 'all') allHandler = handler;
+        vi.mocked(mockWs.on).mockImplementation((event, handler) => {
+            if (event === 'all') allHandler = handler as (...args: unknown[]) => void;
             return vi.fn();
         });
 

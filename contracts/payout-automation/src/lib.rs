@@ -49,9 +49,13 @@ pub enum DataKey {
     TokenAddress,
     PayoutCounter,
     MinPayoutAmount,
+    MaxPendingAmount,
     Payout(u64),
     PublisherEarnings(Address),
+    Paused,
 }
+
+const MAX_PENDING_AMOUNT: i128 = 1_000_000_000_000; // 100k XLM in stroops (assuming 7 decimals)
 
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17_280;
 const INSTANCE_BUMP_AMOUNT: u32 = 86_400;
@@ -72,6 +76,7 @@ impl PayoutAutomationContract {
         }
         admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage().instance().set(&DataKey::Paused, &false);
         env.storage().instance().set(&DataKey::TokenAddress, &token);
         env.storage().instance().set(&DataKey::PayoutCounter, &0u64);
         env.storage()
@@ -96,12 +101,30 @@ impl PayoutAutomationContract {
             panic!("unauthorized");
         }
 
+        if amount <= 0 {
+            panic!("amount must be positive");
+        }
+
+        let now = env.ledger().timestamp();
+        if execute_after < now {
+            panic!("execute_after must be in the future");
+        }
+
+        let min_payout: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::MinPayoutAmount)
+            .unwrap_or(1_000_000);
+        if amount < min_payout {
+            panic!("amount below minimum payout");
+        }
+
         let counter: u64 = env
             .storage()
             .instance()
             .get(&DataKey::PayoutCounter)
             .unwrap_or(0);
-        let payout_id = counter + 1;
+        let payout_id = counter.checked_add(1).expect("counter overflow");
 
         let token_addr: Address = env
             .storage()
@@ -114,7 +137,7 @@ impl PayoutAutomationContract {
             recipient: recipient.clone(),
             token: token_addr,
             amount,
-            scheduled_at: env.ledger().timestamp(),
+            scheduled_at: now,
             execute_after,
             status: PayoutStatus::Scheduled,
             campaign_id,
@@ -128,9 +151,30 @@ impl PayoutAutomationContract {
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
         );
+
         env.storage()
             .instance()
             .set(&DataKey::PayoutCounter, &payout_id);
+
+        // Check if pending_amount exceeds cap after adding
+        let max_pending: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::MaxPendingAmount)
+            .unwrap_or(MAX_PENDING_AMOUNT);
+        let pending_amount = env
+            .storage()
+            .persistent()
+            .get::<_, PublisherEarnings>(&DataKey::PublisherEarnings(recipient.clone()))
+            .map(|earnings| earnings.pending_amount)
+            .unwrap_or(0);
+        if pending_amount > max_pending {
+            // Trigger an event for the admin to notice the high pending amount
+            env.events().publish(
+                (symbol_short!("payout"), symbol_short!("alert")),
+                (recipient.clone(), pending_amount),
+            );
+        }
 
         env.events().publish(
             (symbol_short!("payout"), symbol_short!("schedule")),
@@ -141,6 +185,7 @@ impl PayoutAutomationContract {
     }
 
     pub fn execute_payout(env: Env, caller: Address, payout_id: u64) {
+        Self::require_not_paused(&env);
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -162,13 +207,6 @@ impl PayoutAutomationContract {
         if env.ledger().timestamp() < payout.execute_after {
             panic!("too early to execute");
         }
-
-        let token_client = token::Client::new(&env, &payout.token);
-        token_client.transfer(
-            &env.current_contract_address(),
-            &payout.recipient,
-            &payout.amount,
-        );
 
         payout.status = PayoutStatus::Completed;
         payout.executed_at = Some(env.ledger().timestamp());
@@ -193,7 +231,10 @@ impl PayoutAutomationContract {
                     last_payout: 0,
                 });
 
-        earnings.total_paid += payout.amount;
+        earnings.total_paid = earnings
+            .total_paid
+            .checked_add(payout.amount)
+            .expect("total_paid overflow");
         earnings.pending_amount = earnings.pending_amount.saturating_sub(payout.amount);
         earnings.last_payout = env.ledger().timestamp();
         env.storage().persistent().set(&key, &earnings);
@@ -203,9 +244,31 @@ impl PayoutAutomationContract {
             PERSISTENT_BUMP_AMOUNT,
         );
 
+        let token_client = token::Client::new(&env, &payout.token);
+        token_client.transfer(
+            &env.current_contract_address(),
+            &payout.recipient,
+            &payout.amount,
+        );
+
         env.events().publish(
             (symbol_short!("payout"), symbol_short!("execute")),
             (payout_id, payout.amount),
+        );
+    }
+
+    pub fn fund_payouts(env: Env, sender: Address, amount: i128) {
+        Self::require_not_paused(&env);
+        sender.require_auth();
+        let token: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::TokenAddress)
+            .unwrap();
+        token::Client::new(&env, &token).transfer(
+            &sender,
+            &env.current_contract_address(),
+            &amount,
         );
     }
 
@@ -231,7 +294,25 @@ impl PayoutAutomationContract {
                     last_payout: 0,
                 });
 
-        earnings.pending_amount += amount;
+        if amount <= 0 {
+            panic!("amount must be positive");
+        }
+
+        let max_pending: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::MaxPendingAmount)
+            .unwrap_or(MAX_PENDING_AMOUNT);
+        let new_pending = earnings
+            .pending_amount
+            .checked_add(amount)
+            .expect("pending_amount overflow");
+
+        if new_pending > max_pending {
+            panic!("pending_amount exceeds maximum cap");
+        }
+
+        earnings.pending_amount = new_pending;
         env.storage().persistent().set(&key, &earnings);
         env.storage().persistent().extend_ttl(
             &key,
@@ -254,6 +335,68 @@ impl PayoutAutomationContract {
         env.storage()
             .persistent()
             .get(&DataKey::PublisherEarnings(publisher))
+    }
+
+    pub fn set_max_pending_amount(env: Env, admin: Address, amount: i128) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::MaxPendingAmount, &amount);
+    }
+
+    pub fn get_max_pending_amount(env: Env) -> i128 {
+        env.storage()
+            .instance()
+            .get(&DataKey::MaxPendingAmount)
+            .unwrap_or(MAX_PENDING_AMOUNT)
+    }
+
+    /// Pause the contract. Only callable by the admin.
+    ///
+    /// While paused every fund-moving entrypoint panics. Read-only getters
+    /// and administrative functions remain available so the contract can be
+    /// inspected and unpaused once a fix is ready.
+    pub fn set_paused(env: Env, admin: Address, paused: bool) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+        env.storage().instance().set(&DataKey::Paused, &paused);
+        env.events()
+            .publish((symbol_short!("pause"), symbol_short!("set")), paused);
+    }
+
+    /// Whether the contract is currently paused.
+    pub fn is_paused(env: Env) -> bool {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        env.storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false)
+    }
+
+    fn require_not_paused(env: &Env) {
+        let paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+        if paused {
+            panic!("contract is paused");
+        }
     }
 
     pub fn propose_admin(env: Env, current_admin: Address, new_admin: Address) {

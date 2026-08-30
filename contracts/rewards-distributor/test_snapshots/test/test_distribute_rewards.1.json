@@ -548,6 +548,22 @@
                       "val": {
                         "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
                       }
+                    },
+                    {
+                      "key": {
+                        "symbol": "vesting_duration"
+                      },
+                      "val": {
+                        "u64": 50000
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "vesting_start"
+                      },
+                      "val": {
+                        "u64": 0
+                      }
                     }
                   ]
                 }

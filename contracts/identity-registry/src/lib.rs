@@ -187,6 +187,13 @@ impl IdentityRegistryContract {
             }
         }
 
+        // Prevent verifying identities that are suspended or revoked
+        if identity.status == IdentityStatus::Suspended
+            || identity.status == IdentityStatus::Revoked
+        {
+            panic!("cannot verify a suspended or revoked identity");
+        }
+
         identity.status = IdentityStatus::Verified;
         identity.credentials_hash = credentials_hash;
         identity.verified_at = Some(env.ledger().timestamp());
@@ -216,6 +223,10 @@ impl IdentityRegistryContract {
             .persistent()
             .get(&DataKey::Identity(account.clone()))
             .expect("identity not found");
+
+        if identity.status == IdentityStatus::Suspended || identity.status == IdentityStatus::Revoked {
+            panic!("suspended or revoked identities cannot update metadata");
+        }
 
         identity.metadata_hash = metadata_hash;
         identity.last_activity = env.ledger().timestamp();
@@ -259,18 +270,30 @@ impl IdentityRegistryContract {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-        env.storage().persistent().get(&DataKey::Identity(account))
+        let key = DataKey::Identity(account.clone());
+        if let Some(identity) = env.storage().persistent().get::<DataKey, Identity>(&key) {
+            env.storage().persistent().extend_ttl(
+                &key,
+                PERSISTENT_LIFETIME_THRESHOLD,
+                PERSISTENT_BUMP_AMOUNT,
+            );
+            Some(identity)
+        } else {
+            None
+        }
     }
 
     pub fn is_verified(env: Env, account: Address) -> bool {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-        if let Some(identity) = env
-            .storage()
-            .persistent()
-            .get::<DataKey, Identity>(&DataKey::Identity(account))
-        {
+        let key = DataKey::Identity(account.clone());
+        if let Some(identity) = env.storage().persistent().get::<DataKey, Identity>(&key) {
+            env.storage().persistent().extend_ttl(
+                &key,
+                PERSISTENT_LIFETIME_THRESHOLD,
+                PERSISTENT_BUMP_AMOUNT,
+            );
             matches!(identity.status, IdentityStatus::Verified)
         } else {
             false
@@ -281,9 +304,17 @@ impl IdentityRegistryContract {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-        env.storage()
-            .persistent()
-            .get(&DataKey::NameOwner(display_name))
+        let key = DataKey::NameOwner(display_name.clone());
+        if let Some(addr) = env.storage().persistent().get::<DataKey, Address>(&key) {
+            env.storage().persistent().extend_ttl(
+                &key,
+                PERSISTENT_LIFETIME_THRESHOLD,
+                PERSISTENT_BUMP_AMOUNT,
+            );
+            Some(addr)
+        } else {
+            None
+        }
     }
 
     pub fn get_identity_count(env: Env) -> u64 {

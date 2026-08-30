@@ -44,6 +44,8 @@ pub enum DataKey {
     TxCounter,
     Tx(u64),
     TxApproval(u64, Address),
+    TxRejection(u64, Address),
+    Paused,
 }
 
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17_280;
@@ -65,11 +67,13 @@ impl MultisigTreasuryContract {
         }
         admin.require_auth();
 
-        if required == 0 || required > initial_signers.len() as u32 {
+        if required == 0 || required > initial_signers.len() {
             panic!("invalid required signers");
         }
 
         env.storage().instance().set(&DataKey::Admin, &admin);
+
+        env.storage().instance().set(&DataKey::Paused, &false);
         env.storage()
             .instance()
             .set(&DataKey::Signers, &initial_signers);
@@ -178,6 +182,11 @@ impl MultisigTreasuryContract {
             panic!("tx not pending");
         }
 
+        // Prevent proposer from approving their own transaction
+        if signer == tx.proposer {
+            panic!("proposer cannot approve their own transaction");
+        }
+
         if env.ledger().timestamp() > tx.expires_at {
             tx.status = TxStatus::Expired;
             let _ttl_key = DataKey::Tx(tx_id);
@@ -191,7 +200,7 @@ impl MultisigTreasuryContract {
         }
 
         tx.approvals += 1;
-        let _ttl_key = DataKey::TxApproval(tx_id, signer);
+        let _ttl_key = DataKey::TxApproval(tx_id, signer.clone());
         env.storage().persistent().set(&_ttl_key, &true);
         env.storage().persistent().extend_ttl(
             &_ttl_key,
@@ -210,9 +219,15 @@ impl MultisigTreasuryContract {
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
         );
+
+        env.events().publish(
+            (symbol_short!("tx"), symbol_short!("approved")),
+            (tx_id, signer),
+        );
     }
 
     pub fn execute_transaction(env: Env, caller: Address, tx_id: u64) {
+        Self::require_not_paused(&env);
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -240,8 +255,9 @@ impl MultisigTreasuryContract {
         }
 
         let token_client = token::Client::new(&env, &tx.token);
-        token_client.transfer(&env.current_contract_address(), &tx.recipient, &tx.amount);
 
+        // Apply Checks → Effects → Interactions (CEI)
+        // Update state BEFORE external call to prevent re-entrancy/double execution
         tx.status = TxStatus::Executed;
         tx.executed_at = Some(env.ledger().timestamp());
         let _ttl_key = DataKey::Tx(tx_id);
@@ -251,6 +267,9 @@ impl MultisigTreasuryContract {
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
         );
+
+        // Perform external call AFTER state update
+        token_client.transfer(&env.current_contract_address(), &tx.recipient, &tx.amount);
 
         env.events().publish(
             (symbol_short!("treasury"), symbol_short!("executed")),
@@ -269,6 +288,22 @@ impl MultisigTreasuryContract {
             panic!("not a signer");
         }
 
+        // Prevent double-voting: signer cannot both approve and reject the same tx
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::TxApproval(tx_id, signer.clone()))
+        {
+            panic!("already voted");
+        }
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::TxRejection(tx_id, signer.clone()))
+        {
+            panic!("already voted");
+        }
+
         let mut tx: TreasuryTx = env
             .storage()
             .persistent()
@@ -281,17 +316,37 @@ impl MultisigTreasuryContract {
 
         tx.rejections += 1;
 
-        let total_signers = signers.len() as u32;
+        let total_signers = signers.len();
         let required: u32 = env
             .storage()
             .instance()
             .get(&DataKey::RequiredSigners)
             .unwrap();
-        let max_possible_approvals = total_signers - tx.rejections;
+        let proposer_rejected = signer == tx.proposer
+            || env
+                .storage()
+                .persistent()
+                .has(&DataKey::TxRejection(tx_id, tx.proposer.clone()));
+        let eligible_rejections = if proposer_rejected {
+            tx.rejections - 1
+        } else {
+            tx.rejections
+        };
+        let max_possible_approvals = total_signers - 1 - eligible_rejections;
 
         if max_possible_approvals < required {
             tx.status = TxStatus::Rejected;
         }
+
+        // Record the rejection to prevent double-voting
+        env.storage()
+            .persistent()
+            .set(&DataKey::TxRejection(tx_id, signer.clone()), &true);
+        env.storage().persistent().extend_ttl(
+            &DataKey::TxRejection(tx_id, signer.clone()),
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
 
         let _ttl_key = DataKey::Tx(tx_id);
         env.storage().persistent().set(&_ttl_key, &tx);
@@ -299,6 +354,11 @@ impl MultisigTreasuryContract {
             &_ttl_key,
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
+        );
+
+        env.events().publish(
+            (symbol_short!("tx"), symbol_short!("rejected")),
+            (tx_id, signer),
         );
     }
 
@@ -360,7 +420,7 @@ impl MultisigTreasuryContract {
             panic!("unauthorized");
         }
 
-        let mut signers: Vec<Address> = env.storage().instance().get(&DataKey::Signers).unwrap();
+        let signers: Vec<Address> = env.storage().instance().get(&DataKey::Signers).unwrap();
         let required: u32 = env
             .storage()
             .instance()
@@ -372,7 +432,7 @@ impl MultisigTreasuryContract {
         }
 
         // Removing must not drop total signers below required threshold
-        if signers.len() as u32 - 1 < required {
+        if signers.len() - 1 < required {
             panic!("cannot remove: would breach required signers threshold");
         }
 
@@ -392,6 +452,47 @@ impl MultisigTreasuryContract {
             (symbol_short!("treasury"), symbol_short!("sgn_rem")),
             signer,
         );
+    }
+
+    /// Pause the contract. Only callable by the admin.
+    ///
+    /// While paused every fund-moving entrypoint panics. Read-only getters
+    /// and administrative functions remain available so the contract can be
+    /// inspected and unpaused once a fix is ready.
+    pub fn set_paused(env: Env, admin: Address, paused: bool) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+        env.storage().instance().set(&DataKey::Paused, &paused);
+        env.events()
+            .publish((symbol_short!("pause"), symbol_short!("set")), (admin, paused));
+    }
+
+    /// Whether the contract is currently paused.
+    pub fn is_paused(env: Env) -> bool {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        env.storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false)
+    }
+
+    fn require_not_paused(env: &Env) {
+        let paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+        if paused {
+            panic!("contract is paused");
+        }
     }
 
     pub fn propose_admin(env: Env, current_admin: Address, new_admin: Address) {

@@ -21,7 +21,7 @@ export interface WalletData {
  */
 export const isFreighterAvailable = (): boolean => {
   if (typeof window === 'undefined') return false;
-  return typeof (window as any).freighter !== 'undefined';
+  return typeof (window as Window & { freighter?: unknown }).freighter !== 'undefined';
 };
 
 /**

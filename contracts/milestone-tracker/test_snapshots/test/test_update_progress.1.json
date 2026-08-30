@@ -260,6 +260,14 @@
                     },
                     {
                       "key": {
+                        "symbol": "advertiser"
+                      },
+                      "val": {
+                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
+                      }
+                    },
+                    {
+                      "key": {
                         "symbol": "campaign_id"
                       },
                       "val": {

@@ -24,15 +24,17 @@ vi.mock('@/lib/wallet', () => ({
 }));
 
 vi.mock('@/lib/error-handler', () => ({
-    parseStellarError: vi.fn((err: any) => err.message),
+    parseStellarError: vi.fn((err: Error) => err.message),
 }));
 
 const createWrapper = () => {
     const queryClient = new QueryClient({
         defaultOptions: { queries: { retry: false } },
     });
-    return ({ children }: { children: React.ReactNode }) =>
-        React.createElement(QueryClientProvider, { client: queryClient }, children);
+    function Wrapper({ children }: { children: React.ReactNode }) {
+        return React.createElement(QueryClientProvider, { client: queryClient }, children);
+    }
+    return Wrapper;
 };
 
 describe('useWallet', () => {

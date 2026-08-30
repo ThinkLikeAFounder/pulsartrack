@@ -4,7 +4,7 @@ use soroban_sdk::{testutils::Address as _, Address, Env, String};
 
 fn setup(env: &Env) -> (TargetingEngineContractClient<'_>, Address) {
     let admin = Address::generate(env);
-    let id = env.register_contract(None, TargetingEngineContract);
+    let id = env.register(TargetingEngineContract, ());
     let c = TargetingEngineContractClient::new(env, &id);
     c.initialize(&admin);
     (c, admin)
@@ -41,7 +41,7 @@ fn test_initialize() {
 fn test_initialize_twice() {
     let env = Env::default();
     env.mock_all_auths();
-    let id = env.register_contract(None, TargetingEngineContract);
+    let id = env.register(TargetingEngineContract, ());
     let c = TargetingEngineContractClient::new(&env, &id);
     let a = Address::generate(&env);
     c.initialize(&a);
@@ -52,7 +52,7 @@ fn test_initialize_twice() {
 #[should_panic]
 fn test_initialize_non_admin_fails() {
     let env = Env::default();
-    let id = env.register_contract(None, TargetingEngineContract);
+    let id = env.register(TargetingEngineContract, ());
     let c = TargetingEngineContractClient::new(&env, &id);
     c.initialize(&Address::generate(&env));
 }
@@ -119,4 +119,28 @@ fn test_get_targeting_nonexistent() {
     env.mock_all_auths();
     let (c, _) = setup(&env);
     assert!(c.get_targeting(&999u64).is_none());
+}
+
+#[test]
+#[should_panic(expected = "score must be 0-1000")]
+fn test_compute_score_rejects_above_max() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin) = setup(&env);
+    let oracle = Address::generate(&env);
+    let pub1 = Address::generate(&env);
+    c.add_oracle(&admin, &oracle);
+    c.compute_score(&oracle, &1u64, &pub1, &5001u32, &s(&env, "match"));
+}
+
+#[test]
+#[should_panic(expected = "unauthorized: campaign belongs to a different advertiser")]
+fn test_set_targeting_rejects_wrong_advertiser() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _) = setup(&env);
+    let advertiser_a = Address::generate(&env);
+    let advertiser_b = Address::generate(&env);
+    c.set_targeting(&advertiser_a, &42u64, &default_params(&env));
+    c.set_targeting(&advertiser_b, &42u64, &default_params(&env));
 }

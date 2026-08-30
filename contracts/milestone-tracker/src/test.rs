@@ -1,11 +1,14 @@
 #![cfg(test)]
 use super::*;
-use soroban_sdk::{testutils::{Address as _, Ledger as _}, Address, Env, String};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger as _},
+    Address, Env, String,
+};
 
 fn setup(env: &Env) -> (MilestoneTrackerContractClient<'_>, Address, Address) {
     let admin = Address::generate(env);
     let oracle = Address::generate(env);
-    let id = env.register_contract(None, MilestoneTrackerContract);
+    let id = env.register(MilestoneTrackerContract, ());
     let c = MilestoneTrackerContractClient::new(env, &id);
     c.initialize(&admin, &oracle);
     (c, admin, oracle)
@@ -97,7 +100,27 @@ fn test_update_progress_achieves() {
 }
 
 #[test]
-fn test_dispute_milestone() {
+fn test_dispute_pending_milestone() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _, _) = setup(&env);
+    let advertiser = Address::generate(&env);
+    let id = c.create_milestone(
+        &advertiser,
+        &1u64,
+        &s(&env, "1000 views"),
+        &s(&env, "views"),
+        &1000u64,
+        &50_000i128,
+        &86_400u64, // 1 day
+    );
+    c.dispute_milestone(&advertiser, &id);
+    let m = c.get_milestone(&id).unwrap();
+    assert!(matches!(m.status, MilestoneStatus::Disputed));
+}
+
+#[test]
+fn test_dispute_in_progress_milestone() {
     let env = Env::default();
     env.mock_all_auths();
     let (c, _, oracle) = setup(&env);
@@ -109,19 +132,109 @@ fn test_dispute_milestone() {
         &s(&env, "views"),
         &1000u64,
         &50_000i128,
-        &86_400u64, // 1 day
+        &86_400u64,
     );
-    c.update_progress(&oracle, &id, &1000u64);
+
+    c.update_progress(&oracle, &id, &500u64);
     c.dispute_milestone(&advertiser, &id);
+
     let m = c.get_milestone(&id).unwrap();
     assert!(matches!(m.status, MilestoneStatus::Disputed));
+}
+
+#[test]
+#[should_panic(expected = "milestone cannot be disputed in its current status")]
+fn test_dispute_achieved_milestone_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _, oracle) = setup(&env);
+    let advertiser = Address::generate(&env);
+    let id = c.create_milestone(
+        &advertiser,
+        &1u64,
+        &s(&env, "1000 views"),
+        &s(&env, "views"),
+        &1000u64,
+        &50_000i128,
+        &86_400u64,
+    );
+
+    c.update_progress(&oracle, &id, &1000u64);
+    c.dispute_milestone(&advertiser, &id);
+}
+
+#[test]
+#[should_panic(expected = "milestone cannot be disputed in its current status")]
+fn test_dispute_missed_milestone_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _, oracle) = setup(&env);
+    let advertiser = Address::generate(&env);
+    let id = c.create_milestone(
+        &advertiser,
+        &1u64,
+        &s(&env, "1000 views"),
+        &s(&env, "views"),
+        &1000u64,
+        &50_000i128,
+        &MIN_DURATION_SECS,
+    );
+
+    env.ledger().with_mut(|li| {
+        li.timestamp += MIN_DURATION_SECS + 1;
+    });
+    c.update_progress(&oracle, &id, &500u64);
+    c.dispute_milestone(&advertiser, &id);
+}
+
+#[test]
+#[should_panic(expected = "milestone cannot be disputed in its current status")]
+fn test_dispute_disputed_milestone_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _, _) = setup(&env);
+    let advertiser = Address::generate(&env);
+    let id = c.create_milestone(
+        &advertiser,
+        &1u64,
+        &s(&env, "1000 views"),
+        &s(&env, "views"),
+        &1000u64,
+        &50_000i128,
+        &86_400u64,
+    );
+
+    c.dispute_milestone(&advertiser, &id);
+    c.dispute_milestone(&advertiser, &id);
+}
+
+#[test]
+#[should_panic(expected = "unauthorized: only advertiser or admin can dispute")]
+fn test_dispute_milestone_rejects_unauthorized_caller() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _, _) = setup(&env);
+    let advertiser = Address::generate(&env);
+    let attacker = Address::generate(&env);
+
+    let id = c.create_milestone(
+        &advertiser,
+        &1u64,
+        &s(&env, "1000 views"),
+        &s(&env, "views"),
+        &1000u64,
+        &50_000i128,
+        &86_400u64,
+    );
+
+    c.dispute_milestone(&attacker, &id);
 }
 
 #[test]
 fn test_resolve_dispute() {
     let env = Env::default();
     env.mock_all_auths();
-    let (c, admin, oracle) = setup(&env);
+    let (c, admin, _) = setup(&env);
     let advertiser = Address::generate(&env);
     let id = c.create_milestone(
         &advertiser,
@@ -132,7 +245,6 @@ fn test_resolve_dispute() {
         &50_000i128,
         &86_400u64, // 1 day
     );
-    c.update_progress(&oracle, &id, &1000u64);
     c.dispute_milestone(&advertiser, &id);
     c.resolve_dispute(&admin, &id, &true);
     let m = c.get_milestone(&id).unwrap();
@@ -248,5 +360,62 @@ fn test_create_milestone_rejects_sub_minimum_duration() {
         &1000u64,
         &50_000i128,
         &(MIN_DURATION_SECS - 1), // one second below minimum
+    );
+}
+
+#[test]
+#[should_panic(expected = "target_value must be greater than zero")]
+fn test_create_milestone_rejects_zero_target_value() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _, _) = setup(&env);
+    let advertiser = Address::generate(&env);
+
+    c.create_milestone(
+        &advertiser,
+        &1u64,
+        &s(&env, "1000 views"),
+        &s(&env, "views"),
+        &0u64,
+        &50_000i128,
+        &MIN_DURATION_SECS,
+    );
+}
+
+#[test]
+#[should_panic(expected = "reward_amount must be positive")]
+fn test_create_milestone_rejects_zero_reward_amount() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _, _) = setup(&env);
+    let advertiser = Address::generate(&env);
+
+    c.create_milestone(
+        &advertiser,
+        &1u64,
+        &s(&env, "1000 views"),
+        &s(&env, "views"),
+        &1000u64,
+        &0i128,
+        &MIN_DURATION_SECS,
+    );
+}
+
+#[test]
+#[should_panic(expected = "reward_amount must be positive")]
+fn test_create_milestone_rejects_negative_reward_amount() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _, _) = setup(&env);
+    let advertiser = Address::generate(&env);
+
+    c.create_milestone(
+        &advertiser,
+        &1u64,
+        &s(&env, "1000 views"),
+        &s(&env, "views"),
+        &1000u64,
+        &-1i128,
+        &MIN_DURATION_SECS,
     );
 }

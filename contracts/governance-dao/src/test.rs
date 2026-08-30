@@ -41,13 +41,72 @@ impl MockGovToken {
             .get::<Address, i128>(&id)
             .unwrap_or(1_000_000)
     }
+
+    /// Voting power as of a ledger strictly before `ledger_sequence`.
+    ///
+    /// Mirrors the real governance token: power recorded at or after the
+    /// queried ledger is invisible, which is what defeats a same-transaction
+    /// borrow. Tests seed history with `set_past_votes`; absent a seeded entry
+    /// this falls back to the mock's balance so existing vote tests keep
+    /// exercising the normal path.
+    pub fn get_past_votes(env: Env, account: Address, ledger_sequence: u32) -> i128 {
+        if let Some(v) = env
+            .storage()
+            .persistent()
+            .get::<(Address, u32), i128>(&(account.clone(), ledger_sequence))
+        {
+            return v;
+        }
+        Self::balance(env, account)
+    }
+
+    /// Seed the historical voting power visible at `ledger_sequence`.
+    pub fn set_past_votes(env: Env, account: Address, ledger_sequence: u32, amount: i128) {
+        env.storage()
+            .persistent()
+            .set(&(account, ledger_sequence), &amount);
+    }
+
+    /// Token transfer: move `amount` from `from` to `to`.
+    pub fn transfer(env: Env, from: Address, to: Address, amount: i128) {
+        from.require_auth();
+        let from_bal = env
+            .storage()
+            .persistent()
+            .get::<Address, i128>(&from)
+            .unwrap_or(1_000_000);
+        if from_bal < amount {
+            panic!("insufficient balance");
+        }
+        env.storage()
+            .persistent()
+            .set(&from, &(from_bal - amount));
+        let to_bal = env
+            .storage()
+            .persistent()
+            .get::<Address, i128>(&to)
+            .unwrap_or(0);
+        env.storage().persistent().set(&to, &(to_bal + amount));
+    }
+}
+
+// ─── Mock execution target ────────────────────────────────────────────────────
+// When execute_proposal invokes target_contract via execute_governance,
+// this mock records the call so the test can verify it was invoked.
+
+#[soroban_contract]
+pub struct MockExecutionTarget;
+
+#[soroban_contractimpl]
+impl MockExecutionTarget {
+    pub fn execute_governance(_env: Env, _proposal_id: u64) {}
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 /// Deploy MockGovToken and set its total supply.
 fn deploy_mock_gov_token(env: &Env, total_supply: i128) -> Address {
-    let id = env.register_contract(None, MockGovToken);
+    let id = env.register(MockGovToken, ());
     let client = MockGovTokenClient::new(env, &id);
     client.set_supply(&total_supply);
     id
@@ -60,7 +119,7 @@ fn setup(env: &Env) -> (GovernanceDaoContractClient<'_>, Address, Address, Addre
     let admin = Address::generate(env);
     let token_addr = deploy_mock_gov_token(env, 10_000_000);
 
-    let contract_id = env.register_contract(None, GovernanceDaoContract);
+    let contract_id = env.register(GovernanceDaoContract, ());
     let client = GovernanceDaoContractClient::new(env, &contract_id);
     client.initialize(&admin, &token_addr, &100u32, &1_000u32, &51u32, &0i128);
 
@@ -76,7 +135,7 @@ fn setup_with_mock_token(
     let admin = Address::generate(env);
     let token_addr = deploy_mock_gov_token(env, total_supply);
 
-    let contract_id = env.register_contract(None, GovernanceDaoContract);
+    let contract_id = env.register(GovernanceDaoContract, ());
     let client = GovernanceDaoContractClient::new(env, &contract_id);
     client.initialize(&admin, &token_addr, &100u32, &1_000u32, &51u32, &0i128);
 
@@ -100,7 +159,7 @@ fn test_initialize() {
     let admin = Address::generate(&env);
     let token = Address::generate(&env);
 
-    let contract_id = env.register_contract(None, GovernanceDaoContract);
+    let contract_id = env.register(GovernanceDaoContract, ());
     let client = GovernanceDaoContractClient::new(&env, &contract_id);
     client.initialize(&admin, &token, &3600u32, &1000u32, &51u32, &100i128);
 }
@@ -113,7 +172,7 @@ fn test_initialize_twice() {
     let admin = Address::generate(&env);
     let token = Address::generate(&env);
 
-    let contract_id = env.register_contract(None, GovernanceDaoContract);
+    let contract_id = env.register(GovernanceDaoContract, ());
     let client = GovernanceDaoContractClient::new(&env, &contract_id);
     client.initialize(&admin, &token, &3600u32, &1000u32, &51u32, &100i128);
     client.initialize(&admin, &token, &3600u32, &1000u32, &51u32, &100i128);
@@ -127,7 +186,7 @@ fn test_initialize_non_admin_fails() {
     let admin = Address::generate(&env);
     let token = Address::generate(&env);
 
-    let contract_id = env.register_contract(None, GovernanceDaoContract);
+    let contract_id = env.register(GovernanceDaoContract, ());
     let client = GovernanceDaoContractClient::new(&env, &contract_id);
     client.initialize(&admin, &token, &3600u32, &1000u32, &51u32, &100i128);
 }
@@ -368,7 +427,7 @@ fn test_finalize_proposal_rejected_not_enough_for_votes() {
     let admin = Address::generate(&env);
     // total supply = 1_000; pass_threshold = 60%; for=40%, against=60% → Rejected
     let token_addr = deploy_mock_gov_token(&env, 1_000);
-    let contract_id = env.register_contract(None, GovernanceDaoContract);
+    let contract_id = env.register(GovernanceDaoContract, ());
     let client = GovernanceDaoContractClient::new(&env, &contract_id);
     client.initialize(&admin, &token_addr, &100u32, &1_000u32, &60u32, &0i128);
 
@@ -500,7 +559,156 @@ fn test_execute_proposal_by_stranger_fails() {
     client.execute_proposal(&stranger, &proposal_id);
 }
 
-// ─── cancel_proposal ─────────────────────────────────────────────────────────
+// ─── finalize_proposal — basis-point precision (#480) ────────────────────────
+
+#[test]
+fn test_finalize_proposal_passes_at_51_pct_exact() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    // 510_000 For, 490_000 Against out of 1_000_000 total = exactly 51.0%
+    // Old integer division: (510_000 * 100) / 1_000_000 = 51 → passes (fine here)
+    // Basis-point check: (510_000 * 10_000) / 1_000_000 = 5100 >= 5100 → Passed
+    let (client, _, _) = setup_with_mock_token(&env, 2_000_000);
+
+    let proposer = Address::generate(&env);
+    let voter_for = Address::generate(&env);
+    let voter_against = Address::generate(&env);
+    let proposal_id = client.create_proposal(&proposer, &make_title(&env), &make_desc(&env), &None);
+
+    client.cast_vote(&voter_for, &proposal_id, &VoteChoice::For, &510_000i128);
+    client.cast_vote(&voter_against, &proposal_id, &VoteChoice::Against, &490_000i128);
+
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 200;
+    });
+
+    client.finalize_proposal(&proposal_id);
+
+    let proposal = client.get_proposal(&proposal_id).unwrap();
+    assert!(
+        matches!(proposal.status, ProposalStatus::Passed),
+        "exactly 51% For should pass a 51% threshold"
+    );
+}
+
+#[test]
+fn test_finalize_proposal_passes_at_51_1_pct() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    // 511_000 For, 489_000 Against out of 1_000_000 total = 51.1%
+    // Old integer division: (511_000 * 100) / 1_000_000 = 51 → passes
+    // Basis-point check: (511_000 * 10_000) / 1_000_000 = 5110 >= 5100 → Passed
+    // (Both agree here; the precision fix matters most near the boundary)
+    let (client, _, _) = setup_with_mock_token(&env, 2_000_000);
+
+    let proposer = Address::generate(&env);
+    let voter_for = Address::generate(&env);
+    let voter_against = Address::generate(&env);
+    let proposal_id = client.create_proposal(&proposer, &make_title(&env), &make_desc(&env), &None);
+
+    client.cast_vote(&voter_for, &proposal_id, &VoteChoice::For, &511_000i128);
+    client.cast_vote(&voter_against, &proposal_id, &VoteChoice::Against, &489_000i128);
+
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 200;
+    });
+
+    client.finalize_proposal(&proposal_id);
+
+    let proposal = client.get_proposal(&proposal_id).unwrap();
+    assert!(matches!(proposal.status, ProposalStatus::Passed));
+}
+
+#[test]
+fn test_finalize_proposal_rejected_at_50_99_pct_with_bps() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    // Use 10_000 total votes: 5_099 For, 4_901 Against = 50.99%
+    // Old integer division: (5_099 * 100) / 10_000 = 50 → Rejected (wrong)
+    // Basis-point check: (5_099 * 10_000) / 10_000 = 5099 < 5100 → Rejected (correct)
+    // This confirms the bps fix correctly rejects sub-51% proposals
+    let (client, _, _) = setup_with_mock_token(&env, 20_000);
+
+    let proposer = Address::generate(&env);
+    let voter_for = Address::generate(&env);
+    let voter_against = Address::generate(&env);
+    let proposal_id = client.create_proposal(&proposer, &make_title(&env), &make_desc(&env), &None);
+
+    client.cast_vote(&voter_for, &proposal_id, &VoteChoice::For, &5_099i128);
+    client.cast_vote(&voter_against, &proposal_id, &VoteChoice::Against, &4_901i128);
+
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 200;
+    });
+
+    client.finalize_proposal(&proposal_id);
+
+    let proposal = client.get_proposal(&proposal_id).unwrap();
+    assert!(matches!(proposal.status, ProposalStatus::Rejected));
+}
+
+#[test]
+fn test_finalize_proposal_rejected_at_exactly_50_pct() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    // Exactly 50% For → must Reject (threshold is 51%)
+    let (client, _, _) = setup_with_mock_token(&env, 2_000_000);
+
+    let proposer = Address::generate(&env);
+    let voter_for = Address::generate(&env);
+    let voter_against = Address::generate(&env);
+    let proposal_id = client.create_proposal(&proposer, &make_title(&env), &make_desc(&env), &None);
+
+    client.cast_vote(&voter_for, &proposal_id, &VoteChoice::For, &500_000i128);
+    client.cast_vote(&voter_against, &proposal_id, &VoteChoice::Against, &500_000i128);
+
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 200;
+    });
+
+    client.finalize_proposal(&proposal_id);
+
+    let proposal = client.get_proposal(&proposal_id).unwrap();
+    assert!(matches!(proposal.status, ProposalStatus::Rejected));
+}
+
+// ─── execute_proposal — target_contract event (#479) ─────────────────────────
+
+#[test]
+fn test_execute_proposal_emits_executed_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, admin, _) = setup_with_mock_token(&env, 1_000);
+
+    let target = env.register(MockExecutionTarget, ());
+    let proposer = Address::generate(&env);
+    let voter = Address::generate(&env);
+    let proposal_id = client.create_proposal(
+        &proposer,
+        &make_title(&env),
+        &make_desc(&env),
+        &Some(target.clone()),
+    );
+
+    client.cast_vote(&voter, &proposal_id, &VoteChoice::For, &200i128);
+
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 200;
+    });
+
+    client.finalize_proposal(&proposal_id);
+    client.execute_proposal(&admin, &proposal_id);
+
+    let p = client.get_proposal(&proposal_id).unwrap();
+    assert!(matches!(p.status, ProposalStatus::Executed));
+    // target_contract is preserved on the proposal
+    assert_eq!(p.target_contract, Some(target));
+}
 
 #[test]
 fn test_cancel_proposal_by_proposer() {
@@ -544,6 +752,79 @@ fn test_cancel_proposal_by_stranger_fails() {
     let proposal_id = client.create_proposal(&proposer, &make_title(&env), &make_desc(&env), &None);
 
     client.cancel_proposal(&stranger, &proposal_id);
+}
+
+#[test]
+#[should_panic(expected = "can only cancel an active proposal")]
+fn test_cancel_passed_proposal_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, admin, _) = setup_with_mock_token(&env, 1_000);
+    let proposer = Address::generate(&env);
+    let voter = Address::generate(&env);
+    let proposal_id = client.create_proposal(&proposer, &make_title(&env), &make_desc(&env), &None);
+
+    client.cast_vote(&voter, &proposal_id, &VoteChoice::For, &200i128);
+
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 200;
+    });
+
+    client.finalize_proposal(&proposal_id);
+
+    let p = client.get_proposal(&proposal_id).unwrap();
+    assert!(matches!(p.status, ProposalStatus::Passed));
+
+    // Must reject — proposal already Passed
+    client.cancel_proposal(&admin, &proposal_id);
+}
+
+#[test]
+#[should_panic(expected = "can only cancel an active proposal")]
+fn test_cancel_executed_proposal_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, admin, _) = setup_with_mock_token(&env, 1_000);
+    let proposer = Address::generate(&env);
+    let voter = Address::generate(&env);
+    let proposal_id = client.create_proposal(&proposer, &make_title(&env), &make_desc(&env), &None);
+
+    client.cast_vote(&voter, &proposal_id, &VoteChoice::For, &200i128);
+
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 200;
+    });
+
+    client.finalize_proposal(&proposal_id);
+    client.execute_proposal(&admin, &proposal_id);
+
+    let p = client.get_proposal(&proposal_id).unwrap();
+    assert!(matches!(p.status, ProposalStatus::Executed));
+
+    // Must reject — proposal already Executed
+    client.cancel_proposal(&admin, &proposal_id);
+}
+
+#[test]
+#[should_panic(expected = "can only cancel an active proposal")]
+fn test_cancel_already_cancelled_proposal_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _, _, _) = setup(&env);
+    let proposer = Address::generate(&env);
+
+    let proposal_id = client.create_proposal(&proposer, &make_title(&env), &make_desc(&env), &None);
+
+    // First cancel succeeds (proposal is Active)
+    client.cancel_proposal(&proposer, &proposal_id);
+
+    let p = client.get_proposal(&proposal_id).unwrap();
+    assert!(matches!(p.status, ProposalStatus::Cancelled));
+
+    // Second cancel must reject — already Cancelled
+    client.cancel_proposal(&proposer, &proposal_id);
 }
 
 // ─── read-only helpers ────────────────────────────────────────────────────────
@@ -592,6 +873,54 @@ fn test_get_proposal_count_initial_zero() {
     assert_eq!(client.get_proposal_count(), 0);
 }
 
+// ─── TTL double-vote regression (#477) ───────────────────────────────────────
+
+#[test]
+#[should_panic(expected = "already voted")]
+fn test_double_vote_after_ttl_window_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    // Use a long voting period (300 ledgers) so the proposal stays active
+    // well past the old 15-day / 259_200-ledger TTL window.
+    let admin = Address::generate(&env);
+    let token_addr = deploy_mock_gov_token(&env, 10_000_000);
+    let contract_id = env.register(GovernanceDaoContract, ());
+    let client = GovernanceDaoContractClient::new(&env, &contract_id);
+    client.initialize(
+        &admin,
+        &token_addr,
+        &300_000u32, // voting period: 300_000 ledgers (~35 days)
+        &1_000u32,
+        &51u32,
+        &0i128,
+    );
+
+    let proposer = Address::generate(&env);
+    let voter = Address::generate(&env);
+
+    let proposal_id =
+        client.create_proposal(&proposer, &make_title(&env), &make_desc(&env), &None);
+
+    // Voter A casts their vote at ledger 0
+    client.cast_vote(&voter, &proposal_id, &VoteChoice::For, &1_000i128);
+    assert!(client.has_voted(&proposal_id, &voter));
+
+    // Advance the ledger past the OLD persistent bump amount (259_200 ≈ 15 days).
+    // We step in increments smaller than INSTANCE_BUMP_AMOUNT (86_400) and make
+    // a read-only call between each jump to keep the contract instance alive.
+    for seq in [80_000u32, 160_000, 240_000, 260_000] {
+        env.ledger().with_mut(|li| {
+            li.sequence_number = seq;
+        });
+        // Read-only call bumps the instance TTL so the contract stays alive.
+        let _ = client.get_proposal(&proposal_id);
+    }
+
+    // Voter A tries to vote again — must be rejected
+    client.cast_vote(&voter, &proposal_id, &VoteChoice::For, &1_000i128);
+}
+
 // ─── proposer minimum token enforcement (#76) ────────────────────────────────
 
 /// Deploy MockGovToken with balance support and initialize the DAO with a
@@ -604,7 +933,7 @@ fn setup_with_token_gate(
     let admin = Address::generate(env);
     let token_addr = deploy_mock_gov_token(env, total_supply);
 
-    let contract_id = env.register_contract(None, GovernanceDaoContract);
+    let contract_id = env.register(GovernanceDaoContract, ());
     let client = GovernanceDaoContractClient::new(env, &contract_id);
     client.initialize(
         &admin,
@@ -695,4 +1024,97 @@ fn test_create_proposal_exact_minimum_accepted() {
     let proposal_id = client.create_proposal(&proposer, &make_title(&env), &make_desc(&env), &None);
 
     assert_eq!(proposal_id, 1);
+}
+
+// ─── Flash-loan vote manipulation (#815) ─────────────────────────────────────
+
+#[test]
+#[should_panic(expected = "insufficient governance tokens")]
+fn test_flash_loan_voter_cannot_vote_with_same_block_borrow() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|li| li.sequence_number = 500);
+
+    let (client, _, token_addr) = setup_with_mock_token(&env, 10_000_000);
+    let token = MockGovTokenClient::new(&env, &token_addr);
+
+    let proposer = Address::generate(&env);
+    let attacker = Address::generate(&env);
+
+    let proposal_id = client.create_proposal(&proposer, &make_title(&env), &make_desc(&env), &None);
+    let snapshot_ledger = client.get_proposal(&proposal_id).unwrap().snapshot_ledger;
+
+    // Attacker's live balance is huge (the borrowed tokens)...
+    token.set_balance(&attacker, &1_000_000i128);
+    // ...but they held nothing as of the snapshot ledger, which is what
+    // cast_vote weighs. The borrow therefore buys no voting power.
+    token.set_past_votes(&attacker, &snapshot_ledger, &0i128);
+
+    client.cast_vote(&attacker, &proposal_id, &VoteChoice::For, &1_000_000i128);
+}
+
+#[test]
+fn test_legitimate_voter_with_pre_snapshot_balance_can_vote() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|li| li.sequence_number = 500);
+
+    let (client, _, token_addr) = setup_with_mock_token(&env, 10_000_000);
+    let token = MockGovTokenClient::new(&env, &token_addr);
+
+    let proposer = Address::generate(&env);
+    let voter = Address::generate(&env);
+
+    let proposal_id = client.create_proposal(&proposer, &make_title(&env), &make_desc(&env), &None);
+    let snapshot_ledger = client.get_proposal(&proposal_id).unwrap().snapshot_ledger;
+
+    // An ordinary holder who owned tokens before the proposal votes normally.
+    token.set_balance(&voter, &5_000i128);
+    token.set_past_votes(&voter, &snapshot_ledger, &5_000i128);
+
+    client.cast_vote(&voter, &proposal_id, &VoteChoice::For, &5_000i128);
+
+    let proposal = client.get_proposal(&proposal_id).unwrap();
+    assert_eq!(proposal.votes_for, 5_000);
+    assert!(client.has_voted(&proposal_id, &voter));
+}
+
+#[test]
+#[should_panic(expected = "insufficient governance tokens")]
+fn test_vote_power_above_snapshot_balance_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|li| li.sequence_number = 500);
+
+    let (client, _, token_addr) = setup_with_mock_token(&env, 10_000_000);
+    let token = MockGovTokenClient::new(&env, &token_addr);
+
+    let proposer = Address::generate(&env);
+    let voter = Address::generate(&env);
+
+    let proposal_id = client.create_proposal(&proposer, &make_title(&env), &make_desc(&env), &None);
+    let snapshot_ledger = client.get_proposal(&proposal_id).unwrap().snapshot_ledger;
+
+    token.set_balance(&voter, &1_000_000i128);
+    token.set_past_votes(&voter, &snapshot_ledger, &1_000i128);
+
+    // Voting beyond the snapshot-time holding is rejected even though the live
+    // balance would cover it.
+    client.cast_vote(&voter, &proposal_id, &VoteChoice::For, &1_001i128);
+}
+
+#[test]
+fn test_proposal_records_snapshot_ledger_at_creation() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|li| li.sequence_number = 777);
+
+    let (client, _, _, _) = setup(&env);
+    let proposer = Address::generate(&env);
+
+    let proposal_id = client.create_proposal(&proposer, &make_title(&env), &make_desc(&env), &None);
+    let proposal = client.get_proposal(&proposal_id).unwrap();
+
+    assert_eq!(proposal.snapshot_ledger, 777);
+    assert_eq!(proposal.start_ledger, 777);
 }

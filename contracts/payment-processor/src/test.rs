@@ -1,7 +1,7 @@
 #![cfg(test)]
 use super::*;
 use soroban_sdk::{
-    testutils::Address as _,
+    testutils::{Address as _, Ledger},
     token::{Client as TokenClient, StellarAssetClient},
     Address, Env,
 };
@@ -32,7 +32,7 @@ fn setup(
     let token_admin = Address::generate(env);
     let token_addr = deploy_token(env, &token_admin);
 
-    let contract_id = env.register_contract(None, PaymentProcessorContract);
+    let contract_id = env.register(PaymentProcessorContract, ());
     let client = PaymentProcessorContractClient::new(env, &contract_id);
     client.initialize(&admin, &treasury);
 
@@ -48,7 +48,7 @@ fn test_initialize() {
     let admin = Address::generate(&env);
     let treasury = Address::generate(&env);
 
-    let contract_id = env.register_contract(None, PaymentProcessorContract);
+    let contract_id = env.register(PaymentProcessorContract, ());
     let client = PaymentProcessorContractClient::new(&env, &contract_id);
     client.initialize(&admin, &treasury);
 }
@@ -61,7 +61,7 @@ fn test_initialize_twice() {
     let admin = Address::generate(&env);
     let treasury = Address::generate(&env);
 
-    let contract_id = env.register_contract(None, PaymentProcessorContract);
+    let contract_id = env.register(PaymentProcessorContract, ());
     let client = PaymentProcessorContractClient::new(&env, &contract_id);
     client.initialize(&admin, &treasury);
     client.initialize(&admin, &treasury);
@@ -74,7 +74,7 @@ fn test_initialize_non_admin_fails() {
     let admin = Address::generate(&env);
     let treasury = Address::generate(&env);
 
-    let contract_id = env.register_contract(None, PaymentProcessorContract);
+    let contract_id = env.register(PaymentProcessorContract, ());
     let client = PaymentProcessorContractClient::new(&env, &contract_id);
     client.initialize(&admin, &treasury);
 }
@@ -133,7 +133,7 @@ fn test_process_payment() {
     let token_admin = Address::generate(&env);
     let token_addr = deploy_token(&env, &token_admin);
 
-    let contract_id = env.register_contract(None, PaymentProcessorContract);
+    let contract_id = env.register(PaymentProcessorContract, ());
     let client = PaymentProcessorContractClient::new(&env, &contract_id);
     client.initialize(&admin, &treasury);
     client.add_token(&admin, &token_addr, &1_000i128, &100_000_000i128);
@@ -153,6 +153,26 @@ fn test_process_payment() {
 }
 
 #[test]
+fn test_get_daily_volume_tracking() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, _, token_admin, token_addr) = setup(&env);
+    client.add_token(&admin, &token_addr, &1_000i128, &100_000_000i128);
+
+    let payer = Address::generate(&env);
+    let recipient = Address::generate(&env);
+    mint(&env, &token_addr, &token_admin, &payer, 1_000_000);
+
+    assert_eq!(client.get_daily_volume(&token_addr), 0);
+
+    client.process_payment(&payer, &recipient, &token_addr, &10_000i128);
+    assert_eq!(client.get_daily_volume(&token_addr), 10_000);
+
+    client.process_payment(&payer, &recipient, &token_addr, &5_000i128);
+    assert_eq!(client.get_daily_volume(&token_addr), 15_000);
+}
+
+#[test]
 fn test_process_payment_fee_split() {
     let env = Env::default();
     env.mock_all_auths();
@@ -162,7 +182,7 @@ fn test_process_payment_fee_split() {
     let token_admin = Address::generate(&env);
     let token_addr = deploy_token(&env, &token_admin);
 
-    let contract_id = env.register_contract(None, PaymentProcessorContract);
+    let contract_id = env.register(PaymentProcessorContract, ());
     let client = PaymentProcessorContractClient::new(&env, &contract_id);
     client.initialize(&admin, &treasury);
     client.add_token(&admin, &token_addr, &1_000i128, &100_000_000i128);
@@ -192,7 +212,7 @@ fn test_payment_records_stored() {
     let token_admin = Address::generate(&env);
     let token_addr = deploy_token(&env, &token_admin);
 
-    let contract_id = env.register_contract(None, PaymentProcessorContract);
+    let contract_id = env.register(PaymentProcessorContract, ());
     let client = PaymentProcessorContractClient::new(&env, &contract_id);
     client.initialize(&admin, &treasury);
     client.add_token(&admin, &token_addr, &1_000i128, &100_000_000i128);
@@ -219,7 +239,7 @@ fn test_user_stats_updated() {
     let token_admin = Address::generate(&env);
     let token_addr = deploy_token(&env, &token_admin);
 
-    let contract_id = env.register_contract(None, PaymentProcessorContract);
+    let contract_id = env.register(PaymentProcessorContract, ());
     let client = PaymentProcessorContractClient::new(&env, &contract_id);
     client.initialize(&admin, &treasury);
     client.add_token(&admin, &token_addr, &1_000i128, &100_000_000i128);
@@ -246,7 +266,7 @@ fn test_revenue_stats_updated() {
     let token_admin = Address::generate(&env);
     let token_addr = deploy_token(&env, &token_admin);
 
-    let contract_id = env.register_contract(None, PaymentProcessorContract);
+    let contract_id = env.register(PaymentProcessorContract, ());
     let client = PaymentProcessorContractClient::new(&env, &contract_id);
     client.initialize(&admin, &treasury);
     client.add_token(&admin, &token_addr, &1_000i128, &100_000_000i128);
@@ -341,6 +361,46 @@ fn test_payment_daily_limit_exceeded() {
     client.process_payment(&payer, &recipient, &token_addr, &10_000i128); // 20_000 > 15_000
 }
 
+#[test]
+fn test_daily_volume_ttl_covers_remaining_day() {
+    let env = Env::default();
+
+    env.ledger().with_mut(|li| {
+        li.timestamp = 86_399;
+    });
+    assert_eq!(PaymentProcessorContract::daily_volume_ttl_ledgers(&env), 1);
+
+    env.ledger().with_mut(|li| {
+        li.timestamp = 43_200;
+    });
+    assert_eq!(
+        PaymentProcessorContract::daily_volume_ttl_ledgers(&env),
+        8_641
+    );
+}
+
+#[test]
+fn test_daily_limit_resets_on_next_day() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, _, token_admin, token_addr) = setup(&env);
+    client.add_token(&admin, &token_addr, &1_000i128, &15_000i128);
+
+    let payer = Address::generate(&env);
+    let recipient = Address::generate(&env);
+    mint(&env, &token_addr, &token_admin, &payer, 1_000_000);
+
+    env.ledger().with_mut(|li| {
+        li.timestamp = 1;
+    });
+    client.process_payment(&payer, &recipient, &token_addr, &10_000i128);
+
+    env.ledger().with_mut(|li| {
+        li.timestamp = 86_401;
+    });
+    client.process_payment(&payer, &recipient, &token_addr, &10_000i128);
+}
+
 // ─── set_platform_fee ────────────────────────────────────────────────────────
 
 #[test]
@@ -377,6 +437,12 @@ fn test_admin_transfer_flow() {
     let new_admin = Address::generate(&env);
 
     c.propose_admin(&admin, &new_admin);
+    
+    // Advance sequence to satisfy time lock
+    env.ledger().with_mut(|li| {
+        li.sequence_number += 17281;
+    });
+
     c.accept_admin(&new_admin);
 
     // Verify new admin can perform admin actions

@@ -28,7 +28,16 @@ pub struct RefundRequest {
     pub reason: String,
     pub status: RefundStatus,
     pub submitted_at: u64,
+    pub deadline: u64, // Refund deadline timestamp
     pub resolved_at: Option<u64>,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct Campaign {
+    pub total_budget: i128,
+    pub end_time: u64,           // Campaign end timestamp
+    pub refund_deadline: u64,    // Deadline for submitting refund requests
 }
 
 #[contracttype]
@@ -39,7 +48,9 @@ pub enum DataKey {
     TokenAddress,
     RefundCounter,
     AutoRefundPeriod,
+    PendingRefund(u64, Address),
     Refund(u64),
+    Campaign(u64),
 }
 
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17_280;
@@ -84,6 +95,22 @@ impl RefundProcessorContract {
             panic!("invalid amount");
         }
 
+        // #530: block duplicate pending refunds for the same (requester, campaign) pair
+        let pending_key = DataKey::PendingRefund(campaign_id, requester.clone());
+        if env.storage().persistent().has(&pending_key) {
+            panic!("refund already pending for this campaign");
+        }
+
+        let campaign: Campaign = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Campaign(campaign_id))
+            .expect("campaign not found");
+
+        if amount > campaign.total_budget {
+            panic!("refund amount exceeds campaign budget");
+        }
+
         let counter: u64 = env
             .storage()
             .instance()
@@ -97,6 +124,14 @@ impl RefundProcessorContract {
             .get(&DataKey::TokenAddress)
             .unwrap();
 
+        let auto_refund_period: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::AutoRefundPeriod)
+            .unwrap_or(604_800u64);
+
+        let refund_deadline = campaign.end_time + auto_refund_period;
+
         let refund = RefundRequest {
             refund_id,
             requester: requester.clone(),
@@ -107,13 +142,20 @@ impl RefundProcessorContract {
             reason,
             status: RefundStatus::Requested,
             submitted_at: env.ledger().timestamp(),
+            deadline: refund_deadline,
             resolved_at: None,
         };
 
         let _ttl_key = DataKey::Refund(refund_id);
         env.storage().persistent().set(&_ttl_key, &refund);
+        env.storage().persistent().set(&pending_key, &refund_id);
         env.storage().persistent().extend_ttl(
             &_ttl_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+        env.storage().persistent().extend_ttl(
+            &pending_key,
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
         );
@@ -148,6 +190,12 @@ impl RefundProcessorContract {
             panic!("invalid status");
         }
 
+        // Check refund deadline has not passed
+        let now = env.ledger().timestamp();
+        if now > refund.deadline {
+            panic!("refund deadline has passed");
+        }
+
         refund.amount_approved = approved_amount.min(refund.amount_requested);
         refund.status = RefundStatus::Approved;
         refund.resolved_at = Some(env.ledger().timestamp());
@@ -177,11 +225,19 @@ impl RefundProcessorContract {
             .get(&DataKey::Refund(refund_id))
             .expect("refund not found");
 
+        // #529: mirror approve_refund's guard — cannot reject a finalized refund
+        if refund.status != RefundStatus::Requested && refund.status != RefundStatus::UnderReview {
+            panic!("refund cannot be rejected in its current status");
+        }
+
         refund.status = RefundStatus::Rejected;
         refund.resolved_at = Some(env.ledger().timestamp());
 
         let _ttl_key = DataKey::Refund(refund_id);
         env.storage().persistent().set(&_ttl_key, &refund);
+        env.storage()
+            .persistent()
+            .remove(&DataKey::PendingRefund(refund.campaign_id, refund.requester.clone()));
         env.storage().persistent().extend_ttl(
             &_ttl_key,
             PERSISTENT_LIFETIME_THRESHOLD,
@@ -189,34 +245,55 @@ impl RefundProcessorContract {
         );
     }
 
-    pub fn process_refund(env: Env, refund_id: u64) {
+    pub fn process_refund(env: Env, caller: Address, refund_id: u64) {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        caller.require_auth();
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         let mut refund: RefundRequest = env
             .storage()
             .persistent()
             .get(&DataKey::Refund(refund_id))
             .expect("refund not found");
 
+        if caller != admin && caller != refund.requester {
+            panic!("unauthorized");
+        }
+
         if refund.status != RefundStatus::Approved {
             panic!("refund not approved");
         }
 
-        let token_client = token::Client::new(&env, &refund.token);
-        token_client.transfer(
-            &env.current_contract_address(),
-            &refund.requester,
-            &refund.amount_approved,
-        );
+        // Check refund deadline has not passed
+        let now = env.ledger().timestamp();
+        if now > refund.deadline {
+            panic!("refund deadline has passed");
+        }
 
+        let token_client = token::Client::new(&env, &refund.token);
+        let balance = token_client.balance(&env.current_contract_address());
+        if balance < refund.amount_approved {
+            panic!("insufficient contract balance for refund");
+        }
+
+        // CEI: persist Processed status and remove pending marker before transfer
         refund.status = RefundStatus::Processed;
         let _ttl_key = DataKey::Refund(refund_id);
         env.storage().persistent().set(&_ttl_key, &refund);
+        env.storage()
+            .persistent()
+            .remove(&DataKey::PendingRefund(refund.campaign_id, refund.requester.clone()));
         env.storage().persistent().extend_ttl(
             &_ttl_key,
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
+        );
+
+        token_client.transfer(
+            &env.current_contract_address(),
+            &refund.requester,
+            &refund.amount_approved,
         );
 
         env.events().publish(

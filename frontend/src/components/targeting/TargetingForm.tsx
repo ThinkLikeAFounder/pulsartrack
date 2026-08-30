@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { SegmentGroup } from './AudienceSegmentTag';
@@ -51,6 +51,8 @@ const DEFAULT_CONFIG: TargetingConfig = {
 export function TargetingForm({ initial, onSave, isSaving }: TargetingFormProps) {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [isPending, setIsPending] = useState(false);
+  const submitLockedRef = useRef(false);
 
   const {
     register,
@@ -69,6 +71,7 @@ export function TargetingForm({ initial, onSave, isSaving }: TargetingFormProps)
   const excludedSegments = watch('excludedSegments');
   const devices = watch('devices');
   const languages = watch('languages');
+  const isSubmitting = Boolean(isSaving) || isPending;
 
   const addTo = (field: 'regions' | 'interests' | 'excludedSegments' | 'devices' | 'languages') =>
     (val: string) => {
@@ -83,13 +86,23 @@ export function TargetingForm({ initial, onSave, isSaving }: TargetingFormProps)
     };
 
   const onSubmit = async (data: TargetingFormData) => {
+    if (Boolean(isSaving) || submitLockedRef.current) {
+      return;
+    }
+
+    submitLockedRef.current = true;
+    setIsPending(true);
     setSubmitError(null);
+
     try {
       await onSave?.(data as TargetingConfig);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
-    } catch (err: any) {
-      setSubmitError(err?.message || 'Failed to save targeting settings');
+    } catch (err: unknown) {
+      setSubmitError(err instanceof Error ? err.message : 'Failed to save targeting settings');
+    } finally {
+      submitLockedRef.current = false;
+      setIsPending(false);
     }
   };
 
@@ -256,10 +269,10 @@ export function TargetingForm({ initial, onSave, isSaving }: TargetingFormProps)
 
       <button
         type="submit"
-        disabled={!isValid || isSaving}
+        disabled={!isValid || isSubmitting}
         className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm"
       >
-        {isSaving ? 'Saving...' : 'Save Targeting Settings'}
+        {isSubmitting ? 'Saving...' : 'Save Targeting Settings'}
       </button>
     </form>
   );

@@ -575,6 +575,17 @@
                             },
                             {
                               "key": {
+                                "symbol": "total_burned"
+                              },
+                              "val": {
+                                "i128": {
+                                  "hi": 0,
+                                  "lo": 0
+                                }
+                              }
+                            },
+                            {
+                              "key": {
                                 "symbol": "total_revenue"
                               },
                               "val": {

@@ -4,7 +4,7 @@ use soroban_sdk::{testutils::Address as _, vec, Address, Env, String};
 
 fn setup(env: &Env) -> (PublisherNetworkContractClient<'_>, Address) {
     let admin = Address::generate(env);
-    let id = env.register_contract(None, PublisherNetworkContract);
+    let id = env.register(PublisherNetworkContract, ());
     let c = PublisherNetworkContractClient::new(env, &id);
     c.initialize(&admin);
     (c, admin)
@@ -17,7 +17,7 @@ fn s(env: &Env, v: &str) -> String {
 fn test_initialize() {
     let env = Env::default();
     env.mock_all_auths();
-    let id = env.register_contract(None, PublisherNetworkContract);
+    let id = env.register(PublisherNetworkContract, ());
     let c = PublisherNetworkContractClient::new(&env, &id);
     c.initialize(&Address::generate(&env));
     assert_eq!(c.get_node_count(), 0);
@@ -30,7 +30,7 @@ fn test_initialize() {
 fn test_initialize_twice() {
     let env = Env::default();
     env.mock_all_auths();
-    let id = env.register_contract(None, PublisherNetworkContract);
+    let id = env.register(PublisherNetworkContract, ());
     let c = PublisherNetworkContractClient::new(&env, &id);
     let a = Address::generate(&env);
     c.initialize(&a);
@@ -41,7 +41,7 @@ fn test_initialize_twice() {
 #[should_panic]
 fn test_initialize_non_admin_fails() {
     let env = Env::default();
-    let id = env.register_contract(None, PublisherNetworkContract);
+    let id = env.register(PublisherNetworkContract, ());
     let c = PublisherNetworkContractClient::new(&env, &id);
     c.initialize(&Address::generate(&env));
 }
@@ -144,6 +144,7 @@ fn test_deactivate() {
     assert!(!node.is_active);
     let stats = c.get_network_stats();
     assert_eq!(stats.active_nodes, 0);
+    assert_eq!(stats.total_capacity, 0);
 }
 
 #[test]
@@ -210,6 +211,35 @@ fn test_record_impression() {
 }
 
 #[test]
+#[should_panic(expected = "not in network")]
+fn test_record_impression_not_in_network() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _) = setup(&env);
+    c.record_impression(&Address::generate(&env));
+}
+
+#[test]
+#[should_panic(expected = "node not active")]
+fn test_record_impression_inactive_node() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _) = setup(&env);
+    let pub1 = Address::generate(&env);
+    let cats = vec![&env, s(&env, "tech")];
+    c.join_network(
+        &pub1,
+        &NodeType::Standard,
+        &10_000u64,
+        &100i128,
+        &s(&env, "US"),
+        &cats,
+    );
+    c.deactivate(&pub1);
+    c.record_impression(&pub1);
+}
+
+#[test]
 fn test_get_node_nonexistent() {
     let env = Env::default();
     env.mock_all_auths();
@@ -224,4 +254,109 @@ fn test_set_fraud_contract_unauthorized() {
     env.mock_all_auths();
     let (c, _) = setup(&env);
     c.set_fraud_contract(&Address::generate(&env), &Address::generate(&env));
+}
+
+#[test]
+#[should_panic(expected = "capacity must be positive")]
+fn test_join_network_zero_capacity() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _) = setup(&env);
+    let pub1 = Address::generate(&env);
+    let cats = vec![&env, s(&env, "tech")];
+    c.join_network(
+        &pub1,
+        &NodeType::Standard,
+        &0u64,
+        &100i128,
+        &s(&env, "US"),
+        &cats,
+    );
+}
+
+#[test]
+#[should_panic(expected = "min_cpm must be positive")]
+fn test_join_network_zero_min_cpm() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _) = setup(&env);
+    let pub1 = Address::generate(&env);
+    let cats = vec![&env, s(&env, "tech")];
+    c.join_network(
+        &pub1,
+        &NodeType::Standard,
+        &10_000u64,
+        &0i128,
+        &s(&env, "US"),
+        &cats,
+    );
+}
+
+#[test]
+#[should_panic(expected = "min_cpm must be positive")]
+fn test_join_network_negative_min_cpm() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _) = setup(&env);
+    let pub1 = Address::generate(&env);
+    let cats = vec![&env, s(&env, "tech")];
+    c.join_network(
+        &pub1,
+        &NodeType::Standard,
+        &10_000u64,
+        &-1i128,
+        &s(&env, "US"),
+        &cats,
+    );
+}
+
+#[test]
+fn test_deactivate_decrements_node_count_and_total_nodes() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _) = setup(&env);
+    let pub1 = Address::generate(&env);
+    let cats = vec![&env, s(&env, "tech")];
+    c.join_network(
+        &pub1,
+        &NodeType::Standard,
+        &10_000u64,
+        &100i128,
+        &s(&env, "US"),
+        &cats,
+    );
+    assert_eq!(c.get_node_count(), 1);
+    assert_eq!(c.get_network_stats().total_nodes, 1);
+
+    c.deactivate(&pub1);
+
+    assert_eq!(c.get_node_count(), 0);
+    assert_eq!(c.get_network_stats().total_nodes, 0);
+    assert_eq!(c.get_network_stats().active_nodes, 0);
+}
+
+#[test]
+fn test_suspend_decrements_node_count_and_total_nodes() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin) = setup(&env);
+    let fraud = Address::generate(&env);
+    c.set_fraud_contract(&admin, &fraud);
+    let pub1 = Address::generate(&env);
+    let cats = vec![&env, s(&env, "tech")];
+    c.join_network(
+        &pub1,
+        &NodeType::Standard,
+        &10_000u64,
+        &100i128,
+        &s(&env, "US"),
+        &cats,
+    );
+    assert_eq!(c.get_node_count(), 1);
+    assert_eq!(c.get_network_stats().total_nodes, 1);
+
+    c.suspend_publisher(&fraud, &pub1);
+
+    assert_eq!(c.get_node_count(), 0);
+    assert_eq!(c.get_network_stats().total_nodes, 0);
 }

@@ -14,6 +14,14 @@ import { useTransactionStore, Transaction } from "../../store/tx-store";
 import { pollTransaction } from "../../lib/tx-recovery";
 import { getExplorerTxUrl } from "../../lib/stellar-config";
 
+/**
+ * Stellar blockchain timestamps are Unix seconds. JS Date/Date.now() use ms.
+ * Threshold 1e12: the year 2001 in ms — any value below that is seconds.
+ */
+export function normalizeTimestampToMs(timestamp: number): number {
+  return timestamp < 1e12 ? timestamp * 1000 : timestamp;
+}
+
 interface TxHistoryProps {
   isOpen: boolean;
   onClose: () => void;
@@ -22,11 +30,17 @@ interface TxHistoryProps {
 export function TxHistory({ isOpen, onClose }: TxHistoryProps) {
   const { transactions, clearOldTransactions } = useTransactionStore();
   const [pollingTxHash, setPollingTxHash] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     // Clean up old transactions when component mounts
     clearOldTransactions(30);
   }, [clearOldTransactions]);
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, []);
 
   const handleRetryPoll = async (txHash: string) => {
     setPollingTxHash(txHash);
@@ -74,10 +88,12 @@ export function TxHistory({ isOpen, onClose }: TxHistoryProps) {
     return labels[type];
   };
 
-  const formatTimestamp = (timestamp: number) => {
-    const date = new Date(timestamp);
-    const now = Date.now();
-    const diff = now - timestamp;
+  const formatTimestamp = (timestamp: number, now: number) => {
+    // Stellar blockchain timestamps are Unix seconds; Date.now() is ms.
+    // Normalise: values below 1e12 are seconds, convert to ms.
+    const ms = normalizeTimestampToMs(timestamp);
+    const date = new Date(ms);
+    const diff = now - ms;
 
     // Less than 1 minute
     if (diff < 60000) return "Just now";
@@ -112,7 +128,7 @@ export function TxHistory({ isOpen, onClose }: TxHistoryProps) {
             <button
               onClick={onClose}
               className="rounded-lg p-2 hover:bg-gray-100 transition-colors"
-              aria-label="Close"
+              aria-label="Close transaction history"
             >
               <X className="w-5 h-5 text-gray-500" />
             </button>
@@ -161,7 +177,7 @@ export function TxHistory({ isOpen, onClose }: TxHistoryProps) {
                             {tx.description}
                           </p>
                           <p className="text-xs text-gray-400 mt-1">
-                            {formatTimestamp(tx.timestamp)}
+                            {formatTimestamp(tx.timestamp, now)}
                           </p>
                           {tx.error && (
                             <p className="text-xs text-red-600 mt-1">

@@ -18,6 +18,7 @@ pub struct ReputationScore {
     pub last_slash_ledger: u32,
     pub last_updated: u64,
     pub uptime_contribution: u32, // Track the current uptime contribution to score
+    pub last_uptime_ledger: Option<u32>,
 }
 
 #[contracttype]
@@ -39,12 +40,14 @@ pub enum DataKey {
     Reputation(Address),
     Review(Address, u64), // publisher, review_index
     ReviewCount(Address),
+    ReviewRecord(Address, Address, u64), // reviewer, publisher, campaign_id - to prevent duplicates per campaign
 }
 
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17_280;
 const INSTANCE_BUMP_AMOUNT: u32 = 86_400;
 const PERSISTENT_LIFETIME_THRESHOLD: u32 = 120_960;
 const PERSISTENT_BUMP_AMOUNT: u32 = 1_051_200;
+const SLASH_COOLDOWN_LEDGERS: u32 = 17_280; // ~1 day at 5 s/ledger
 
 #[contract]
 pub struct PublisherReputationContract;
@@ -69,6 +72,7 @@ impl PublisherReputationContract {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        publisher.require_auth();
         if env
             .storage()
             .persistent()
@@ -89,6 +93,7 @@ impl PublisherReputationContract {
             last_slash_ledger: 0,
             last_updated: env.ledger().timestamp(),
             uptime_contribution: 0,
+            last_uptime_ledger: None,
         };
 
         let _ttl_key = DataKey::Reputation(publisher);
@@ -113,8 +118,15 @@ impl PublisherReputationContract {
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
         advertiser.require_auth();
 
-        if rating < 1 || rating > 5 {
+        if !(1..=5).contains(&rating) {
             panic!("invalid rating");
+        }
+
+        // Check if reviewer has already submitted a review for this publisher in this campaign
+        let review_key_check =
+            DataKey::ReviewRecord(advertiser.clone(), publisher.clone(), campaign_id);
+        if env.storage().persistent().has(&review_key_check) {
+            panic!("reviewer has already submitted a review for this publisher in this campaign");
         }
 
         let mut rep: ReputationScore = env
@@ -151,15 +163,24 @@ impl PublisherReputationContract {
             PERSISTENT_BUMP_AMOUNT,
         );
 
+        // Mark that this reviewer has reviewed this publisher for this campaign
+        let review_key = DataKey::ReviewRecord(advertiser.clone(), publisher.clone(), campaign_id);
+        env.storage().persistent().set(&review_key, &true);
+        env.storage().persistent().extend_ttl(
+            &review_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+
         rep.total_reviews += 1;
         if positive {
             rep.positive_reviews += 1;
             // Increase score (max 1000)
-            rep.score = (rep.score + rating as u32 * 2).min(1000);
+            rep.score = (rep.score + rating * 2).min(1000);
         } else {
             rep.negative_reviews += 1;
             // Decrease score (min 0)
-            rep.score = rep.score.saturating_sub(rating as u32 * 3);
+            rep.score = rep.score.saturating_sub(rating * 3);
         }
         rep.last_updated = env.ledger().timestamp();
 
@@ -198,7 +219,7 @@ impl PublisherReputationContract {
             .expect("publisher not registered");
 
         let current_ledger = env.ledger().sequence();
-        if current_ledger <= rep.last_slash_ledger + 100 {
+        if current_ledger <= rep.last_slash_ledger + SLASH_COOLDOWN_LEDGERS {
             panic!("slash cooldown active");
         }
 
@@ -247,6 +268,13 @@ impl PublisherReputationContract {
             .get(&DataKey::Reputation(publisher.clone()))
             .expect("publisher not registered");
 
+        let current_ledger = env.ledger().sequence();
+        if let Some(last_ledger) = rep.last_uptime_ledger {
+            if current_ledger <= last_ledger + 17_280 {
+                panic!("uptime update cooldown active");
+            }
+        }
+
         // Remove the previous uptime contribution from the score
         rep.score = rep.score.saturating_sub(rep.uptime_contribution);
 
@@ -262,6 +290,7 @@ impl PublisherReputationContract {
         rep.uptime_score = uptime;
         rep.uptime_contribution = new_contribution;
         rep.last_updated = env.ledger().timestamp();
+        rep.last_uptime_ledger = Some(current_ledger);
 
         let _ttl_key = DataKey::Reputation(publisher.clone());
         env.storage().persistent().set(&_ttl_key, &rep);

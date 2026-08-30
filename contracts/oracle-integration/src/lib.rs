@@ -97,6 +97,16 @@ impl OracleIntegrationContract {
         env.storage()
             .persistent()
             .remove(&DataKey::AuthorizedOracle(oracle));
+
+        // Decrement OracleCount with floor of 0 to guard against underflow
+        let count: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::OracleCount)
+            .unwrap_or(0);
+        env.storage()
+            .instance()
+            .set(&DataKey::OracleCount, &count.saturating_sub(1));
     }
 
     pub fn update_price(
@@ -112,6 +122,13 @@ impl OracleIntegrationContract {
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
         oracle.require_auth();
         Self::_require_oracle(&env, &oracle);
+
+        if price_usd <= 0 {
+            panic!("price must be positive");
+        }
+        if confidence == 0 || confidence > 100 {
+            panic!("confidence must be 1-100");
+        }
 
         let feed = PriceFeed {
             asset: asset.clone(),
@@ -149,6 +166,16 @@ impl OracleIntegrationContract {
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
         oracle.require_auth();
         Self::_require_oracle(&env, &oracle);
+
+        if campaign_id == 0 {
+            panic!("invalid campaign id");
+        }
+        if fraud_score > 100 {
+            panic!("fraud_score must be 0-100");
+        }
+        if clicks > impressions {
+            panic!("clicks cannot exceed impressions");
+        }
 
         let data = PerformanceData {
             campaign_id,
@@ -200,11 +227,11 @@ impl OracleIntegrationContract {
     }
 
     fn _require_oracle(env: &Env, oracle: &Address) {
-        let is_auth: bool = env
-            .storage()
-            .persistent()
-            .get(&DataKey::AuthorizedOracle(oracle.clone()))
-            .unwrap_or(false);
+        let key = DataKey::AuthorizedOracle(oracle.clone());
+        let is_auth: bool = env.storage().persistent().get(&key).unwrap_or(false);
+        if is_auth {
+            env.storage().persistent().extend_ttl(&key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
+        }
         if !is_auth {
             panic!("not authorized oracle");
         }

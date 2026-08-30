@@ -2,7 +2,7 @@
 //! Manages wrapped tokens from other chains for use in PulsarTrack campaigns on Stellar.
 
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, String};
+use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, token, Address, Env, String};
 
 #[contracttype]
 #[derive(Clone)]
@@ -15,6 +15,17 @@ pub struct WrappedToken {
     pub stellar_token: Address,
     pub total_wrapped: i128,
     pub is_active: bool,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct RegisterTokenParams {
+    pub symbol: String,
+    pub name: String,
+    pub decimals: u32,
+    pub underlying_chain: String,
+    pub underlying_address: String,
+    pub stellar_token: Address,
 }
 
 #[contracttype]
@@ -34,11 +45,12 @@ pub enum DataKey {
     Admin,
     PendingAdmin,
     RelayerAddress,
+    MintingPaused,
     WrapRecordCounter,
     WrappedToken(String), // symbol
     WrapRecord(u64),
     UserBalance(String, Address), // symbol, user
-    ProcessedTx(String), // source transaction ID
+    ProcessedTx(String),          // source transaction ID
 }
 
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17_280;
@@ -65,19 +77,13 @@ impl WrappedTokenContract {
             .set(&DataKey::RelayerAddress, &relayer);
         env.storage()
             .instance()
+            .set(&DataKey::MintingPaused, &false);
+        env.storage()
+            .instance()
             .set(&DataKey::WrapRecordCounter, &0u64);
     }
 
-    pub fn register_wrapped_token(
-        env: Env,
-        admin: Address,
-        symbol: String,
-        name: String,
-        decimals: u32,
-        underlying_chain: String,
-        underlying_address: String,
-        stellar_token: Address,
-    ) {
+    pub fn register_wrapped_token(env: Env, admin: Address, params: RegisterTokenParams) {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -88,17 +94,17 @@ impl WrappedTokenContract {
         }
 
         let wrapped = WrappedToken {
-            symbol: symbol.clone(),
-            name,
-            decimals,
-            underlying_chain,
-            underlying_address,
-            stellar_token,
+            symbol: params.symbol.clone(),
+            name: params.name,
+            decimals: params.decimals,
+            underlying_chain: params.underlying_chain,
+            underlying_address: params.underlying_address,
+            stellar_token: params.stellar_token,
             total_wrapped: 0,
             is_active: true,
         };
 
-        let _ttl_key = DataKey::WrappedToken(symbol);
+        let _ttl_key = DataKey::WrappedToken(params.symbol);
         env.storage().persistent().set(&_ttl_key, &wrapped);
         env.storage().persistent().extend_ttl(
             &_ttl_key,
@@ -127,11 +133,23 @@ impl WrappedTokenContract {
         if relayer != stored_relayer {
             panic!("unauthorized relayer");
         }
+        let minting_paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::MintingPaused)
+            .unwrap_or(false);
+        if minting_paused {
+            panic!("minting paused");
+        }
 
         // Check for replay attack - ensure source_tx hasn't been processed
         let tx_key = DataKey::ProcessedTx(source_tx.clone());
         if env.storage().persistent().has(&tx_key) {
             panic!("source transaction already processed");
+        }
+
+        if amount <= 0 {
+            panic!("amount must be positive");
         }
 
         let mut wrapped: WrappedToken = env
@@ -144,19 +162,14 @@ impl WrappedTokenContract {
             panic!("token not active");
         }
 
-        // Mint stellar-side tokens
-        // NOTE: This would use the token contract's mint function in production
-        // For now, we track the internal balance
-        let key = DataKey::UserBalance(symbol.clone(), recipient.clone());
-        let current: i128 = env.storage().persistent().get(&key).unwrap_or(0);
-        env.storage().persistent().set(&key, &(current + amount));
-        env.storage().persistent().extend_ttl(
-            &key,
-            PERSISTENT_LIFETIME_THRESHOLD,
-            PERSISTENT_BUMP_AMOUNT,
-        );
+        // Mint stellar-side tokens; the wrapped-token contract must be the stellar token's admin
+        let stellar_asset_client = token::StellarAssetClient::new(&env, &wrapped.stellar_token);
+        stellar_asset_client.mint(&recipient, &amount);
 
-        wrapped.total_wrapped += amount;
+        wrapped.total_wrapped = wrapped
+            .total_wrapped
+            .checked_add(amount)
+            .expect("total_wrapped overflow");
         let _ttl_key = DataKey::WrappedToken(symbol.clone());
         env.storage().persistent().set(&_ttl_key, &wrapped);
         env.storage().persistent().extend_ttl(
@@ -220,19 +233,9 @@ impl WrappedTokenContract {
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
         user.require_auth();
 
-        let key = DataKey::UserBalance(symbol.clone(), user.clone());
-        let current: i128 = env.storage().persistent().get(&key).unwrap_or(0);
-
-        if current < amount {
-            panic!("insufficient balance");
+        if amount <= 0 {
+            panic!("amount must be positive");
         }
-
-        env.storage().persistent().set(&key, &(current - amount));
-        env.storage().persistent().extend_ttl(
-            &key,
-            PERSISTENT_LIFETIME_THRESHOLD,
-            PERSISTENT_BUMP_AMOUNT,
-        );
 
         let mut wrapped: WrappedToken = env
             .storage()
@@ -240,7 +243,24 @@ impl WrappedTokenContract {
             .get(&DataKey::WrappedToken(symbol.clone()))
             .expect("token not registered");
 
-        wrapped.total_wrapped -= amount;
+        // Verify user's on-chain balance before burning
+        let token_client = token::Client::new(&env, &wrapped.stellar_token);
+        let current_balance = token_client.balance(&user);
+
+        if current_balance < amount {
+            panic!("insufficient balance");
+        }
+
+        if amount > wrapped.total_wrapped {
+            panic!("burn amount exceeds total wrapped supply");
+        }
+
+        // FIX #560: Update total_wrapped BEFORE burning (CEI pattern)
+        // This ensures accounting is updated before the external call
+        wrapped.total_wrapped = wrapped
+            .total_wrapped
+            .checked_sub(amount)
+            .expect("total_wrapped underflow");
         let _ttl_key = DataKey::WrappedToken(symbol);
         env.storage().persistent().set(&_ttl_key, &wrapped);
         env.storage().persistent().extend_ttl(
@@ -249,10 +269,41 @@ impl WrappedTokenContract {
             PERSISTENT_BUMP_AMOUNT,
         );
 
+        // Now burn the user's stellar-side tokens (SEP-41 burn requires user auth in the call tree)
+        token_client.burn(&user, &amount);
+
         env.events().publish(
             (symbol_short!("wrapped"), symbol_short!("burned")),
             (user, amount, target_address),
         );
+    }
+
+    pub fn set_relayer(env: Env, admin: Address, new_relayer: Address) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::RelayerAddress, &new_relayer);
+    }
+
+    pub fn set_minting_paused(env: Env, admin: Address, paused: bool) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::MintingPaused, &paused);
     }
 
     pub fn get_wrapped_token(env: Env, symbol: String) -> Option<WrappedToken> {
@@ -268,10 +319,15 @@ impl WrappedTokenContract {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-        env.storage()
+        let wrapped: WrappedToken = match env
+            .storage()
             .persistent()
-            .get(&DataKey::UserBalance(symbol, user))
-            .unwrap_or(0)
+            .get(&DataKey::WrappedToken(symbol))
+        {
+            Some(w) => w,
+            None => return 0,
+        };
+        token::Client::new(&env, &wrapped.stellar_token).balance(&user)
     }
 
     pub fn propose_admin(env: Env, current_admin: Address, new_admin: Address) {

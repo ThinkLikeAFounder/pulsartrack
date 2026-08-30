@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import app from '../app';
 import pool from '../config/database';
@@ -8,9 +8,13 @@ describe('Publisher Routes', () => {
     const mockAddress = 'GD7V7Z5K64I6U6I7U6I7U6I7U6I7U6I7U6I7U6I7U6I7U6I7U6I7';
     const token = generateTestToken(mockAddress);
 
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
     describe('GET /api/publishers/leaderboard', () => {
         it('should return publisher leaderboard', async () => {
-            (pool.query as any).mockResolvedValue({
+            (pool.query as any).mockResolvedValueOnce({
                 rows: [
                     {
                         address: mockAddress,
@@ -65,6 +69,20 @@ describe('Publisher Routes', () => {
                 .send({ displayName: 'Anon' });
 
             expect(response.status).toBe(401);
+        });
+
+        it('should return 409 when publisher already registered', async () => {
+            (pool.query as any).mockResolvedValueOnce({
+                rows: []
+            });
+
+            const response = await request(app)
+                .post('/api/publishers/register')
+                .set('Authorization', `Bearer ${token}`)
+                .send({ displayName: 'Duplicate', website: 'https://dup.com' });
+
+            expect(response.status).toBe(409);
+            expect(response.body.error).toBe('Publisher already registered');
         });
     });
 });

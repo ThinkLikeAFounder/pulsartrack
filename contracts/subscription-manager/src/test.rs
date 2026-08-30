@@ -21,11 +21,39 @@ fn balance(env: &Env, token: &Address, addr: &Address) -> i128 {
     token::Client::new(env, token).balance(addr)
 }
 
-/// Returns (client, admin, token_admin_addr, token_addr, treasury_addr)
+fn approve_spender(env: &Env, token: &Address, owner: &Address, spender: &Address, amount: i128) {
+    let live_until = env.ledger().sequence() + 1_000;
+    token::Client::new(env, token).approve(owner, spender, &amount, &live_until);
+}
+
+fn record_campaign_from_orchestrator(
+    env: &Env,
+    _orchestrator: &Address,
+    client: &SubscriptionManagerContractClient<'_>,
+    subscriber: &Address,
+) {
+    let _ = env;
+    client.record_campaign_used(subscriber);
+}
+
+fn record_impression_from_orchestrator(
+    env: &Env,
+    _orchestrator: &Address,
+    client: &SubscriptionManagerContractClient<'_>,
+    subscriber: &Address,
+    count: u64,
+) {
+    let _ = env;
+    client.record_impression(subscriber, &count);
+}
+
+/// Returns (client, admin, token_admin_addr, token_addr, treasury_addr, orchestrator_addr, contract_addr)
 fn setup(
     env: &Env,
 ) -> (
     SubscriptionManagerContractClient<'_>,
+    Address,
+    Address,
     Address,
     Address,
     Address,
@@ -35,10 +63,11 @@ fn setup(
     let token_admin = Address::generate(env);
     let token = deploy_token(env, &token_admin);
     let treasury = Address::generate(env);
-    let id = env.register_contract(None, SubscriptionManagerContract);
+    let orchestrator = Address::generate(env);
+    let id = env.register(SubscriptionManagerContract, ());
     let c = SubscriptionManagerContractClient::new(env, &id);
-    c.initialize(&admin, &token, &treasury);
-    (c, admin, token_admin, token, treasury)
+    c.initialize(&admin, &token, &treasury, &orchestrator);
+    (c, admin, token_admin, token, treasury, orchestrator, id)
 }
 
 /// Mint enough tokens for the subscriber to cover a Business annual plan (worst case).
@@ -76,8 +105,8 @@ fn test_initialize() {
 fn test_initialize_twice() {
     let env = Env::default();
     env.mock_all_auths();
-    let (c, admin, _, token, _) = setup(&env);
-    c.initialize(&admin, &token, &Address::generate(&env));
+    let (c, admin, _, token, _, orchestrator, ..) = setup(&env);
+    c.initialize(&admin, &token, &Address::generate(&env), &orchestrator);
 }
 
 // ============================================================
@@ -88,7 +117,7 @@ fn test_initialize_twice() {
 fn test_subscribe_new_subscriber() {
     let env = Env::default();
     env.mock_all_auths();
-    let (c, _, _, token, _) = setup(&env);
+    let (c, _, _, token, ..) = setup(&env);
     let subscriber = Address::generate(&env);
     mint(&env, &token, &subscriber, STARTER_MONTHLY);
 
@@ -106,7 +135,7 @@ fn test_subscribe_new_subscriber() {
 fn test_subscribe_charges_full_price() {
     let env = Env::default();
     env.mock_all_auths();
-    let (c, _, _, token, treasury) = setup(&env);
+    let (c, _, _, token, treasury, ..) = setup(&env);
     let subscriber = Address::generate(&env);
     mint(&env, &token, &subscriber, GROWTH_MONTHLY);
 
@@ -121,7 +150,7 @@ fn test_subscribe_charges_full_price() {
 fn test_subscribe_annual_charges_annual_price() {
     let env = Env::default();
     env.mock_all_auths();
-    let (c, _, _, token, treasury) = setup(&env);
+    let (c, _, _, token, treasury, ..) = setup(&env);
     let subscriber = Address::generate(&env);
     mint(&env, &token, &subscriber, GROWTH_ANNUAL);
 
@@ -139,7 +168,7 @@ fn test_subscribe_annual_charges_annual_price() {
 fn test_subscribe_panics_if_active_subscription_exists() {
     let env = Env::default();
     env.mock_all_auths();
-    let (c, _, _, token, _) = setup(&env);
+    let (c, _, _, token, ..) = setup(&env);
     let subscriber = Address::generate(&env);
     mint(&env, &token, &subscriber, STARTER_MONTHLY * 2);
 
@@ -152,7 +181,7 @@ fn test_subscribe_panics_if_active_subscription_exists() {
 fn test_subscribe_after_expiry_is_allowed() {
     let env = Env::default();
     env.mock_all_auths();
-    let (c, _, _, token, _) = setup(&env);
+    let (c, _, _, token, ..) = setup(&env);
     let subscriber = Address::generate(&env);
     mint(&env, &token, &subscriber, STARTER_MONTHLY * 2);
 
@@ -176,7 +205,7 @@ fn test_subscribe_after_expiry_is_allowed() {
 fn test_upgrade_charges_prorated_delta() {
     let env = Env::default();
     env.mock_all_auths();
-    let (c, _, _, token, treasury) = setup(&env);
+    let (c, _, _, token, treasury, ..) = setup(&env);
     let subscriber = Address::generate(&env);
     fund_subscriber(&env, &token, &subscriber);
 
@@ -206,16 +235,16 @@ fn test_upgrade_charges_prorated_delta() {
 fn test_upgrade_preserves_usage_counters() {
     let env = Env::default();
     env.mock_all_auths();
-    let (c, _, _, token, _) = setup(&env);
+    let (c, _, _, token, _, orchestrator, ..) = setup(&env);
     let subscriber = Address::generate(&env);
     fund_subscriber(&env, &token, &subscriber);
 
     c.subscribe(&subscriber, &SubscriptionTier::Growth, &false, &true);
 
     // Simulate some usage
-    c.record_campaign_used(&subscriber);
-    c.record_campaign_used(&subscriber);
-    c.record_impression(&subscriber, &5_000);
+    record_campaign_from_orchestrator(&env, &orchestrator, &c, &subscriber);
+    record_campaign_from_orchestrator(&env, &orchestrator, &c, &subscriber);
+    record_impression_from_orchestrator(&env, &orchestrator, &c, &subscriber, 5_000);
 
     c.change_tier(&subscriber, &SubscriptionTier::Business, &false, &true);
 
@@ -231,7 +260,7 @@ fn test_upgrade_preserves_usage_counters() {
 fn test_upgrade_new_expiry_is_full_period_from_now() {
     let env = Env::default();
     env.mock_all_auths();
-    let (c, _, _, token, _) = setup(&env);
+    let (c, _, _, token, ..) = setup(&env);
     let subscriber = Address::generate(&env);
     fund_subscriber(&env, &token, &subscriber);
 
@@ -250,7 +279,7 @@ fn test_upgrade_new_expiry_is_full_period_from_now() {
 fn test_upgrade_zero_net_charge_when_credit_exceeds_new_price() {
     let env = Env::default();
     env.mock_all_auths();
-    let (c, _, _, token, treasury) = setup(&env);
+    let (c, _, _, token, treasury, ..) = setup(&env);
     let subscriber = Address::generate(&env);
     fund_subscriber(&env, &token, &subscriber);
 
@@ -271,7 +300,7 @@ fn test_upgrade_zero_net_charge_when_credit_exceeds_new_price() {
 fn test_upgrade_stores_full_price_for_future_proration() {
     let env = Env::default();
     env.mock_all_auths();
-    let (c, _, _, token, _) = setup(&env);
+    let (c, _, _, token, ..) = setup(&env);
     let subscriber = Address::generate(&env);
     fund_subscriber(&env, &token, &subscriber);
 
@@ -306,7 +335,7 @@ fn test_change_tier_panics_with_no_subscription() {
 fn test_change_tier_blocks_downgrade() {
     let env = Env::default();
     env.mock_all_auths();
-    let (c, _, _, token, _) = setup(&env);
+    let (c, _, _, token, ..) = setup(&env);
     let subscriber = Address::generate(&env);
     fund_subscriber(&env, &token, &subscriber);
 
@@ -319,7 +348,7 @@ fn test_change_tier_blocks_downgrade() {
 fn test_change_tier_blocks_same_tier() {
     let env = Env::default();
     env.mock_all_auths();
-    let (c, _, _, token, _) = setup(&env);
+    let (c, _, _, token, ..) = setup(&env);
     let subscriber = Address::generate(&env);
     fund_subscriber(&env, &token, &subscriber);
 
@@ -335,7 +364,7 @@ fn test_change_tier_blocks_same_tier() {
 fn test_renew_extends_expiry_beyond_current_expiry() {
     let env = Env::default();
     env.mock_all_auths();
-    let (c, _, _, token, _) = setup(&env);
+    let (c, _, _, token, ..) = setup(&env);
     let subscriber = Address::generate(&env);
     mint(&env, &token, &subscriber, STARTER_MONTHLY * 3);
 
@@ -356,7 +385,7 @@ fn test_renew_extends_expiry_beyond_current_expiry() {
 fn test_renew_after_expiry_starts_from_now() {
     let env = Env::default();
     env.mock_all_auths();
-    let (c, _, _, token, _) = setup(&env);
+    let (c, _, _, token, ..) = setup(&env);
     let subscriber = Address::generate(&env);
     mint(&env, &token, &subscriber, STARTER_MONTHLY * 2);
 
@@ -377,13 +406,13 @@ fn test_renew_after_expiry_starts_from_now() {
 fn test_renew_preserves_usage_counters() {
     let env = Env::default();
     env.mock_all_auths();
-    let (c, _, _, token, _) = setup(&env);
+    let (c, _, _, token, _, orchestrator, ..) = setup(&env);
     let subscriber = Address::generate(&env);
     mint(&env, &token, &subscriber, STARTER_MONTHLY * 2);
 
     c.subscribe(&subscriber, &SubscriptionTier::Starter, &false, &true);
-    c.record_campaign_used(&subscriber);
-    c.record_impression(&subscriber, &1_234);
+    record_campaign_from_orchestrator(&env, &orchestrator, &c, &subscriber);
+    record_impression_from_orchestrator(&env, &orchestrator, &c, &subscriber, 1_234);
 
     c.renew(&subscriber, &false, &true);
 
@@ -396,7 +425,7 @@ fn test_renew_preserves_usage_counters() {
 fn test_renew_preserves_original_started_at() {
     let env = Env::default();
     env.mock_all_auths();
-    let (c, _, _, token, _) = setup(&env);
+    let (c, _, _, token, ..) = setup(&env);
     let subscriber = Address::generate(&env);
     mint(&env, &token, &subscriber, STARTER_MONTHLY * 2);
 
@@ -428,7 +457,7 @@ fn test_renew_panics_with_no_subscription() {
 fn test_cancel_disables_auto_renew_but_stays_active() {
     let env = Env::default();
     env.mock_all_auths();
-    let (c, _, _, token, _) = setup(&env);
+    let (c, _, _, token, ..) = setup(&env);
     let subscriber = Address::generate(&env);
     mint(&env, &token, &subscriber, STARTER_MONTHLY);
 
@@ -451,13 +480,13 @@ fn test_cancel_disables_auto_renew_but_stays_active() {
 fn test_record_campaign_used_increments_counter() {
     let env = Env::default();
     env.mock_all_auths();
-    let (c, _, _, token, _) = setup(&env);
+    let (c, _, _, token, _, orchestrator, ..) = setup(&env);
     let subscriber = Address::generate(&env);
     mint(&env, &token, &subscriber, STARTER_MONTHLY);
 
     c.subscribe(&subscriber, &SubscriptionTier::Starter, &false, &true);
-    c.record_campaign_used(&subscriber);
-    c.record_campaign_used(&subscriber);
+    record_campaign_from_orchestrator(&env, &orchestrator, &c, &subscriber);
+    record_campaign_from_orchestrator(&env, &orchestrator, &c, &subscriber);
 
     assert_eq!(c.get_subscription(&subscriber).unwrap().campaigns_used, 2);
 }
@@ -466,13 +495,13 @@ fn test_record_campaign_used_increments_counter() {
 fn test_record_impression_accumulates() {
     let env = Env::default();
     env.mock_all_auths();
-    let (c, _, _, token, _) = setup(&env);
+    let (c, _, _, token, _, orchestrator, ..) = setup(&env);
     let subscriber = Address::generate(&env);
     mint(&env, &token, &subscriber, STARTER_MONTHLY);
 
     c.subscribe(&subscriber, &SubscriptionTier::Starter, &false, &true);
-    c.record_impression(&subscriber, &10_000);
-    c.record_impression(&subscriber, &5_000);
+    record_impression_from_orchestrator(&env, &orchestrator, &c, &subscriber, 10_000);
+    record_impression_from_orchestrator(&env, &orchestrator, &c, &subscriber, 5_000);
 
     assert_eq!(
         c.get_subscription(&subscriber).unwrap().impressions_used,
@@ -504,7 +533,7 @@ fn test_get_subscription_nonexistent() {
 fn test_is_active_returns_false_after_expiry() {
     let env = Env::default();
     env.mock_all_auths();
-    let (c, _, _, token, _) = setup(&env);
+    let (c, _, _, token, ..) = setup(&env);
     let subscriber = Address::generate(&env);
     mint(&env, &token, &subscriber, STARTER_MONTHLY);
 
@@ -522,13 +551,14 @@ fn test_is_active_returns_false_after_expiry() {
 fn test_auto_renew_extends_expiry_from_old_expires_at() {
     let env = Env::default();
     env.mock_all_auths_allowing_non_root_auth();
-    let (c, _, _, token, _) = setup(&env);
+    let (c, _, _, token, _, _, contract_id) = setup(&env);
     let subscriber = Address::generate(&env);
     // Fund for initial subscription + renewal
     mint(&env, &token, &subscriber, STARTER_MONTHLY * 2);
 
     c.subscribe(&subscriber, &SubscriptionTier::Starter, &false, &true);
     let original_expiry = c.get_subscription(&subscriber).unwrap().expires_at;
+    approve_spender(&env, &token, &subscriber, &contract_id, STARTER_MONTHLY);
 
     // Advance just past expiry
     env.ledger().set_timestamp(original_expiry + 1);
@@ -546,12 +576,13 @@ fn test_auto_renew_extends_expiry_from_old_expires_at() {
 fn test_auto_renew_charges_correct_amount() {
     let env = Env::default();
     env.mock_all_auths_allowing_non_root_auth();
-    let (c, _, _, token, treasury) = setup(&env);
+    let (c, _, _, token, treasury, _, contract_id) = setup(&env);
     let subscriber = Address::generate(&env);
     mint(&env, &token, &subscriber, STARTER_MONTHLY * 2);
 
     c.subscribe(&subscriber, &SubscriptionTier::Starter, &false, &true);
     let original_expiry = c.get_subscription(&subscriber).unwrap().expires_at;
+    approve_spender(&env, &token, &subscriber, &contract_id, STARTER_MONTHLY);
     env.ledger().set_timestamp(original_expiry + 1);
 
     let treasury_before = balance(&env, &token, &treasury);
@@ -562,11 +593,27 @@ fn test_auto_renew_charges_correct_amount() {
 }
 
 #[test]
+#[should_panic(expected = "insufficient allowance for auto-renewal")]
+fn test_auto_renew_panics_when_allowance_missing() {
+    let env = Env::default();
+    env.mock_all_auths_allowing_non_root_auth();
+    let (c, _, _, token, ..) = setup(&env);
+    let subscriber = Address::generate(&env);
+    mint(&env, &token, &subscriber, STARTER_MONTHLY * 2);
+
+    c.subscribe(&subscriber, &SubscriptionTier::Starter, &false, &true);
+    let expiry = c.get_subscription(&subscriber).unwrap().expires_at;
+    env.ledger().set_timestamp(expiry + 1);
+
+    c.auto_renew_subscription(&subscriber);
+}
+
+#[test]
 #[should_panic(expected = "auto renew not enabled")]
 fn test_auto_renew_panics_when_flag_is_false() {
     let env = Env::default();
     env.mock_all_auths();
-    let (c, _, _, token, _) = setup(&env);
+    let (c, _, _, token, ..) = setup(&env);
     let subscriber = Address::generate(&env);
     mint(&env, &token, &subscriber, STARTER_MONTHLY * 2);
 
@@ -583,7 +630,7 @@ fn test_auto_renew_panics_when_flag_is_false() {
 fn test_auto_renew_panics_when_still_active() {
     let env = Env::default();
     env.mock_all_auths();
-    let (c, _, _, token, _) = setup(&env);
+    let (c, _, _, token, ..) = setup(&env);
     let subscriber = Address::generate(&env);
     mint(&env, &token, &subscriber, STARTER_MONTHLY * 2);
 
@@ -597,7 +644,7 @@ fn test_auto_renew_panics_when_still_active() {
 fn test_auto_renew_panics_when_insufficient_balance() {
     let env = Env::default();
     env.mock_all_auths();
-    let (c, _, _, token, _) = setup(&env);
+    let (c, _, _, token, ..) = setup(&env);
     let subscriber = Address::generate(&env);
     // Fund only enough for the initial subscription; nothing left for renewal
     mint(&env, &token, &subscriber, STARTER_MONTHLY);
@@ -623,7 +670,7 @@ fn test_auto_renew_panics_when_no_subscription() {
 fn test_cancel_then_auto_renew_is_blocked() {
     let env = Env::default();
     env.mock_all_auths();
-    let (c, _, _, token, _) = setup(&env);
+    let (c, _, _, token, ..) = setup(&env);
     let subscriber = Address::generate(&env);
     mint(&env, &token, &subscriber, STARTER_MONTHLY * 2);
 

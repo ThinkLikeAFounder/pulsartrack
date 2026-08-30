@@ -1,27 +1,39 @@
 "use client";
 
-import {
-  Contract,
-  rpc,
-  TransactionBuilder,
-  BASE_FEE,
-  xdr,
-  Address,
-  nativeToScVal,
-  scValToNative,
-} from "@stellar/stellar-sdk";
+// Lazy-load the Stellar SDK so it is never bundled for SSR.
+// All SDK types are imported from the package for TypeScript only (erased at runtime).
+import type { xdr, rpc, Transaction, FeeBumpTransaction } from "@stellar/stellar-sdk";
 import {
   getSorobanRpcUrl,
   getNetworkPassphrase,
-  CONTRACT_IDS,
+  FALLBACK_SIMULATION_ACCOUNT,
 } from "./stellar-config";
 import { signTx } from "./wallet";
 import { useTransactionStore, TransactionType } from "../store/tx-store";
 
+async function getSdk() {
+  return import("@stellar/stellar-sdk");
+}
+
+/**
+ * Lazy ScVal descriptor — a serializable placeholder produced by the helper
+ * functions below and resolved to a real `xdr.ScVal` once the SDK is loaded.
+ */
+export type ScValArg =
+  | { __type: "string"; value: string }
+  | { __type: "u64"; value: bigint }
+  | { __type: "i128"; value: bigint }
+  | { __type: "u32"; value: number }
+  | { __type: "bool"; value: boolean }
+  | { __type: "address"; value: string };
+
+/** Either a fully-resolved ScVal or a lazy descriptor. */
+export type ContractArg = xdr.ScVal | ScValArg;
+
 export interface ContractCallOptions {
   contractId: string;
   method: string;
-  args?: xdr.ScVal[];
+  args?: ContractArg[];
   source: string; // Public key of caller
   txType?: TransactionType;
   description?: string;
@@ -29,7 +41,7 @@ export interface ContractCallOptions {
 
 export interface ContractCallResult {
   success: boolean;
-  result?: any;
+  result?: unknown;
   txHash?: string;
   error?: string;
 }
@@ -37,32 +49,33 @@ export interface ContractCallResult {
 export interface ReadOnlyOptions {
   contractId: string;
   method: string;
-  args?: xdr.ScVal[];
+  args?: ContractArg[];
 }
 
 /**
  * Get Soroban RPC server instance
  */
-export function getSorobanServer(): rpc.Server {
+export async function getSorobanServer() {
+  const { rpc } = await getSdk();
   return new rpc.Server(getSorobanRpcUrl(), { allowHttp: false });
 }
 
 /**
  * Call a read-only Soroban contract function (simulation only)
  */
-export async function callReadOnly(options: ReadOnlyOptions): Promise<any> {
-  const server = getSorobanServer();
+export async function callReadOnly<T = unknown>(
+  options: ReadOnlyOptions,
+): Promise<T> {
+  const { Contract, rpc, TransactionBuilder, BASE_FEE, scValToNative } = await getSdk();
+  const server = new rpc.Server(getSorobanRpcUrl(), { allowHttp: false });
   const contract = new Contract(options.contractId);
+  const resolvedArgs = await resolveArgs(options.args || []);
 
-  // The Soroban RPC Server and SDK require a source account to compute the footprint and fee for a simulation,
-  // even for read-only invocations.
   let simulationAccount = process.env.NEXT_PUBLIC_SIMULATION_ACCOUNT;
 
   if (!simulationAccount) {
     if (process.env.NODE_ENV === "development") {
-      // Fall back to a well-known placeholder account during development
-      simulationAccount =
-        "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
+      simulationAccount = FALLBACK_SIMULATION_ACCOUNT;
     } else {
       throw new Error(
         "NEXT_PUBLIC_SIMULATION_ACCOUNT environment variable is not set. A source account is required for contract simulations.",
@@ -80,14 +93,14 @@ export async function callReadOnly(options: ReadOnlyOptions): Promise<any> {
     fee: BASE_FEE,
     networkPassphrase: getNetworkPassphrase(),
   })
-    .addOperation(contract.call(options.method, ...(options.args || [])))
+    .addOperation(contract.call(options.method, ...resolvedArgs))
     .setTimeout(30)
     .build();
 
   const simResult = await server.simulateTransaction(tx);
 
   if (rpc.Api.isSimulationError(simResult)) {
-    throw new Error(`Simulation error: ${(simResult as any).error}`);
+    throw new Error(`Simulation error: ${simResult.error}`);
   }
 
   if (!rpc.Api.isSimulationSuccess(simResult)) {
@@ -96,9 +109,9 @@ export async function callReadOnly(options: ReadOnlyOptions): Promise<any> {
 
   const returnVal = (simResult as rpc.Api.SimulateTransactionSuccessResponse)
     .result?.retval;
-  if (!returnVal) return null;
+  if (!returnVal) return null as T;
 
-  return scValToNative(returnVal);
+  return scValToNative(returnVal) as T;
 }
 
 /**
@@ -107,39 +120,38 @@ export async function callReadOnly(options: ReadOnlyOptions): Promise<any> {
 export async function callContract(
   options: ContractCallOptions,
 ): Promise<ContractCallResult> {
-  const server = getSorobanServer();
+  const { Contract, rpc, TransactionBuilder, BASE_FEE, scValToNative } = await getSdk();
+  const server = new rpc.Server(getSorobanRpcUrl(), { allowHttp: false });
   const contract = new Contract(options.contractId);
 
   try {
     const account = await server.getAccount(options.source);
+    const resolvedArgs = await resolveArgs(options.args || []);
 
     const tx = new TransactionBuilder(account, {
       fee: BASE_FEE,
       networkPassphrase: getNetworkPassphrase(),
     })
-      .addOperation(contract.call(options.method, ...(options.args || [])))
+      .addOperation(contract.call(options.method, ...resolvedArgs))
       .setTimeout(30)
       .build();
 
-    // Simulate to get footprint and fee estimate
     const simResult = await server.simulateTransaction(tx);
 
     if (rpc.Api.isSimulationError(simResult)) {
       return {
         success: false,
-        error: `Simulation failed: ${(simResult as any).error}`,
+        error: `Simulation failed: ${simResult.error}`,
       };
     }
 
-    // Assemble transaction with simulation data
     const preparedTx = rpc.assembleTransaction(tx, simResult).build();
-
-    // Sign with Freighter
     const signedXdr = await signTx(preparedTx.toXDR());
 
-    // Submit
     const submitResult = await server.sendTransaction(
-      TransactionBuilder.fromXDR(signedXdr, getNetworkPassphrase()) as any,
+      TransactionBuilder.fromXDR(signedXdr, getNetworkPassphrase()) as
+        | Transaction
+        | FeeBumpTransaction,
     );
 
     if (submitResult.status === "ERROR") {
@@ -148,7 +160,6 @@ export async function callContract(
 
     const txHash = submitResult.hash;
 
-    // Save transaction to persistent store before polling
     const { addTransaction, updateTransaction } =
       useTransactionStore.getState();
     addTransaction({
@@ -158,9 +169,8 @@ export async function callContract(
       description: options.description || `${options.method} on contract`,
     });
 
-    // Poll for result with exponential backoff
-    for (let i = 0; i < 15; i++) {
-      const delay = Math.min(2000 * Math.pow(1.5, i), 10000);
+    for (let i = 0; i < 30; i++) {
+      const delay = Math.min(2000 * Math.pow(1.5, i), 15000);
       await new Promise((resolve) => setTimeout(resolve, delay));
       const getResult = await server.getTransaction(txHash);
 
@@ -170,79 +180,98 @@ export async function callContract(
         ).returnValue;
         const result = returnVal ? scValToNative(returnVal) : null;
 
-        // Update transaction status to success
-        updateTransaction(txHash, {
-          status: "success",
-          result,
-        });
-
-        return {
-          success: true,
-          txHash,
-          result,
-        };
+        updateTransaction(txHash, { status: "success", result });
+        return { success: true, txHash, result };
       }
 
       if (getResult.status === rpc.Api.GetTransactionStatus.FAILED) {
-        // Update transaction status to failed
         updateTransaction(txHash, {
           status: "failed",
           error: "Transaction failed on-chain",
         });
-
         return { success: false, txHash, error: "Transaction failed on-chain" };
       }
     }
 
-    // Polling timeout — update store so transaction doesn't stay "pending" forever
     updateTransaction(txHash, {
       status: "timeout",
       error: "Transaction confirmation timed out — check explorer",
     });
     return { success: false, error: "Transaction polling timeout", txHash };
-  } catch (err: any) {
-    return { success: false, error: err?.message || "Unknown error" };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return { success: false, error: message };
   }
 }
 
 /**
  * Helper: Convert string to ScVal
  */
-export function stringToScVal(value: string): xdr.ScVal {
-  return nativeToScVal(value, { type: "string" });
+export function stringToScVal(value: string): ScValArg {
+  // Returns a lazy ScVal — resolved when the SDK loads at call time
+  return { __type: 'string', value };
 }
 
 /**
  * Helper: Convert number to u64 ScVal
  */
-export function u64ToScVal(value: number | bigint): xdr.ScVal {
-  return nativeToScVal(BigInt(value), { type: "u64" });
+export function u64ToScVal(value: number | bigint): ScValArg {
+  return { __type: 'u64', value: BigInt(value) };
 }
 
 /**
  * Helper: Convert number to i128 ScVal
  */
-export function i128ToScVal(value: number | bigint): xdr.ScVal {
-  return nativeToScVal(BigInt(value), { type: "i128" });
+export function i128ToScVal(value: number | bigint): ScValArg {
+  return { __type: 'i128', value: BigInt(value) };
 }
 
 /**
  * Helper: Convert number to u32 ScVal
  */
-export function u32ToScVal(value: number): xdr.ScVal {
-  return nativeToScVal(value, { type: "u32" });
+export function u32ToScVal(value: number): ScValArg {
+  return { __type: 'u32', value };
 }
 
 /**
  * Helper: Convert boolean to ScVal
  */
-export function boolToScVal(value: boolean): xdr.ScVal {
-  return nativeToScVal(value, { type: "bool" });
+export function boolToScVal(value: boolean): ScValArg {
+  return { __type: 'bool', value };
 }
 
 /**
  * Helper: Convert Stellar address to ScVal
  */
-export function addressToScVal(address: string): xdr.ScVal {
-  return new Address(address).toScVal();
+export function addressToScVal(address: string): ScValArg {
+  return { __type: 'address', value: address };
+}
+
+/** Type guard: is this arg a lazy ScVal descriptor? */
+function isScValArg(arg: ContractArg): arg is ScValArg {
+  return (
+    typeof arg === "object" &&
+    arg !== null &&
+    "__type" in arg &&
+    typeof (arg as { __type?: unknown }).__type === "string"
+  );
+}
+
+/**
+ * Resolve lazy ScVal descriptors to real xdr.ScVal using the loaded SDK.
+ */
+async function resolveArgs(args: ContractArg[]): Promise<xdr.ScVal[]> {
+  const { nativeToScVal, Address } = await getSdk();
+  return args.map((arg) => {
+    if (!isScValArg(arg)) return arg;
+    switch (arg.__type) {
+      case 'string': return nativeToScVal(arg.value, { type: 'string' });
+      case 'u64': return nativeToScVal(arg.value, { type: 'u64' });
+      case 'i128': return nativeToScVal(arg.value, { type: 'i128' });
+      case 'u32': return nativeToScVal(arg.value, { type: 'u32' });
+      case 'bool': return nativeToScVal(arg.value, { type: 'bool' });
+      case 'address': return new Address(arg.value).toScVal();
+      default: return arg;
+    }
+  });
 }

@@ -30,7 +30,7 @@ export function BidForm({ auction, campaignId, onSuccess, onCancel }: BidFormPro
   const {
     register,
     handleSubmit,
-    formState: { errors, isValid },
+    formState: { errors },
   } = useForm<BidFormData>({
     resolver: zodResolver(schema),
     mode: 'onTouched',
@@ -49,8 +49,8 @@ export function BidForm({ auction, campaignId, onSuccess, onCancel }: BidFormPro
         amountStroops: xlmToStroops(parseFloat(data.bidAmountXlm)),
       });
       onSuccess?.();
-    } catch (err: any) {
-      setSubmitError(err?.message || 'Failed to place bid');
+    } catch (err: unknown) {
+      setSubmitError(err instanceof Error ? err.message : 'Failed to place bid');
     }
   };
 

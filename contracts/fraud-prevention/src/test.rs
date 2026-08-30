@@ -1,13 +1,16 @@
 #![cfg(test)]
 use super::*;
-use soroban_sdk::{testutils::{Address as _, Ledger}, Address, BytesN, Env};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger},
+    Address, BytesN, Env,
+};
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 fn setup(env: &Env) -> (FraudPreventionContractClient<'_>, Address) {
     let admin = Address::generate(env);
 
-    let contract_id = env.register_contract(None, FraudPreventionContract);
+    let contract_id = env.register(FraudPreventionContract, ());
     let client = FraudPreventionContractClient::new(env, &contract_id);
     client.initialize(&admin);
 
@@ -21,7 +24,7 @@ fn test_initialize() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let contract_id = env.register_contract(None, FraudPreventionContract);
+    let contract_id = env.register(FraudPreventionContract, ());
     let client = FraudPreventionContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -35,7 +38,7 @@ fn test_initialize_twice() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let contract_id = env.register_contract(None, FraudPreventionContract);
+    let contract_id = env.register(FraudPreventionContract, ());
     let client = FraudPreventionContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -49,7 +52,7 @@ fn test_initialize_twice() {
 fn test_initialize_non_admin_fails() {
     let env = Env::default();
 
-    let contract_id = env.register_contract(None, FraudPreventionContract);
+    let contract_id = env.register(FraudPreventionContract, ());
     let client = FraudPreventionContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -201,7 +204,7 @@ fn test_flag_suspicious_oracle() {
 }
 
 #[test]
-#[should_panic(expected = "unauthorized - only admin or oracle can flag publishers")]
+#[should_panic(expected = "unauthorized")]
 fn test_flag_suspicious_unauthorized_fails() {
     let env = Env::default();
     env.mock_all_auths();
@@ -210,6 +213,17 @@ fn test_flag_suspicious_unauthorized_fails() {
     let publisher = Address::generate(&env);
 
     client.flag_suspicious(&stranger, &publisher);
+}
+
+#[test]
+#[should_panic]
+fn test_flag_suspicious_without_auth_fails() {
+    let env = Env::default();
+    // No mock_all_auths() here
+    let (client, admin) = setup(&env);
+    let publisher = Address::generate(&env);
+
+    client.flag_suspicious(&admin, &publisher);
 }
 
 #[test]
@@ -237,10 +251,26 @@ fn test_suspend_publisher_admin() {
     env.mock_all_auths();
     let (client, admin) = setup(&env);
 
+    let lifecycle = Address::generate(&env);
+    let network = env.register(mocks::PublisherNetworkContract, ());
+    let vault = Address::generate(&env);
     let publisher = Address::generate(&env);
+
+    client.set_dependent_contracts(&admin, &lifecycle, &network, &vault);
     client.suspend_publisher(&admin, &publisher);
 
     assert!(client.is_publisher_suspended(&publisher));
+}
+
+#[test]
+#[should_panic(expected = "publisher network contract not configured")]
+fn test_suspend_publisher_without_network_config_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin) = setup(&env);
+    let publisher = Address::generate(&env);
+
+    client.suspend_publisher(&admin, &publisher);
 }
 
 #[test]
@@ -390,7 +420,7 @@ fn test_fraud_integration() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let contract_id = env.register_contract(None, FraudPreventionContract);
+    let contract_id = env.register(FraudPreventionContract, ());
     let client = FraudPreventionContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);

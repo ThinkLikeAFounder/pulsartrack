@@ -36,6 +36,7 @@ pub enum DataKey {
     OracleAddress,
     CampaignAnalytics(u64),
     HourlyStats(u64, u64), // campaign_id, hour
+    Viewer(u64, Address),  // campaign_id, viewer
     GlobalStats,
 }
 
@@ -53,6 +54,20 @@ const INSTANCE_LIFETIME_THRESHOLD: u32 = 17_280;
 const INSTANCE_BUMP_AMOUNT: u32 = 86_400;
 const PERSISTENT_LIFETIME_THRESHOLD: u32 = 120_960;
 const PERSISTENT_BUMP_AMOUNT: u32 = 1_051_200;
+const HOURLY_STATS_TTL_LEDGERS: u32 = 720;
+
+fn require_oracle(env: &Env, caller: &Address) {
+    caller.require_auth();
+    let stored_oracle: Address = env
+        .storage()
+        .instance()
+        .get(&DataKey::OracleAddress)
+        .expect("oracle not set");
+
+    if caller != &stored_oracle {
+        panic!("only oracle can record analytics");
+    }
+}
 
 #[contract]
 pub struct AnalyticsAggregatorContract;
@@ -82,16 +97,21 @@ impl AnalyticsAggregatorContract {
         env.storage().instance().set(&DataKey::GlobalStats, &global);
     }
 
-    pub fn record_impression(env: Env, caller: Address, campaign_id: u64, spend: i128) {
+    pub fn record_impression(
+        env: Env,
+        caller: Address,
+        campaign_id: u64,
+        viewer: Address,
+        spend: i128,
+    ) {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-        let _stored_oracle: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::OracleAddress)
-            .unwrap();
-        caller.require_auth();
+        require_oracle(&env, &caller);
+
+        if spend < 0 {
+            panic!("spend must be non-negative");
+        }
 
         let mut analytics: CampaignAnalytics = env
             .storage()
@@ -110,13 +130,32 @@ impl AnalyticsAggregatorContract {
                 last_updated: 0,
             });
 
+        let is_new_campaign = analytics.total_impressions == 0;
         analytics.total_impressions += 1;
         analytics.total_spend += spend;
         analytics.last_updated = env.ledger().timestamp();
 
+        let viewer_key = DataKey::Viewer(campaign_id, viewer);
+        if !env.storage().persistent().has(&viewer_key) {
+            analytics.unique_viewers += 1;
+            env.storage().persistent().set(&viewer_key, &true);
+            env.storage().persistent().extend_ttl(
+                &viewer_key,
+                PERSISTENT_LIFETIME_THRESHOLD,
+                PERSISTENT_BUMP_AMOUNT,
+            );
+        }
+
         if analytics.total_impressions > 0 {
-            analytics.ctr = (analytics.total_clicks * 10_000 / analytics.total_impressions) as u32;
-            analytics.cpm = (analytics.total_spend * 1_000) / analytics.total_impressions as i128;
+            // Use u128 for CTR calculation and clamp to 10,000 (100%)
+            analytics.ctr = ((analytics.total_clicks as u128 * 10_000
+                / analytics.total_impressions as u128) as u32)
+                .min(10_000);
+            // Use checked/saturating arithmetic for CPM
+            analytics.cpm = analytics.total_spend
+                .saturating_mul(1_000)
+                .checked_div(analytics.total_impressions as i128)
+                .unwrap_or(0);
         }
 
         let _ttl_key = DataKey::CampaignAnalytics(campaign_id);
@@ -143,9 +182,16 @@ impl AnalyticsAggregatorContract {
         hourly.impressions += 1;
         hourly.spend += spend;
         env.storage().temporary().set(&hourly_key, &hourly);
+        let hourly_ttl = Self::hourly_stats_ttl_ledgers();
+        env.storage()
+            .temporary()
+            .extend_ttl(&hourly_key, hourly_ttl, hourly_ttl);
 
         // Update global stats
         let mut global: GlobalStats = env.storage().instance().get(&DataKey::GlobalStats).unwrap();
+        if is_new_campaign {
+            global.total_campaigns += 1;
+        }
         global.total_impressions += 1;
         global.total_spend += spend;
         global.last_updated = env.ledger().timestamp();
@@ -156,7 +202,7 @@ impl AnalyticsAggregatorContract {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-        caller.require_auth();
+        require_oracle(&env, &caller);
 
         let mut analytics: CampaignAnalytics = env
             .storage()
@@ -164,9 +210,15 @@ impl AnalyticsAggregatorContract {
             .get(&DataKey::CampaignAnalytics(campaign_id))
             .expect("analytics not found");
 
+        if analytics.total_clicks >= analytics.total_impressions {
+            panic!("clicks cannot exceed impressions");
+        }
+
         analytics.total_clicks += 1;
         if analytics.total_impressions > 0 {
-            analytics.ctr = (analytics.total_clicks * 10_000 / analytics.total_impressions) as u32;
+            analytics.ctr = ((analytics.total_clicks as u128 * 10_000
+                / analytics.total_impressions as u128) as u32)
+                .min(10_000);
         }
         analytics.last_updated = env.ledger().timestamp();
 
@@ -187,7 +239,7 @@ impl AnalyticsAggregatorContract {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-        caller.require_auth();
+        require_oracle(&env, &caller);
 
         let mut analytics: CampaignAnalytics = env
             .storage()
@@ -195,10 +247,15 @@ impl AnalyticsAggregatorContract {
             .get(&DataKey::CampaignAnalytics(campaign_id))
             .expect("analytics not found");
 
+        if analytics.total_conversions >= analytics.total_clicks {
+            panic!("conversions cannot exceed clicks");
+        }
+
         analytics.total_conversions += 1;
         if analytics.total_clicks > 0 {
-            analytics.cvr =
-                (analytics.total_conversions * 10_000 / analytics.total_clicks) as u32;
+            analytics.cvr = ((analytics.total_conversions as u128 * 10_000
+                / analytics.total_clicks as u128) as u32)
+                .min(10_000);
         }
         analytics.last_updated = env.ledger().timestamp();
 
@@ -243,6 +300,10 @@ impl AnalyticsAggregatorContract {
         env.storage()
             .temporary()
             .get(&DataKey::HourlyStats(campaign_id, hour))
+    }
+
+    fn hourly_stats_ttl_ledgers() -> u32 {
+        HOURLY_STATS_TTL_LEDGERS
     }
 
     pub fn propose_admin(env: Env, current_admin: Address, new_admin: Address) {
