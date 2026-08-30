@@ -81,12 +81,19 @@ function scheduleReconnect(): void {
   }, currentBackoff);
 }
 
+export const MAX_PAYLOAD_SIZE = 16 * 1024; // 16 KB max payload
+export const MESSAGE_RATE_LIMIT_WINDOW_MS = 10000; // 10s window
+export const MAX_MESSAGES_PER_WINDOW = 30; // max 30 messages per window
+
 export function setupWebSocketServer(server: Server): WebSocketServer {
-  const wss = new WebSocketServer({ server, path: "/ws" });
+  const wss = new WebSocketServer({ server, path: "/ws", maxPayload: MAX_PAYLOAD_SIZE });
 
   wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
     clients.add(ws);
     logger.info(`[WS] Client connected. Total: ${clients.size}`);
+
+    let messageCount = 0;
+    let resetTime = Date.now() + MESSAGE_RATE_LIMIT_WINDOW_MS;
 
     // Send welcome message
     sendToClient(ws, {
@@ -105,8 +112,27 @@ export function setupWebSocketServer(server: Server): WebSocketServer {
       clients.delete(ws);
     });
 
-    // Handle ping-pong
+    // Handle ping-pong and incoming messages with rate limiting
     ws.on("message", (data) => {
+      const now = Date.now();
+      if (now > resetTime) {
+        messageCount = 1;
+        resetTime = now + MESSAGE_RATE_LIMIT_WINDOW_MS;
+      } else {
+        messageCount++;
+      }
+
+      if (messageCount > MAX_MESSAGES_PER_WINDOW) {
+        logger.warn("[WS] Rate limit exceeded for client");
+        sendToClient(ws, {
+          type: "error",
+          payload: { message: "Rate limit exceeded" },
+          timestamp: Date.now(),
+        });
+        ws.close(1008, "Rate limit exceeded");
+        return;
+      }
+
       try {
         const msg = JSON.parse(data.toString());
         if (msg.type === "ping") {

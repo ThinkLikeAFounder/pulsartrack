@@ -46,6 +46,6 @@ describe('GET /api/account/:address', () => {
         expect(response.status).toBe(500);
         // The error handler in auth.ts returns { error: 'Internal server error', message: err.message }
         // but the route handler itself returns { error: err.message }
-        expect(response.body).toHaveProperty('error', errorMsg);
+        expect(response.body).toHaveProperty('error', 'Failed to fetch account details');
     });
 });

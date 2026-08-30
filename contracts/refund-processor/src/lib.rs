@@ -134,6 +134,10 @@ impl RefundProcessorContract {
             panic!("unauthorized");
         }
 
+        if approved_amount <= 0 {
+            panic!("invalid amount");
+        }
+
         let mut refund: RefundRequest = env
             .storage()
             .persistent()

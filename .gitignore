@@ -42,3 +42,10 @@ Thumbs.db
 issue.md
 pr.md
 
+# ── Mimo ─────────────────────────────────────────────
+*mimo*
+.mimo
+mimo/
+*.mimo
+
+

@@ -252,7 +252,7 @@ impl AdRegistryContract {
             .persistent()
             .get(&DataKey::Content(content_id))
             .expect("content not found");
-        content.status = new_status;
+        content.status = new_status.clone();
         content.updated_at = env.ledger().timestamp();
         let _ttl_key = DataKey::Content(content_id);
         env.storage().persistent().set(&_ttl_key, &content);
@@ -260,6 +260,11 @@ impl AdRegistryContract {
             &_ttl_key,
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
+        );
+
+        env.events().publish(
+            (symbol_short!("status"), symbol_short!("updated")),
+            (content_id, new_status),
         );
     }
 
@@ -314,6 +319,11 @@ impl AdRegistryContract {
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
         );
+
+        env.events().publish(
+            (symbol_short!("flag"), symbol_short!("content")),
+            (content_id, reporter, content.flags_count),
+        );
     }
 
     /// Track a content view
@@ -353,6 +363,11 @@ impl AdRegistryContract {
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
         );
+
+        env.events().publish(
+            (symbol_short!("track"), symbol_short!("view")),
+            (content_id, perf.total_views),
+        );
     }
 
     /// Track a content click
@@ -378,6 +393,11 @@ impl AdRegistryContract {
             &_ttl_key,
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
+        );
+
+        env.events().publish(
+            (symbol_short!("track"), symbol_short!("click")),
+            (content_id, perf.total_clicks),
         );
     }
 
@@ -406,6 +426,11 @@ impl AdRegistryContract {
             &_ttl_key,
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
+        );
+
+        env.events().publish(
+            (symbol_short!("archive"), symbol_short!("content")),
+            (content_id, owner),
         );
     }
 

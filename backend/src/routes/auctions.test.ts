@@ -40,15 +40,23 @@ describe('Auction Routes', () => {
                 amountStroops: 150
             };
 
-            (pool.query as any).mockResolvedValue({
-                rows: [{
-                    id: 'bid-uuid',
-                    auction_id: 1,
-                    bidder: mockAddress,
-                    campaign_id: bidData.campaignId,
-                    amount_stroops: bidData.amountStroops
-                }]
-            });
+            const mockClient = {
+                query: vi.fn()
+                    .mockResolvedValueOnce({}) // BEGIN
+                    .mockResolvedValueOnce({   // INSERT
+                        rows: [{
+                            id: 'bid-uuid',
+                            auction_id: 1,
+                            bidder: mockAddress,
+                            campaign_id: bidData.campaignId,
+                            amount_stroops: bidData.amountStroops
+                        }]
+                    })
+                    .mockResolvedValueOnce({}) // UPDATE
+                    .mockResolvedValueOnce({}), // COMMIT
+                release: vi.fn()
+            };
+            vi.spyOn(pool, 'connect').mockResolvedValueOnce(mockClient as any);
 
             const response = await request(app)
                 .post('/api/auctions/1/bid')

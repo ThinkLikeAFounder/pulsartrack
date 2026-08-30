@@ -124,7 +124,7 @@ impl PublisherReputationContract {
             .expect("publisher not registered");
 
         let review = ReviewEntry {
-            reviewer: advertiser,
+            reviewer: advertiser.clone(),
             campaign_id,
             positive,
             rating,
@@ -163,12 +163,17 @@ impl PublisherReputationContract {
         }
         rep.last_updated = env.ledger().timestamp();
 
-        let _ttl_key = DataKey::Reputation(publisher);
+        let _ttl_key = DataKey::Reputation(publisher.clone());
         env.storage().persistent().set(&_ttl_key, &rep);
         env.storage().persistent().extend_ttl(
             &_ttl_key,
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
+        );
+
+        env.events().publish(
+            (symbol_short!("review"), symbol_short!("submitted")),
+            (advertiser, publisher, rating, rep.score),
         );
     }
 
@@ -258,12 +263,17 @@ impl PublisherReputationContract {
         rep.uptime_contribution = new_contribution;
         rep.last_updated = env.ledger().timestamp();
 
-        let _ttl_key = DataKey::Reputation(publisher);
+        let _ttl_key = DataKey::Reputation(publisher.clone());
         env.storage().persistent().set(&_ttl_key, &rep);
         env.storage().persistent().extend_ttl(
             &_ttl_key,
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
+        );
+
+        env.events().publish(
+            (symbol_short!("uptime"), symbol_short!("updated")),
+            (publisher, uptime),
         );
     }
 
