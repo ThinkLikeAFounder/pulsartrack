@@ -79,6 +79,23 @@ describe('Auction Routes', () => {
                 amountStroops: 150
             };
 
+            const mockClient = {
+                query: vi.fn()
+                    .mockResolvedValueOnce({}) // BEGIN
+                    .mockResolvedValueOnce({   // INSERT
+                        rows: [{
+                            id: 'bid-uuid',
+                            auction_id: 1,
+                            bidder: mockAddress,
+                            campaign_id: bidData.campaignId,
+                            amount_stroops: bidData.amountStroops
+                        }]
+                    })
+                    .mockResolvedValueOnce({}) // UPDATE
+                    .mockResolvedValueOnce({}), // COMMIT
+                release: vi.fn()
+            };
+            vi.spyOn(pool, 'connect').mockResolvedValueOnce(mockClient as any);
             const client = setupClientMock(
                 // Auction lookup (SELECT ... FOR UPDATE)
                 { rows: [{ publisher: otherAddress, floor_price_stroops: '100', status: 'Open' }] },

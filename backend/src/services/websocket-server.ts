@@ -129,6 +129,26 @@ export function setupWebSocketServer(server: Server): WebSocketServer {
     clients.set(ws, state);
     logger.info(`[WS] Client connected (${payload.sub}). Total: ${clients.size}`);
 
+    // Exponential backoff for next failure
+    currentBackoff = Math.min(currentBackoff * 2, MAX_BACKOFF_MS);
+  }, currentBackoff);
+}
+
+export const MAX_PAYLOAD_SIZE = 16 * 1024; // 16 KB max payload
+export const MESSAGE_RATE_LIMIT_WINDOW_MS = 10000; // 10s window
+export const MAX_MESSAGES_PER_WINDOW = 30; // max 30 messages per window
+
+export function setupWebSocketServer(server: Server): WebSocketServer {
+  const wss = new WebSocketServer({ server, path: "/ws", maxPayload: MAX_PAYLOAD_SIZE });
+
+  wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
+    clients.add(ws);
+    logger.info(`[WS] Client connected. Total: ${clients.size}`);
+
+    let messageCount = 0;
+    let resetTime = Date.now() + MESSAGE_RATE_LIMIT_WINDOW_MS;
+
+    // Send welcome message
     sendToClient(ws, {
       type: "connected",
       payload: { message: "Connected to PulsarTrack WebSocket server" },

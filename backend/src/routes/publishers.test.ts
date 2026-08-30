@@ -44,6 +44,7 @@ describe('Publisher Routes', () => {
             };
 
             (pool.query as any)
+                .mockResolvedValueOnce({ rows: [] })
                 .mockResolvedValueOnce({
                     rows: [{
                         id: 'pub-uuid',

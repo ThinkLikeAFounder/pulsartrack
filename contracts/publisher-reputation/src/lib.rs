@@ -184,12 +184,17 @@ impl PublisherReputationContract {
         }
         rep.last_updated = env.ledger().timestamp();
 
-        let _ttl_key = DataKey::Reputation(publisher);
+        let _ttl_key = DataKey::Reputation(publisher.clone());
         env.storage().persistent().set(&_ttl_key, &rep);
         env.storage().persistent().extend_ttl(
             &_ttl_key,
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
+        );
+
+        env.events().publish(
+            (symbol_short!("review"), symbol_short!("submitted")),
+            (advertiser, publisher, rating, rep.score),
         );
     }
 
@@ -287,12 +292,17 @@ impl PublisherReputationContract {
         rep.last_updated = env.ledger().timestamp();
         rep.last_uptime_ledger = Some(current_ledger);
 
-        let _ttl_key = DataKey::Reputation(publisher);
+        let _ttl_key = DataKey::Reputation(publisher.clone());
         env.storage().persistent().set(&_ttl_key, &rep);
         env.storage().persistent().extend_ttl(
             &_ttl_key,
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
+        );
+
+        env.events().publish(
+            (symbol_short!("uptime"), symbol_short!("updated")),
+            (publisher, uptime),
         );
     }
 

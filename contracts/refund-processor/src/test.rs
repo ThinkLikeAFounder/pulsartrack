@@ -154,6 +154,17 @@ fn test_approve_refund_unauthorized() {
 }
 
 #[test]
+#[should_panic(expected = "invalid amount")]
+fn test_approve_refund_non_positive_amount() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin, _, _) = setup(&env);
+    let requester = Address::generate(&env);
+    let id = c.request_refund(&requester, &1u64, &50_000i128, &s(&env, "reason"));
+    c.approve_refund(&admin, &id, &0i128);
+}
+
+#[test]
 fn test_get_refund_nonexistent() {
     let env = Env::default();
     env.mock_all_auths();
