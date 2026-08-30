@@ -1,19 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockFindMany, mockFindFirst, mockCreate } = vi.hoisted(() => ({
-  mockFindMany: vi.fn(),
-  mockFindFirst: vi.fn(),
-  mockCreate: vi.fn(),
-}));
+const mockQuery = vi.fn();
 
-vi.mock('../db/prisma', () => ({
-  default: {
-    subscription: {
-      findMany: mockFindMany,
-      findFirst: mockFindFirst,
-      create: mockCreate,
-    },
-  },
+vi.mock('../config/database', () => ({
+  default: { query: mockQuery },
 }));
 
 import * as subscriptions from '../db/repositories/subscriptions';
@@ -23,19 +13,19 @@ describe('subscriptions repository', () => {
 
   describe('findBySubscriber', () => {
     it('returns every subscription for the subscriber, newest first', async () => {
-      mockFindMany.mockResolvedValue([{ id: 1 }, { id: 2 }]);
+      mockQuery.mockResolvedValue({ rows: [{ id: 1 }, { id: 2 }] });
 
       const result = await subscriptions.findBySubscriber('GSUB');
 
       expect(result).toHaveLength(2);
-      expect(mockFindMany).toHaveBeenCalledWith({
-        where: { subscriber: 'GSUB' },
-        orderBy: { startedAt: 'desc' },
-      });
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.stringContaining('ORDER BY started_at DESC'),
+        ['GSUB'],
+      );
     });
 
     it('returns an empty list when the subscriber has none', async () => {
-      mockFindMany.mockResolvedValue([]);
+      mockQuery.mockResolvedValue({ rows: [] });
 
       await expect(subscriptions.findBySubscriber('GNONE')).resolves.toEqual([]);
     });
@@ -43,32 +33,49 @@ describe('subscriptions repository', () => {
 
   describe('findActive', () => {
     it('only considers subscriptions expiring in the future', async () => {
-      mockFindFirst.mockResolvedValue({ id: 1 });
+      mockQuery.mockResolvedValue({ rows: [{ id: 1 }] });
 
       const result = await subscriptions.findActive('GSUB');
 
       expect(result).toEqual({ id: 1 });
-      expect(mockFindFirst).toHaveBeenCalledWith({
-        where: { subscriber: 'GSUB', expiresAt: { gt: expect.any(Date) } },
-        orderBy: { expiresAt: 'desc' },
-      });
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.stringContaining('expires_at > NOW()'),
+        ['GSUB'],
+      );
     });
 
     it('returns null when every subscription has lapsed', async () => {
-      mockFindFirst.mockResolvedValue(null);
+      mockQuery.mockResolvedValue({ rows: [] });
 
       await expect(subscriptions.findActive('GSUB')).resolves.toBeNull();
     });
   });
 
   describe('create', () => {
-    it('passes the input through as prisma data', async () => {
-      const input = { subscriber: 'GSUB' } as never;
-      mockCreate.mockResolvedValue(input);
+    it('inserts a subscription with all provided fields', async () => {
+      const input = {
+        subscriber: 'GSUB',
+        tier: 'Premium',
+        amount_paid_stroops: 1000,
+        expires_at: new Date('2027-01-01'),
+      };
+      mockQuery.mockResolvedValue({ rows: [{ ...input, id: 1 }] });
 
       await subscriptions.create(input);
 
-      expect(mockCreate).toHaveBeenCalledWith({ data: input });
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO subscriptions'),
+        [
+          'GSUB',
+          'Premium',
+          false,
+          1000,
+          null,
+          input.expires_at,
+          true,
+          null,
+        ],
+      );
     });
   });
 });

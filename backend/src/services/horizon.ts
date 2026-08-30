@@ -121,7 +121,8 @@ export async function getContractOperations(contractId: string, limit = 50) {
       .order('desc')
       .call();
     return result.records;
-  } catch {
+  } catch (err) {
+    logger.error({ err, contractId }, '[Horizon] Failed to fetch operations for contract');
     return [];
   }
 }

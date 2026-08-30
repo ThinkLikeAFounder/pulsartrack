@@ -12,15 +12,14 @@ interface PulsarEvent {
   targetAccounts?: string[];
 }
 
-// Allowed incoming message types
-type ClientMessageType = "subscribe" | "unsubscribe" | "ping";
+type ClientMessageType = "auth" | "subscribe" | "unsubscribe" | "ping";
 
 interface ClientMessage {
   type: ClientMessageType;
+  token?: string;
   channel?: string;
 }
 
-// Valid broadcast channels clients can subscribe to
 const VALID_CHANNELS = new Set(["ledger", "campaigns", "auctions"]);
 
 interface ClientState {
@@ -31,21 +30,19 @@ interface ClientState {
 
 const clients = new Map<WebSocket, ClientState>();
 
-// Per-IP connection tracking for rate limiting
 const connectionsPerIp = new Map<string, number>();
 const MAX_CONNECTIONS_PER_IP = 5;
 
+const AUTH_TIMEOUT_MS = 5000;
+
 let stopStream: (() => void) | null = null;
 
-/**
- * Parse and validate an incoming client message.
- * Returns the typed message or null if invalid.
- */
 function parseClientMessage(raw: string): ClientMessage | null {
   try {
     const msg = JSON.parse(raw);
     if (typeof msg !== "object" || msg === null) return null;
-    if (!["subscribe", "unsubscribe", "ping"].includes(msg.type)) return null;
+    if (!["auth", "subscribe", "unsubscribe", "ping"].includes(msg.type)) return null;
+    if (msg.token !== undefined && typeof msg.token !== "string") return null;
     if (msg.channel !== undefined && typeof msg.channel !== "string") return null;
     return msg as ClientMessage;
   } catch {
@@ -71,7 +68,7 @@ function startLedgerStream(): void {
       broadcastToChannel("ledger", {
         type: "reconnecting",
         payload: {
-          message: "Horizon stream dropped, reconnecting build-in...",
+          message: "Horizon stream dropped, reconnecting...",
         },
         timestamp: Date.now(),
       });
@@ -79,11 +76,14 @@ function startLedgerStream(): void {
   );
 }
 
+export const MAX_PAYLOAD_SIZE = 16 * 1024;
+export const MESSAGE_RATE_LIMIT_WINDOW_MS = 10000;
+export const MAX_MESSAGES_PER_WINDOW = 30;
+
 export function setupWebSocketServer(server: Server): WebSocketServer {
-  const wss = new WebSocketServer({ server, path: "/ws" });
+  const wss = new WebSocketServer({ server, path: "/ws", maxPayload: MAX_PAYLOAD_SIZE });
 
   wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
-    // --- Per-IP connection limiting ---
     const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0].trim()
       ?? req.socket.remoteAddress
       ?? "unknown";
@@ -96,66 +96,27 @@ export function setupWebSocketServer(server: Server): WebSocketServer {
     }
     connectionsPerIp.set(ip, ipCount + 1);
 
-    // --- JWT authentication ---
-    const host = req.headers.host ?? "localhost";
-    const url = new URL(req.url ?? "", `http://${host}`);
-    const token = url.searchParams.get("token");
-
-    let payload: Record<string, any>;
-    try {
-      if (!token) throw new Error("Missing token");
-      payload = decodeJwt(token);
-      if (typeof payload.sub !== "string" || !payload.sub) {
-        throw new Error("Invalid token subject");
-      }
-    } catch {
-      logger.warn(`[WS] Unauthenticated connection attempt from ${ip}`);
-      ws.close(4001, "Unauthorized");
-      const remaining = (connectionsPerIp.get(ip) ?? 1) - 1;
-      if (remaining > 0) {
-        connectionsPerIp.set(ip, remaining);
-      } else {
-        connectionsPerIp.delete(ip);
-      }
-      return;
-    }
-
-    // Register client with empty subscription set
-    const state: ClientState = {
-      ws,
-      subscriptions: new Set(),
-      stellarAddress: payload.sub,
-    };
-    clients.set(ws, state);
-    logger.info(`[WS] Client connected (${payload.sub}). Total: ${clients.size}`);
-
-    // Exponential backoff for next failure
-    currentBackoff = Math.min(currentBackoff * 2, MAX_BACKOFF_MS);
-  }, currentBackoff);
-}
-
-export const MAX_PAYLOAD_SIZE = 16 * 1024; // 16 KB max payload
-export const MESSAGE_RATE_LIMIT_WINDOW_MS = 10000; // 10s window
-export const MAX_MESSAGES_PER_WINDOW = 30; // max 30 messages per window
-
-export function setupWebSocketServer(server: Server): WebSocketServer {
-  const wss = new WebSocketServer({ server, path: "/ws", maxPayload: MAX_PAYLOAD_SIZE });
-
-  wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
-    clients.add(ws);
-    logger.info(`[WS] Client connected. Total: ${clients.size}`);
-
-    let messageCount = 0;
-    let resetTime = Date.now() + MESSAGE_RATE_LIMIT_WINDOW_MS;
-
-    // Send welcome message
     sendToClient(ws, {
       type: "connected",
-      payload: { message: "Connected to PulsarTrack WebSocket server" },
+      payload: { message: "Connected to PulsarTrack WebSocket server. Send an auth message to authenticate." },
       timestamp: Date.now(),
     });
 
+    let authenticated = false;
+    let messageCount = 0;
+    let resetTime = Date.now() + MESSAGE_RATE_LIMIT_WINDOW_MS;
+
+    const authTimer = setTimeout(() => {
+      if (!authenticated) {
+        logger.warn(`[WS] Auth timeout for IP ${ip}`);
+        ws.close(4001, "Authentication timeout");
+        const remaining = (connectionsPerIp.get(ip) ?? 1) - 1;
+        remaining > 0 ? connectionsPerIp.set(ip, remaining) : connectionsPerIp.delete(ip);
+      }
+    }, AUTH_TIMEOUT_MS);
+
     ws.on("close", () => {
+      clearTimeout(authTimer);
       clients.delete(ws);
       const remaining = (connectionsPerIp.get(ip) ?? 1) - 1;
       remaining > 0 ? connectionsPerIp.set(ip, remaining) : connectionsPerIp.delete(ip);
@@ -163,19 +124,79 @@ export function setupWebSocketServer(server: Server): WebSocketServer {
     });
 
     ws.on("error", (err) => {
+      clearTimeout(authTimer);
       logger.error(err, "[WS] Client error");
       clients.delete(ws);
       const remaining = (connectionsPerIp.get(ip) ?? 1) - 1;
       remaining > 0 ? connectionsPerIp.set(ip, remaining) : connectionsPerIp.delete(ip);
     });
 
-    // --- Validated message handling ---
     ws.on("message", (data) => {
       const msg = parseClientMessage(data.toString());
       if (!msg) {
         sendToClient(ws, {
           type: "error",
           payload: { message: "Invalid message format" },
+          timestamp: Date.now(),
+        });
+        return;
+      }
+
+      if (!authenticated) {
+        if (msg.type === "auth") {
+          let payload: Record<string, any>;
+          try {
+            if (!msg.token) throw new Error("Missing token in auth message");
+            payload = decodeJwt(msg.token);
+            if (typeof payload.sub !== "string" || !payload.sub) {
+              throw new Error("Invalid token subject");
+            }
+          } catch (err) {
+            clearTimeout(authTimer);
+            logger.warn(`[WS] Auth failed from ${ip}: ${(err as Error).message}`);
+            ws.close(4001, "Unauthorized");
+            const remaining = (connectionsPerIp.get(ip) ?? 1) - 1;
+            remaining > 0 ? connectionsPerIp.set(ip, remaining) : connectionsPerIp.delete(ip);
+            return;
+          }
+
+          clearTimeout(authTimer);
+          authenticated = true;
+          const state: ClientState = {
+            ws,
+            subscriptions: new Set(),
+            stellarAddress: payload.sub,
+          };
+          clients.set(ws, state);
+          logger.info(`[WS] Client authenticated (${payload.sub}). Total: ${clients.size}`);
+
+          sendToClient(ws, {
+            type: "authenticated",
+            payload: { address: payload.sub },
+            timestamp: Date.now(),
+          });
+          return;
+        }
+
+        sendToClient(ws, {
+          type: "error",
+          payload: { message: "Not authenticated. Send an auth message first." },
+          timestamp: Date.now(),
+        });
+        return;
+      }
+
+      const state = clients.get(ws)!;
+
+      if (Date.now() > resetTime) {
+        messageCount = 0;
+        resetTime = Date.now() + MESSAGE_RATE_LIMIT_WINDOW_MS;
+      }
+      messageCount++;
+      if (messageCount > MAX_MESSAGES_PER_WINDOW) {
+        sendToClient(ws, {
+          type: "error",
+          payload: { message: "Rate limit exceeded" },
           timestamp: Date.now(),
         });
         return;
@@ -229,9 +250,6 @@ function sendToClient(ws: WebSocket, event: PulsarEvent): void {
   }
 }
 
-/**
- * Broadcast to all clients subscribed to a specific channel.
- */
 export function broadcastToChannel(channel: string, event: PulsarEvent): void {
   const msg = JSON.stringify(event);
   clients.forEach((state) => {
@@ -250,9 +268,6 @@ export function broadcastToChannel(channel: string, event: PulsarEvent): void {
   });
 }
 
-/**
- * Broadcast to ALL authenticated clients (used for platform-wide events).
- */
 export function broadcast(event: PulsarEvent): void {
   const msg = JSON.stringify(event);
   clients.forEach((state) => {
@@ -267,9 +282,6 @@ export function broadcast(event: PulsarEvent): void {
   });
 }
 
-/**
- * Broadcast a campaign event to the "campaigns" channel.
- */
 export function broadcastCampaignEvent(
   type: "campaign_created" | "view_recorded" | "payment_processed",
   data: Record<string, any>,
@@ -277,9 +289,6 @@ export function broadcastCampaignEvent(
   broadcastToChannel("campaigns", { type, payload: data, timestamp: Date.now() });
 }
 
-/**
- * Broadcast an auction event to the "auctions" channel.
- */
 export function broadcastAuctionEvent(
   type: "bid_placed" | "auction_created" | "auction_settled",
   data: Record<string, any>,

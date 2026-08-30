@@ -159,7 +159,8 @@ CREATE TABLE IF NOT EXISTS ledger_events (
   contract_id VARCHAR(64),
   event_type VARCHAR(50) NOT NULL,
   event_data JSONB,
-  indexed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  indexed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (tx_hash, event_type)
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_contract ON ledger_events(contract_id);

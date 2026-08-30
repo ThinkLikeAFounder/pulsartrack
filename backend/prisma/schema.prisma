@@ -139,6 +139,7 @@ model LedgerEvent {
   eventData      Json?    @map("event_data")
   indexedAt       DateTime @default(now()) @map("indexed_at") @db.Timestamptz()
 
+  @@unique([txHash, eventType])
   @@index([contractId])
   @@index([eventType])
   @@index([ledgerSequence])

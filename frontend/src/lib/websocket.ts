@@ -9,6 +9,7 @@
 import { z } from 'zod';
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3001';
+const AUTH_TOKEN_KEY = 'pulsar_auth_token';
 
 export type EventType =
   | 'bid_placed'
@@ -23,6 +24,7 @@ export type EventType =
   | 'pong'
   | 'disconnected'
   | 'connected'
+  | 'authenticated'
   | 'error';
 
 export interface PulsarEvent {
@@ -44,6 +46,7 @@ const PulsarEventSchema = z.object({
     'subscription_created',
     'reputation_updated',
     'connected',
+    'authenticated',
     'error'
   ]),
   data: z.record(z.string(), z.unknown()),
@@ -65,15 +68,31 @@ export class PulsarWebSocket {
   private heartbeatTimeout: ReturnType<typeof setTimeout> | null = null;
   private readonly heartbeatIntervalMs = 30000;
   private readonly heartbeatTimeoutMs = 10000;
+  private authToken: string | null = null;
 
   constructor(url: string) {
     this.url = url;
   }
 
+  setAuthToken(token: string): void {
+    this.authToken = token;
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(AUTH_TOKEN_KEY, token);
+    }
+  }
+
+  private loadAuthToken(): string | null {
+    if (this.authToken) return this.authToken;
+    if (typeof window !== 'undefined') {
+      this.authToken = localStorage.getItem(AUTH_TOKEN_KEY);
+      return this.authToken;
+    }
+    return null;
+  }
+
   connect(): void {
     if (typeof window === 'undefined') return;
 
-    // Close any existing connection without triggering another reconnect cycle
     if (this.ws) {
       this.ws.onclose = null;
       this.ws.close();
@@ -85,9 +104,13 @@ export class PulsarWebSocket {
 
       this.ws.onopen = () => {
         this.reconnectAttempts = 0;
-        this.reconnectDelay = 3000; // reset backoff on successful connection
+        this.reconnectDelay = 3000;
         this.startHeartbeat();
-        this.emit({ type: 'connected', data: {}, timestamp: Date.now() });
+
+        const token = this.loadAuthToken();
+        if (token) {
+          this.ws!.send(JSON.stringify({ type: 'auth', token }));
+        }
       };
 
       this.ws.onmessage = (event) => {
@@ -97,6 +120,11 @@ export class PulsarWebSocket {
           if (parsed?.type === 'pong') {
             this.clearHeartbeatTimeout();
             this.emit({ type: 'pong', data: {}, timestamp: Date.now() });
+            return;
+          }
+
+          if (parsed?.type === 'authenticated') {
+            this.emit({ type: 'connected', data: parsed.payload || {}, timestamp: Date.now() });
             return;
           }
 
