@@ -243,13 +243,16 @@ impl KycRegistryContract {
             .expect("kyc not found");
 
         record.verified = false;
-        let _ttl_key = DataKey::KycRecord(account);
+        let _ttl_key = DataKey::KycRecord(account.clone());
         env.storage().persistent().set(&_ttl_key, &record);
         env.storage().persistent().extend_ttl(
             &_ttl_key,
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
         );
+
+        env.events()
+            .publish((symbol_short!("kyc"), symbol_short!("revoked")), account);
     }
 
     pub fn is_kyc_valid(env: Env, account: Address) -> bool {
