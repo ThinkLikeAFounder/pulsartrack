@@ -162,7 +162,7 @@ describe('pollTransaction', () => {
     expect(result.error).toBe('Polling timeout');
     expect(mockUpdateTransaction).toHaveBeenCalledWith('tx3', {
       status: 'timeout',
-      error: 'Transaction confirmation timed out - check explorer',
+      error: 'Transaction confirmation timed out ? check explorer',
     });
   });
 });
