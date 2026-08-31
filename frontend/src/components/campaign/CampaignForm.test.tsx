@@ -2,6 +2,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { CampaignForm, parseCampaignSubmission } from './CampaignForm';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { useCreateCampaign } from '@/hooks/useContract';
+import { campaignSchema } from '@/lib/validation/schemas';
 
 // Mock the hook
 vi.mock('@/hooks/useContract', () => ({
@@ -28,6 +29,25 @@ describe('CampaignForm', () => {
 
         expect(await screen.findByText(/Title is required/i)).toBeInTheDocument();
         expect(mockCreateCampaign).not.toHaveBeenCalled();
+    });
+
+    it('should reject campaign titles longer than the backend limit', () => {
+        const result = campaignSchema.safeParse({
+            title: 'x'.repeat(201),
+            contentId: 'ipfs://123',
+            campaignType: 1,
+            budgetXlm: '100',
+            costPerViewXlm: '0.01',
+            durationDays: 30,
+            targetViews: '100',
+            dailyViewLimit: '10',
+            refundable: true,
+        });
+
+        expect(result.success).toBe(false);
+        if (!result.success) {
+            expect(result.error.issues[0].message).toBe('Title must be 200 characters or less');
+        }
     });
 
     it('should call createCampaign with correct parameters on valid submission', async () => {

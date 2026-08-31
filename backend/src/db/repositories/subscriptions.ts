@@ -1,5 +1,8 @@
 import pool from '../../config/database';
 
+export const DEFAULT_SUBSCRIPTION_HISTORY_LIMIT = 50;
+export const MAX_SUBSCRIPTION_HISTORY_LIMIT = 100;
+
 interface SubscriptionRow {
   id: string;
   subscriber: string;
@@ -12,12 +15,24 @@ interface SubscriptionRow {
   tx_hash: string | null;
 }
 
-export async function findBySubscriber(subscriber: string): Promise<SubscriptionRow[]> {
+function normalizeSubscriptionLimit(take = DEFAULT_SUBSCRIPTION_HISTORY_LIMIT): number {
+  if (!Number.isFinite(take) || take <= 0) {
+    return DEFAULT_SUBSCRIPTION_HISTORY_LIMIT;
+  }
+  return Math.min(Math.floor(take), MAX_SUBSCRIPTION_HISTORY_LIMIT);
+}
+
+export async function findBySubscriber(
+  subscriber: string,
+  take = DEFAULT_SUBSCRIPTION_HISTORY_LIMIT,
+): Promise<SubscriptionRow[]> {
+  const limit = normalizeSubscriptionLimit(take);
   const { rows } = await pool.query(
     `SELECT * FROM subscriptions
      WHERE subscriber = $1
-     ORDER BY started_at DESC`,
-    [subscriber],
+     ORDER BY started_at DESC
+     LIMIT $2`,
+    [subscriber, limit],
   );
   return rows;
 }

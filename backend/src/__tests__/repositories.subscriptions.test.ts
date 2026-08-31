@@ -12,7 +12,7 @@ describe('subscriptions repository', () => {
   beforeEach(() => vi.clearAllMocks());
 
   describe('findBySubscriber', () => {
-    it('returns every subscription for the subscriber, newest first', async () => {
+    it('returns subscriptions for the subscriber, newest first, with the default cap', async () => {
       mockQuery.mockResolvedValue({ rows: [{ id: 1 }, { id: 2 }] });
 
       const result = await subscriptions.findBySubscriber('GSUB');
@@ -20,7 +20,19 @@ describe('subscriptions repository', () => {
       expect(result).toHaveLength(2);
       expect(mockQuery).toHaveBeenCalledWith(
         expect.stringContaining('ORDER BY started_at DESC'),
-        ['GSUB'],
+        ['GSUB', subscriptions.DEFAULT_SUBSCRIPTION_HISTORY_LIMIT],
+      );
+      expect(mockQuery.mock.calls[0][0]).toContain('LIMIT $2');
+    });
+
+    it('accepts an explicit limit and caps oversized requests', async () => {
+      mockQuery.mockResolvedValue({ rows: [] });
+
+      await subscriptions.findBySubscriber('GSUB', 500);
+
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.stringContaining('LIMIT $2'),
+        ['GSUB', subscriptions.MAX_SUBSCRIPTION_HISTORY_LIMIT],
       );
     });
 

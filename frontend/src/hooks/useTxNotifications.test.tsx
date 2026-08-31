@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import React from 'react';
+import type { Transaction } from '../store/tx-store';
 
-// Shared mutable state for the mock store
-let currentTransactions: any[] = [];
+const storeState = vi.hoisted(() => ({
+  transactions: [] as Transaction[],
+}));
 
 vi.mock('../store/tx-store', () => ({
-  useTransactionStore: (() => ({ transactions: currentTransactions })) as any,
+  useTransactionStore: () => ({ transactions: storeState.transactions }),
 }));
 
 const { mockSuccess, mockError } = vi.hoisted(() => ({
@@ -28,9 +29,19 @@ vi.mock('../contexts/ToastContext', () => ({
 import { useTxNotifications } from './useTxNotifications';
 import { useToast } from '../contexts/ToastContext';
 
+function transaction(txHash: string, status: Transaction['status'], description: string): Transaction {
+  return {
+    txHash,
+    status,
+    description,
+    type: 'other',
+    timestamp: Date.now(),
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
-  currentTransactions = [];
+  storeState.transactions = [];
 });
 
 describe('useTxNotifications', () => {
@@ -39,40 +50,28 @@ describe('useTxNotifications', () => {
     expect(useToast).toHaveBeenCalled();
   });
 
-  it('shows success toast on pending→success transition', () => {
-    // Start with pending transaction
-    currentTransactions = [
-      { txHash: 'h1', status: 'pending', description: 'Lock', timestamp: Date.now() },
-    ];
+  it('shows success toast on pending to success transition', () => {
+    storeState.transactions = [transaction('h1', 'pending', 'Lock')];
     const { rerender } = renderHook(() => useTxNotifications());
 
-    // Transition to success — must use new array reference for React to detect change
-    currentTransactions = [
-      { txHash: 'h1', status: 'success', description: 'Lock', timestamp: Date.now() },
-    ];
+    storeState.transactions = [transaction('h1', 'success', 'Lock')];
     rerender();
 
     expect(mockSuccess).toHaveBeenCalledWith('Transaction completed', 'Lock');
   });
 
-  it('shows error toast on pending→failed transition', () => {
-    currentTransactions = [
-      { txHash: 'h2', status: 'pending', description: 'Unlock', timestamp: Date.now() },
-    ];
+  it('shows error toast on pending to failed transition', () => {
+    storeState.transactions = [transaction('h2', 'pending', 'Unlock')];
     const { rerender } = renderHook(() => useTxNotifications());
 
-    currentTransactions = [
-      { txHash: 'h2', status: 'failed', description: 'Unlock', timestamp: Date.now() },
-    ];
+    storeState.transactions = [transaction('h2', 'failed', 'Unlock')];
     rerender();
 
     expect(mockError).toHaveBeenCalledWith('Transaction failed', 'Unlock');
   });
 
   it('does not notify for pending-only transactions', () => {
-    currentTransactions = [
-      { txHash: 'h3', status: 'pending', description: 'Vote', timestamp: Date.now() },
-    ];
+    storeState.transactions = [transaction('h3', 'pending', 'Vote')];
     renderHook(() => useTxNotifications());
 
     expect(mockSuccess).not.toHaveBeenCalled();
