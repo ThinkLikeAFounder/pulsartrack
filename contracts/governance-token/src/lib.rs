@@ -399,6 +399,9 @@ impl GovernanceTokenContract {
         if let Some(d) = to_delegate_cp {
             Self::write_checkpoint(&env, &d);
         }
+
+        env.events()
+            .publish((symbol_short!("transfer"),), (from, to, amount));
     }
 
     /// Approve token spending
@@ -416,7 +419,7 @@ impl GovernanceTokenContract {
             panic!("expiry must be a future ledger sequence");
         }
 
-        let _ttl_key = DataKey::Allowance(owner, spender);
+        let _ttl_key = DataKey::Allowance(owner.clone(), spender.clone());
         env.storage()
             .persistent()
             .set(&_ttl_key, &Allowance { amount, expiry });
@@ -424,6 +427,11 @@ impl GovernanceTokenContract {
             &_ttl_key,
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
+        );
+
+        env.events().publish(
+            (symbol_short!("approve"),),
+            (owner, spender, amount, expiry),
         );
     }
 
@@ -510,6 +518,9 @@ impl GovernanceTokenContract {
         if let Some(d) = to_delegate_cp {
             Self::write_checkpoint(&env, &d);
         }
+
+        env.events()
+            .publish((symbol_short!("mint"),), (recipient, amount));
     }
 
     /// Burn tokens
@@ -580,6 +591,9 @@ impl GovernanceTokenContract {
         if let Some(d) = from_delegate_cp {
             Self::write_checkpoint(&env, &d);
         }
+
+        env.events()
+            .publish((symbol_short!("burn"),), (from, amount));
     }
 
     /// Delegate voting power
@@ -675,6 +689,7 @@ impl GovernanceTokenContract {
             .get::<DataKey, Delegation>(&DataKey::Delegation(delegator.clone()));
 
         let mut from_delegate_cp: Option<Address> = None;
+        let mut revoked_delegate: Option<Address> = None;
         if let Some(delegation_info) = delegation {
             let delegator_balance: i128 = env
                 .storage()
@@ -689,6 +704,7 @@ impl GovernanceTokenContract {
                 .unwrap_or(0);
             let new_power = delegate_power.saturating_sub(delegator_balance);
             from_delegate_cp = Some(delegation_info.delegate.clone());
+            revoked_delegate = Some(delegation_info.delegate.clone());
             let _ttl_key = DataKey::DelegatedPower(delegation_info.delegate);
             env.storage()
                 .persistent()
@@ -707,6 +723,11 @@ impl GovernanceTokenContract {
         Self::write_checkpoint(&env, &delegator);
         if let Some(d) = from_delegate_cp {
             Self::write_checkpoint(&env, &d);
+        }
+
+        if let Some(delegate) = revoked_delegate {
+            env.events()
+                .publish((symbol_short!("revoke"),), (delegator, delegate));
         }
     }
 

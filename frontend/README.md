@@ -16,6 +16,14 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Error tracking
+
+Sentry is disabled unless a DSN is configured. Set `SENTRY_DSN` for server and
+edge errors and `NEXT_PUBLIC_SENTRY_DSN` for browser errors. Keep
+`SENTRY_AUTH_TOKEN` server-side and set it only in CI when source-map uploads are
+needed. Authorization, cookie, password, token, and secret fields are scrubbed
+before events are sent.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

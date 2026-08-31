@@ -43,8 +43,8 @@ RUN npm prune --production
 # Copy built application from builder
 COPY --from=builder /app/dist ./dist
 
-# Copy prisma schema if it exists
-COPY --from=builder /app/prisma ./prisma 2>/dev/null || true
+# Prisma is required by the generated client at runtime
+COPY --from=builder /app/prisma ./prisma
 
 # Switch to non-root user
 USER expressjs
@@ -58,4 +58,3 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 
 # Start the application
 CMD ["node", "dist/index.js"]
-

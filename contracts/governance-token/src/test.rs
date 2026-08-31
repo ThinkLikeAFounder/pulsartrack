@@ -1,8 +1,8 @@
 #![cfg(test)]
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as _, Ledger, LedgerInfo},
-    Address, Env,
+    testutils::{Address as _, Events as _, Ledger, LedgerInfo},
+    vec, Address, Env, IntoVal,
 };
 
 fn setup(env: &Env) -> (GovernanceTokenContractClient<'_>, Address) {
@@ -52,6 +52,108 @@ fn test_mint() {
     c.mint(&admin, &user, &1_000_000i128);
     assert_eq!(c.balance(&user), 1_000_000);
     assert_eq!(c.total_supply(), 1_000_000);
+}
+
+#[test]
+fn test_token_operations_emit_events() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin) = setup(&env);
+    let owner = Address::generate(&env);
+    let recipient = Address::generate(&env);
+    let spender = Address::generate(&env);
+    let delegate = Address::generate(&env);
+
+    c.mint(&admin, &owner, &1_000);
+    assert_eq!(
+        env.events().all(),
+        vec![
+            &env,
+            (
+                c.address.clone(),
+                (symbol_short!("mint"),).into_val(&env),
+                (owner.clone(), 1_000i128).into_val(&env),
+            )
+        ]
+    );
+
+    c.transfer(&owner, &recipient, &100);
+    assert_eq!(
+        env.events().all(),
+        vec![
+            &env,
+            (
+                c.address.clone(),
+                (symbol_short!("transfer"),).into_val(&env),
+                (owner.clone(), recipient.clone(), 100i128).into_val(&env),
+            )
+        ]
+    );
+
+    c.approve(&owner, &spender, &50, &1_000);
+    assert_eq!(
+        env.events().all(),
+        vec![
+            &env,
+            (
+                c.address.clone(),
+                (symbol_short!("approve"),).into_val(&env),
+                (owner.clone(), spender.clone(), 50i128, 1_000u32).into_val(&env),
+            )
+        ]
+    );
+
+    c.transfer_from(&spender, &owner, &recipient, &20);
+    assert_eq!(
+        env.events().all(),
+        vec![
+            &env,
+            (
+                c.address.clone(),
+                (symbol_short!("transfer"),).into_val(&env),
+                (owner.clone(), recipient, 20i128).into_val(&env),
+            )
+        ]
+    );
+
+    c.burn(&owner, &25);
+    assert_eq!(
+        env.events().all(),
+        vec![
+            &env,
+            (
+                c.address.clone(),
+                (symbol_short!("burn"),).into_val(&env),
+                (owner.clone(), 25i128).into_val(&env),
+            )
+        ]
+    );
+
+    c.delegate(&owner, &delegate);
+    assert_eq!(
+        env.events().all(),
+        vec![
+            &env,
+            (
+                c.address.clone(),
+                (symbol_short!("delegate"),).into_val(&env),
+                (owner.clone(), delegate.clone()).into_val(&env),
+            )
+        ]
+    );
+
+    c.revoke_delegation(&owner);
+    assert_eq!(
+        env.events().all(),
+        vec![
+            &env,
+            (
+                c.address.clone(),
+                (symbol_short!("revoke"),).into_val(&env),
+                (owner, delegate).into_val(&env),
+            )
+        ]
+    );
 }
 
 #[test]
