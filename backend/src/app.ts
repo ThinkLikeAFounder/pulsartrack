@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import * as Sentry from '@sentry/node';
 import apiRoutes from './api/routes';
 import redisClient from './config/redis';
 import { errorHandler, rateLimit, configureRateLimiters } from './middleware/auth';
@@ -48,6 +49,7 @@ app.use((_req, res) => {
     res.status(404).json({ error: 'Route not found' });
 });
 
+Sentry.setupExpressErrorHandler(app);
 app.use(errorHandler);
 
 export default app;
