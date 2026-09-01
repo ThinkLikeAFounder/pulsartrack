@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { Transaction } from '../store/tx-store';
 
 const { mockGetTransaction, mockUpdateTransaction } = vi.hoisted(() => ({
   mockGetTransaction: vi.fn(),
@@ -11,10 +12,7 @@ vi.mock('./soroban-client', () => ({
 
 vi.mock('../store/tx-store', () => ({
   useTransactionStore: {
-    getState: vi.fn().mockReturnValue({
-      transactions: [],
-      updateTransaction: mockUpdateTransaction,
-    }),
+    getState: vi.fn(),
   },
 }));
 
@@ -33,30 +31,51 @@ vi.mock('@stellar/stellar-sdk', () => ({
 import { checkPendingTransactions, pollTransaction } from './tx-recovery';
 import { useTransactionStore } from '../store/tx-store';
 
+type TransactionStoreState = ReturnType<typeof useTransactionStore.getState>;
+
+function makeTransaction(overrides: Partial<Transaction>): Transaction {
+  return {
+    txHash: 'h',
+    type: 'other',
+    status: 'pending',
+    timestamp: Date.now(),
+    description: 'test',
+    ...overrides,
+  };
+}
+
+function mockState(transactions: Transaction[] = []): TransactionStoreState {
+  return {
+    transactions,
+    _hydrated: true,
+    addTransaction: vi.fn(),
+    updateTransaction: mockUpdateTransaction,
+    getTransaction: vi.fn(),
+    getPendingTransactions: vi.fn(),
+    clearOldTransactions: vi.fn(),
+    setHydrated: vi.fn(),
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(useTransactionStore.getState).mockReturnValue({
-    transactions: [],
-    updateTransaction: mockUpdateTransaction,
-  } as any);
+  vi.mocked(useTransactionStore.getState).mockReturnValue(mockState());
 });
 
 describe('checkPendingTransactions', () => {
   it('does nothing when no pending transactions', async () => {
-    vi.mocked(useTransactionStore.getState).mockReturnValue({
-      transactions: [{ txHash: 'h1', status: 'success' }],
-      updateTransaction: mockUpdateTransaction,
-    } as any);
+    vi.mocked(useTransactionStore.getState).mockReturnValue(
+      mockState([makeTransaction({ txHash: 'h1', status: 'success' })]),
+    );
 
     await checkPendingTransactions();
     expect(mockGetTransaction).not.toHaveBeenCalled();
   });
 
   it('marks transaction as success when confirmed', async () => {
-    vi.mocked(useTransactionStore.getState).mockReturnValue({
-      transactions: [{ txHash: 'h1', status: 'pending', timestamp: Date.now(), description: 'test' }],
-      updateTransaction: mockUpdateTransaction,
-    } as any);
+    vi.mocked(useTransactionStore.getState).mockReturnValue(
+      mockState([makeTransaction({ txHash: 'h1', status: 'pending' })]),
+    );
 
     mockGetTransaction.mockResolvedValue({
       status: 'SUCCESS',
@@ -72,10 +91,9 @@ describe('checkPendingTransactions', () => {
   });
 
   it('marks transaction as failed when on-chain fails', async () => {
-    vi.mocked(useTransactionStore.getState).mockReturnValue({
-      transactions: [{ txHash: 'h2', status: 'pending', timestamp: Date.now(), description: 'test' }],
-      updateTransaction: mockUpdateTransaction,
-    } as any);
+    vi.mocked(useTransactionStore.getState).mockReturnValue(
+      mockState([makeTransaction({ txHash: 'h2', status: 'pending' })]),
+    );
 
     mockGetTransaction.mockResolvedValue({ status: 'FAILED' });
 
@@ -89,10 +107,9 @@ describe('checkPendingTransactions', () => {
 
   it('marks old not-found transaction as failed', async () => {
     const oneDayAgo = Date.now() - 25 * 60 * 60 * 1000;
-    vi.mocked(useTransactionStore.getState).mockReturnValue({
-      transactions: [{ txHash: 'h3', status: 'timeout', timestamp: oneDayAgo, description: 'test' }],
-      updateTransaction: mockUpdateTransaction,
-    } as any);
+    vi.mocked(useTransactionStore.getState).mockReturnValue(
+      mockState([makeTransaction({ txHash: 'h3', status: 'timeout', timestamp: oneDayAgo })]),
+    );
 
     mockGetTransaction.mockResolvedValue({ status: 'NOT_FOUND' });
 
@@ -105,10 +122,9 @@ describe('checkPendingTransactions', () => {
   });
 
   it('handles RPC errors gracefully', async () => {
-    vi.mocked(useTransactionStore.getState).mockReturnValue({
-      transactions: [{ txHash: 'h4', status: 'pending', timestamp: Date.now(), description: 'test' }],
-      updateTransaction: mockUpdateTransaction,
-    } as any);
+    vi.mocked(useTransactionStore.getState).mockReturnValue(
+      mockState([makeTransaction({ txHash: 'h4', status: 'pending' })]),
+    );
 
     mockGetTransaction.mockRejectedValue(new Error('network error'));
 
@@ -146,7 +162,7 @@ describe('pollTransaction', () => {
     expect(result.error).toBe('Polling timeout');
     expect(mockUpdateTransaction).toHaveBeenCalledWith('tx3', {
       status: 'timeout',
-      error: 'Transaction confirmation timed out — check explorer',
+      error: 'Transaction confirmation timed out ? check explorer',
     });
   });
 });

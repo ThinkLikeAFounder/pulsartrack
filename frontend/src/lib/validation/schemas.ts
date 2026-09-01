@@ -4,7 +4,7 @@ const VALID_DURATIONS = [7, 14, 30, 60, 90] as const;
 
 export const campaignSchema = z
   .object({
-    title: z.string().min(1, "Title is required"),
+    title: z.string().min(1, "Title is required").max(200, "Title must be 200 characters or less"),
     contentId: z.string().min(1, "Content ID is required"),
     campaignType: z.coerce
       .number()
@@ -53,7 +53,7 @@ export const campaignSchema = z
     },
     {
       message:
-        "Budget must be sufficient for target views (budget >= cost per view × target views)",
+        "Budget must be sufficient for target views (budget >= cost per view ? target views)",
       path: ["budgetXlm"],
     },
   )
