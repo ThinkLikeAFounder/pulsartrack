@@ -33,7 +33,7 @@ export function scrub(value: unknown): unknown {
   }
 
   return Object.fromEntries(
-    Object.entries(value).map(([key, item]) => [
+    Object.entries(value as Record<string, unknown>).map(([key, item]) => [
       key,
       isSensitiveKey(key) ? "[Filtered]" : scrub(item),
     ])

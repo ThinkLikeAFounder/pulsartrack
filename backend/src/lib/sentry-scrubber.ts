@@ -31,7 +31,6 @@ export function scrub(value: unknown): unknown {
   if (!value || typeof value !== "object") {
     return value;
   }
-
   return Object.fromEntries(
     Object.entries(value).map(([key, item]) => [
       key,
