@@ -39,7 +39,7 @@ mod tests {
     fn test_calculate_fee_bps_normal() {
         assert_eq!(calculate_fee_bps(10_000, 250), 250);
         assert_eq!(calculate_fee_bps(1_000, 100), 10);
-        assert_eq!(calculate_fee_bps(100, 500), 50);
+        assert_eq!(calculate_fee_bps(100, 500), 5);
     }
 
     #[test]
