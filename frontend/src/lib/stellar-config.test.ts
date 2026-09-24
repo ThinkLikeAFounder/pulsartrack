@@ -9,6 +9,7 @@ import {
   getSorobanRpcUrl,
   getNetworkPassphrase,
   validateRequiredEnv,
+  REQUIRED_ENV_VARS,
   NETWORKS,
   STROOPS_PER_XLM,
 } from './stellar-config';
@@ -163,3 +164,16 @@ describe('validateRequiredEnv', () => {
     expect(() => validateRequiredEnv()).toThrow('NEXT_PUBLIC_NETWORK');
   });
 });
+
+describe('frontend/.env.example divergence check', () => {
+  it('ensures frontend/.env.example lists every REQUIRED_ENV_VARS entry', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const envExamplePath = path.resolve(__dirname, '../../.env.example');
+    const content = fs.readFileSync(envExamplePath, 'utf-8');
+    for (const key of REQUIRED_ENV_VARS) {
+      expect(content).toContain(key);
+    }
+  });
+});
+

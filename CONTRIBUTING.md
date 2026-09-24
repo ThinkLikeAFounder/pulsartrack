@@ -45,6 +45,7 @@ npm install
 ```bash
 cd frontend
 npm install
+cp .env.example .env.local
 ```
 
 ## Development Workflow

@@ -159,8 +159,8 @@ cargo test                     # all contract unit + integration tests
 cd frontend
 npm install
 
-# Configure frontend/.env.local with your deployed contract IDs
-# (copy the IDs from deployments/deployed-testnet.json after deploy.sh)
+# Copy example environment file for frontend (lists all required NEXT_PUBLIC_* vars and testnet defaults)
+cp .env.example .env.local
 
 npm run dev
 ```
@@ -252,13 +252,13 @@ Set `NEXT_PUBLIC_STELLAR_NETWORK=testnet` in `frontend/.env.local` and
 
 ### Frontend (`frontend/.env.local`)
 
-```env
-NEXT_PUBLIC_STELLAR_NETWORK=testnet
-NEXT_PUBLIC_API_URL=http://localhost:3001
-NEXT_PUBLIC_WS_URL=ws://localhost:3001/ws
-NEXT_PUBLIC_CONTRACT_CAMPAIGN_ORCHESTRATOR=<contract-id>
-# ... one NEXT_PUBLIC_CONTRACT_* entry per deployed contract
+See [`frontend/.env.example`](frontend/.env.example) for the full list of required and optional `NEXT_PUBLIC_*` environment variables. Copy `frontend/.env.example` to `frontend/.env.local` for local development:
+
+```bash
+cd frontend
+cp .env.example .env.local
 ```
+
 
 ### Backend (`backend/.env`)
 

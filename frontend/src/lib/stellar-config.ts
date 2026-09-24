@@ -198,7 +198,7 @@ export function getNetworkPassphrase(): string {
 // Required NEXT_PUBLIC_* env vars, validated at startup so a missing or
 // malformed one fails loudly here instead of surfacing later inside
 // whichever feature happens to need it.
-const REQUIRED_ENV_VARS = [
+export const REQUIRED_ENV_VARS = [
   'NEXT_PUBLIC_NETWORK',
   'NEXT_PUBLIC_WS_URL',
   'NEXT_PUBLIC_CONTRACT_AD_REGISTRY',

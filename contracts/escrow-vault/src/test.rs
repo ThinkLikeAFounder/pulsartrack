@@ -105,7 +105,7 @@ fn test_create_escrow() {
     let approver = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+    let escrow_id = client.create_escrow(&EscrowCreateArgs {
         depositor: depositor.clone(),
         campaign_id: 1u64,
         beneficiary: beneficiary.clone(),
@@ -140,7 +140,7 @@ fn test_create_escrow_zero_amount() {
     let depositor = Address::generate(&env);
     let beneficiary = Address::generate(&env);
 
-    c.create_escrow(&EscrowCreateArgs {
+    client.create_escrow(&EscrowCreateArgs {
         depositor: depositor.clone(),
         campaign_id: 1u64,
         beneficiary: beneficiary.clone(),
@@ -170,7 +170,7 @@ fn test_create_escrow_invalid_performance_threshold() {
     let beneficiary = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    c.create_escrow(&EscrowCreateArgs {
+    client.create_escrow(&EscrowCreateArgs {
         depositor: depositor.clone(),
         campaign_id: 1u64,
         beneficiary: beneficiary.clone(),
@@ -199,7 +199,7 @@ fn test_create_escrow_zero_time_lock_duration() {
     let beneficiary = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    c.create_escrow(&EscrowCreateArgs {
+    client.create_escrow(&EscrowCreateArgs {
         depositor: depositor.clone(),
         campaign_id: 1u64,
         beneficiary: beneficiary.clone(),
@@ -234,7 +234,7 @@ fn test_create_escrow_time_lock_overflow() {
     });
 
     // now + time_lock_duration wraps past u64::MAX
-    c.create_escrow(&EscrowCreateArgs {
+    client.create_escrow(&EscrowCreateArgs {
         depositor: depositor.clone(),
         campaign_id: 1u64,
         beneficiary: beneficiary.clone(),
@@ -269,7 +269,7 @@ fn test_create_escrow_expires_at_overflow() {
     });
 
     // now + expires_in wraps past u64::MAX while time lock stays valid
-    c.create_escrow(&EscrowCreateArgs {
+    client.create_escrow(&EscrowCreateArgs {
         depositor: depositor.clone(),
         campaign_id: 1u64,
         beneficiary: beneficiary.clone(),
@@ -300,7 +300,7 @@ fn test_approve_release() {
     let approver = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+    let escrow_id = client.create_escrow(&EscrowCreateArgs {
         depositor: depositor.clone(),
         campaign_id: 1u64,
         beneficiary: beneficiary.clone(),
@@ -332,7 +332,7 @@ fn test_approve_release_duplicate_fails() {
     let sac = StellarAssetClient::new(&env, &token_addr);
     sac.mint(&depositor, &1_000_000);
 
-    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+    let escrow_id = client.create_escrow(&EscrowCreateArgs {
         depositor: depositor.clone(),
         campaign_id: 1u64,
         beneficiary: beneficiary.clone(),
@@ -369,7 +369,7 @@ fn test_approve_release_unauthorized() {
     let stranger = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+    let escrow_id = client.create_escrow(&EscrowCreateArgs {
         depositor: depositor.clone(),
         campaign_id: 1u64,
         beneficiary: beneficiary.clone(),
@@ -401,7 +401,7 @@ fn test_approve_release_refunded_fails() {
     let approver = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+    let escrow_id = client.create_escrow(&EscrowCreateArgs {
         depositor: depositor.clone(),
         campaign_id: 1u64,
         beneficiary: beneficiary.clone(),
@@ -442,7 +442,7 @@ fn test_approve_release_disputed_fails() {
     let approver = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+    let escrow_id = client.create_escrow(&EscrowCreateArgs {
         depositor: depositor.clone(),
         campaign_id: 1u64,
         beneficiary: beneficiary.clone(),
@@ -476,7 +476,7 @@ fn test_release_escrow() {
     let approver = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+    let escrow_id = client.create_escrow(&EscrowCreateArgs {
         depositor: depositor.clone(),
         campaign_id: 1u64,
         beneficiary: beneficiary.clone(),
@@ -518,7 +518,7 @@ fn test_release_escrow_time_lock_active() {
     let approver = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+    let escrow_id = client.create_escrow(&EscrowCreateArgs {
         depositor: depositor.clone(),
         campaign_id: 1u64,
         beneficiary: beneficiary.clone(),
@@ -551,7 +551,7 @@ fn test_release_escrow_no_approval() {
     let approver = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+    let escrow_id = client.create_escrow(&EscrowCreateArgs {
         depositor: depositor.clone(),
         campaign_id: 1u64,
         beneficiary: beneficiary.clone(),
@@ -586,7 +586,7 @@ fn test_release_escrow_unauthorized_caller() {
     let stranger = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+    let escrow_id = client.create_escrow(&EscrowCreateArgs {
         depositor: depositor.clone(),
         campaign_id: 1u64,
         beneficiary: beneficiary.clone(),
@@ -620,7 +620,7 @@ fn test_release_partial() {
     let approver = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+    let escrow_id = client.create_escrow(&EscrowCreateArgs {
         depositor: depositor.clone(),
         campaign_id: 1u64,
         beneficiary: beneficiary.clone(),
@@ -661,7 +661,7 @@ fn test_release_partial_exceeds_locked() {
     let approver = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+    let escrow_id = client.create_escrow(&EscrowCreateArgs {
         depositor: depositor.clone(),
         campaign_id: 1u64,
         beneficiary: beneficiary.clone(),
@@ -694,7 +694,7 @@ fn test_release_after_partial_released_amount_correct() {
     let approver = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+    let escrow_id = client.create_escrow(&EscrowCreateArgs {
         depositor: depositor.clone(),
         campaign_id: 1u64,
         beneficiary: beneficiary.clone(),
@@ -738,7 +738,7 @@ fn test_refund_escrow() {
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
     // expires_in = 100 seconds from now (ledger timestamp = 0 by default)
-    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+    let escrow_id = client.create_escrow(&EscrowCreateArgs {
         depositor: depositor.clone(),
         campaign_id: 1u64,
         beneficiary: beneficiary.clone(),
@@ -782,7 +782,7 @@ fn test_refund_escrow_not_expired() {
     let approver = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+    let escrow_id = client.create_escrow(&EscrowCreateArgs {
         depositor: depositor.clone(),
         campaign_id: 1u64,
         beneficiary: beneficiary.clone(),
@@ -815,7 +815,7 @@ fn test_update_performance() {
     let approver = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+    let escrow_id = client.create_escrow(&EscrowCreateArgs {
         depositor: depositor.clone(),
         campaign_id: 1u64,
         beneficiary: beneficiary.clone(),
@@ -852,7 +852,7 @@ fn test_update_performance_unauthorized() {
     let approver = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+    let escrow_id = client.create_escrow(&EscrowCreateArgs {
         depositor: depositor.clone(),
         campaign_id: 1u64,
         beneficiary: beneficiary.clone(),
@@ -886,7 +886,7 @@ fn test_release_blocked_by_performance_threshold() {
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
     // performance_threshold = 80, but we'll record only 50
-    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+    let escrow_id = client.create_escrow(&EscrowCreateArgs {
         depositor: depositor.clone(),
         campaign_id: 1u64,
         beneficiary: beneficiary.clone(),
@@ -925,7 +925,7 @@ fn test_hold_for_fraud() {
     let approver = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+    let escrow_id = client.create_escrow(&EscrowCreateArgs {
         depositor: depositor.clone(),
         campaign_id: 1u64,
         beneficiary: beneficiary.clone(),
@@ -963,7 +963,7 @@ fn test_release_disputed_escrow_fails() {
     let approver = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+    let escrow_id = client.create_escrow(&EscrowCreateArgs {
         depositor: depositor.clone(),
         campaign_id: 1u64,
         beneficiary: beneficiary.clone(),
@@ -998,7 +998,7 @@ fn test_can_release_returns_true_when_conditions_met() {
     let approver = Address::generate(&env);
     mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
 
-    let escrow_id = c.create_escrow(&EscrowCreateArgs {
+    let escrow_id = client.create_escrow(&EscrowCreateArgs {
         depositor: depositor.clone(),
         campaign_id: 1u64,
         beneficiary: beneficiary.clone(),
