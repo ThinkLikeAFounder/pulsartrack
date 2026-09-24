@@ -2,6 +2,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { IncomingMessage, Server } from "http";
 import { streamLedgers } from "./horizon";
 import { logger } from "../lib/logger";
+import { resolveClientIp } from "../lib/trusted-proxy";
 import { decodeJwt } from "../lib/jwt";
 
 interface PulsarEvent {
@@ -84,9 +85,7 @@ export function setupWebSocketServer(server: Server): WebSocketServer {
   const wss = new WebSocketServer({ server, path: "/ws", maxPayload: MAX_PAYLOAD_SIZE });
 
   wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
-    const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0].trim()
-      ?? req.socket.remoteAddress
-      ?? "unknown";
+    const ip = resolveClientIp(req);
 
     const ipCount = connectionsPerIp.get(ip) ?? 0;
     if (ipCount >= MAX_CONNECTIONS_PER_IP) {

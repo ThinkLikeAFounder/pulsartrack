@@ -7,8 +7,16 @@ import * as Sentry from '@sentry/node';
 import apiRoutes from './api/routes';
 import redisClient from './config/redis';
 import { errorHandler, rateLimit, configureRateLimiters } from './middleware/auth';
+import { trustProxySetting } from './lib/trusted-proxy';
 
 const app = express();
+
+// Client IP for `req.ip` and the rate limiter. Without this, an app behind a
+// reverse proxy sees the proxy's address for every request and rate limits all
+// users as one. TRUST_PROXY is unset by default, which makes Express ignore
+// X-Forwarded-For and use the socket address — see src/lib/trusted-proxy.ts.
+app.set('trust proxy', trustProxySetting);
+
 const RESPONSE_TIMEOUT_MS = Number.parseInt(
     process.env.EXPRESS_RESPONSE_TIMEOUT_MS || '30000',
     10,
