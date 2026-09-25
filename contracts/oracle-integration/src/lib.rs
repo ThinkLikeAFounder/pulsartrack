@@ -230,7 +230,11 @@ impl OracleIntegrationContract {
         let key = DataKey::AuthorizedOracle(oracle.clone());
         let is_auth: bool = env.storage().persistent().get(&key).unwrap_or(false);
         if is_auth {
-            env.storage().persistent().extend_ttl(&key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
+            env.storage().persistent().extend_ttl(
+                &key,
+                PERSISTENT_LIFETIME_THRESHOLD,
+                PERSISTENT_BUMP_AMOUNT,
+            );
         }
         if !is_auth {
             panic!("not authorized oracle");

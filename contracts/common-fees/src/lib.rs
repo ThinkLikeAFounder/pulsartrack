@@ -1,8 +1,8 @@
 #![no_std]
 
-/// Shared fee-calculation helpers using checked arithmetic.
-///
-/// All functions panic with a clear message on overflow rather than wrapping.
+//! Shared fee-calculation helpers using checked arithmetic.
+//!
+//! All functions panic with a clear message on overflow rather than wrapping.
 
 /// Calculate a fee in basis points: `amount * bps / 10_000`.
 ///

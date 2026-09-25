@@ -3,7 +3,8 @@
 
 #![no_std]
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, xdr::ToXdr, Address, Bytes, BytesN, Env,
+    contract, contractclient, contractimpl, contracttype, symbol_short, xdr::ToXdr, Address, Bytes,
+    BytesN, Env,
 };
 
 // ============================================================
@@ -466,7 +467,7 @@ impl FraudPreventionContract {
             .instance()
             .get(&DataKey::PublisherNetwork)
             .expect("publisher network contract not configured");
-        let network_client = mocks::PublisherNetworkContractClient::new(env, &network_addr);
+        let network_client = PublisherNetworkContractClient::new(env, &network_addr);
         network_client.suspend_publisher(&env.current_contract_address(), publisher);
     }
 
@@ -488,8 +489,7 @@ impl FraudPreventionContract {
                 .instance()
                 .get::<DataKey, Address>(&DataKey::CampaignLifecycle)
             {
-                let lifecycle_client =
-                    mocks::CampaignLifecycleContractClient::new(env, &lifecycle_addr);
+                let lifecycle_client = CampaignLifecycleContractClient::new(env, &lifecycle_addr);
                 lifecycle_client.pause_for_fraud(&env.current_contract_address(), &campaign_id);
             }
         }

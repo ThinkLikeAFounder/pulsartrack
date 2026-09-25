@@ -327,4 +327,3 @@ fn test_update_metadata_suspended_fails() {
     c.suspend_identity(&admin, &account);
     c.update_metadata(&account, &s(&env, "QmNew"));
 }
-

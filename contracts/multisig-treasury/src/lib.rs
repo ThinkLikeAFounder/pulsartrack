@@ -469,8 +469,10 @@ impl MultisigTreasuryContract {
             panic!("unauthorized");
         }
         env.storage().instance().set(&DataKey::Paused, &paused);
-        env.events()
-            .publish((symbol_short!("pause"), symbol_short!("set")), (admin, paused));
+        env.events().publish(
+            (symbol_short!("pause"), symbol_short!("set")),
+            (admin, paused),
+        );
     }
 
     /// Whether the contract is currently paused.

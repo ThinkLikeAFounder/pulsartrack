@@ -263,7 +263,7 @@ impl TokenBridgeContract {
         }
 
         let total_refund = deposit.amount + deposit.bridge_fee;
-        
+
         // Update deposit status and persist BEFORE token transfer (CEI pattern)
         deposit.status = BridgeStatus::Refunded;
         let _ttl_key = DataKey::Deposit(deposit_id);

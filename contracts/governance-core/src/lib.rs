@@ -168,7 +168,11 @@ impl GovernanceCoreContract {
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
         let _ttl_key = DataKey::RoleGrant(account.clone(), role.clone());
-        if let Some(grant) = env.storage().persistent().get::<DataKey, RoleGrant>(&_ttl_key) {
+        if let Some(grant) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, RoleGrant>(&_ttl_key)
+        {
             if let Some(expires) = grant.expires_at {
                 if expires <= env.ledger().timestamp() {
                     // Expired — remove from storage to avoid unbounded rent accumulation
@@ -206,14 +210,19 @@ impl GovernanceCoreContract {
     }
 
     pub fn update_params(env: Env, admin: Address, params: GovernanceParams) {
-        
-        
-        if params.quorum_pct == 0 || params.quorum_pct > 100 { panic!("invalid quorum_pct"); }
-        if params.pass_threshold_pct == 0 || params.pass_threshold_pct > 100 { panic!("invalid pass_threshold_pct"); }
-        if params.voting_period_ledgers == 0 { panic!("voting_period_ledgers must be positive"); }
-        if params.max_active_proposals == 0 { panic!("max_active_proposals must be positive"); }
-        
-        
+        if params.quorum_pct == 0 || params.quorum_pct > 100 {
+            panic!("invalid quorum_pct");
+        }
+        if params.pass_threshold_pct == 0 || params.pass_threshold_pct > 100 {
+            panic!("invalid pass_threshold_pct");
+        }
+        if params.voting_period_ledgers == 0 {
+            panic!("voting_period_ledgers must be positive");
+        }
+        if params.max_active_proposals == 0 {
+            panic!("max_active_proposals must be positive");
+        }
+
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -245,7 +254,11 @@ impl GovernanceCoreContract {
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
         let _ttl_key = DataKey::RoleGrant(account, role);
-        if let Some(grant) = env.storage().persistent().get::<DataKey, RoleGrant>(&_ttl_key) {
+        if let Some(grant) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, RoleGrant>(&_ttl_key)
+        {
             env.storage().persistent().extend_ttl(
                 &_ttl_key,
                 PERSISTENT_LIFETIME_THRESHOLD,
@@ -270,7 +283,6 @@ impl GovernanceCoreContract {
     pub fn accept_admin(env: Env, new_admin: Address) {
         pulsar_common_admin::accept_admin(&env, &DataKey::Admin, &DataKey::PendingAdmin, new_admin);
     }
-
 }
 
 mod test;

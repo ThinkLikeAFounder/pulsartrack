@@ -94,7 +94,10 @@ fn test_claim_full_schedule() {
     });
     let claimed = client.claim(&beneficiary);
     assert_eq!(claimed, 100_000);
-    assert_eq!(TokenClient::new(&env, &token_addr).balance(&beneficiary), 100_000);
+    assert_eq!(
+        TokenClient::new(&env, &token_addr).balance(&beneficiary),
+        100_000
+    );
 }
 
 #[test]

@@ -402,8 +402,20 @@ fn test_mint_wrapped_replay_different_recipient_fails() {
         },
     );
 
-    c.mint_wrapped(&relayer, &s(&env, "wETH"), &user1, &1_000_000i128, &s(&env, "0xTxHash789"));
-    c.mint_wrapped(&relayer, &s(&env, "wETH"), &user2, &1_000_000i128, &s(&env, "0xTxHash789"));
+    c.mint_wrapped(
+        &relayer,
+        &s(&env, "wETH"),
+        &user1,
+        &1_000_000i128,
+        &s(&env, "0xTxHash789"),
+    );
+    c.mint_wrapped(
+        &relayer,
+        &s(&env, "wETH"),
+        &user2,
+        &1_000_000i128,
+        &s(&env, "0xTxHash789"),
+    );
 }
 
 #[test]
@@ -427,6 +439,18 @@ fn test_mint_wrapped_replay_different_amount_fails() {
         },
     );
 
-    c.mint_wrapped(&relayer, &s(&env, "wETH"), &user, &1_000_000i128, &s(&env, "0xTxHashABC"));
-    c.mint_wrapped(&relayer, &s(&env, "wETH"), &user, &2_000_000i128, &s(&env, "0xTxHashABC"));
+    c.mint_wrapped(
+        &relayer,
+        &s(&env, "wETH"),
+        &user,
+        &1_000_000i128,
+        &s(&env, "0xTxHashABC"),
+    );
+    c.mint_wrapped(
+        &relayer,
+        &s(&env, "wETH"),
+        &user,
+        &2_000_000i128,
+        &s(&env, "0xTxHashABC"),
+    );
 }

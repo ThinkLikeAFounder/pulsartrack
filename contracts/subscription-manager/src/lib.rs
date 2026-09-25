@@ -486,6 +486,11 @@ impl SubscriptionManagerContract {
 
         sub.auto_renew = false;
         save_subscription(&env, &sub);
+
+        env.events().publish(
+            (symbol_short!("sub"), symbol_short!("cancel")),
+            (subscriber.clone(), sub.tier, sub.expires_at),
+        );
     }
 
     // ----------------------------------------------------------
@@ -568,6 +573,11 @@ impl SubscriptionManagerContract {
     fn _init_plans(env: &Env) {
         // (tier, name, monthly_stroops, annual_stroops, max_campaigns,
         //  max_impressions/month, max_publishers, analytics, api_access)
+        //
+        // The inline array type is intentionally verbose to keep all plan data
+        // co-located and readable at a glance. A named type alias would add
+        // indirection without improving clarity here.
+        #[allow(clippy::type_complexity)]
         let plans: [(
             SubscriptionTier,
             &str,

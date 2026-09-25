@@ -190,11 +190,7 @@ impl WhitelistRegistryContract {
         }
     }
 
-    pub fn get_entry(
-        env: Env,
-        address: Address,
-        list_type: ListType,
-    ) -> Option<WhitelistEntry> {
+    pub fn get_entry(env: Env, address: Address, list_type: ListType) -> Option<WhitelistEntry> {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);

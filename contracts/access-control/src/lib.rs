@@ -56,9 +56,7 @@ impl AccessControlContract {
         env.storage().instance().set(&DataKey::Admin, &admin);
 
         let _ttl_key = DataKey::Role(admin.clone());
-        env.storage()
-            .persistent()
-            .set(&_ttl_key, &Role::SuperAdmin);
+        env.storage().persistent().set(&_ttl_key, &Role::SuperAdmin);
         env.storage().persistent().extend_ttl(
             &_ttl_key,
             PERSISTENT_LIFETIME_THRESHOLD,

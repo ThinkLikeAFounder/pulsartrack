@@ -97,7 +97,8 @@ fn test_deposit_for_bridge_overflow() {
     let (c, admin) = setup(&env);
 
     let token_admin = Address::generate(&env);
-    let token_id = env.register_stellar_asset_contract(token_admin);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin);
+    let token_id = token_contract.address();
 
     // Support the chain
     let chain = s(&env, "ethereum");
@@ -119,7 +120,8 @@ fn test_deposit_for_bridge_normal() {
     let (c, admin) = setup(&env);
 
     let token_admin = Address::generate(&env);
-    let token_id = env.register_stellar_asset_contract(token_admin);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin);
+    let token_id = token_contract.address();
 
     let chain = s(&env, "ethereum");
     c.add_supported_chain(&admin, &chain, &1_000_000i128);
@@ -148,7 +150,8 @@ fn test_daily_limit_enforced() {
     let (c, admin) = setup(&env);
 
     let token_admin = Address::generate(&env);
-    let token_id = env.register_stellar_asset_contract(token_admin);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin);
+    let token_id = token_contract.address();
 
     let chain = s(&env, "ethereum");
     c.add_supported_chain(&admin, &chain, &100i128);

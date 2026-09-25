@@ -292,8 +292,8 @@ impl GovernanceDaoContract {
         // attacker borrow tokens, vote on the inflated balance, and repay in the
         // same transaction; power acquired at or after the snapshot ledger now
         // resolves to the pre-existing checkpoint instead.
-        let voting_power = GovTokenClient::new(&env, &gov_token)
-            .get_past_votes(&voter, &proposal.snapshot_ledger);
+        let voting_power =
+            GovTokenClient::new(&env, &gov_token).get_past_votes(&voter, &proposal.snapshot_ledger);
         if power > voting_power {
             panic!("insufficient governance tokens");
         }
@@ -334,9 +334,24 @@ impl GovernanceDaoContract {
 
         // Record vote
         match choice {
-            VoteChoice::For => proposal.votes_for += power,
-            VoteChoice::Against => proposal.votes_against += power,
-            VoteChoice::Abstain => proposal.votes_abstain += power,
+            VoteChoice::For => {
+                proposal.votes_for = proposal
+                    .votes_for
+                    .checked_add(power)
+                    .expect("votes_for overflow");
+            }
+            VoteChoice::Against => {
+                proposal.votes_against = proposal
+                    .votes_against
+                    .checked_add(power)
+                    .expect("votes_against overflow");
+            }
+            VoteChoice::Abstain => {
+                proposal.votes_abstain = proposal
+                    .votes_abstain
+                    .checked_add(power)
+                    .expect("votes_abstain overflow");
+            }
         }
 
         let _ttl_key = DataKey::Proposal(proposal_id);
@@ -390,20 +405,33 @@ impl GovernanceDaoContract {
             soroban_sdk::vec![&env],
         );
 
-        let total_votes = proposal.votes_for + proposal.votes_against + proposal.votes_abstain;
+        let total_votes = proposal
+            .votes_for
+            .checked_add(proposal.votes_against)
+            .and_then(|sum| sum.checked_add(proposal.votes_abstain))
+            .expect("total_votes overflow");
 
-        let quorum_met = (total_votes * 10_000) >= (total_supply * (proposal.quorum_bps as i128));
+        let quorum_met = total_votes
+            .checked_mul(10_000)
+            .and_then(|lhs| {
+                total_supply
+                    .checked_mul(proposal.quorum_bps as i128)
+                    .map(|rhs| lhs >= rhs)
+            })
+            .expect("quorum calculation overflow");
 
         let for_bps = if total_votes > 0 {
-            (proposal.votes_for * 10_000) / total_votes
+            proposal
+                .votes_for
+                .checked_mul(10_000)
+                .and_then(|numerator| numerator.checked_div(total_votes))
+                .expect("for_bps calculation overflow")
         } else {
             0
         };
 
         proposal.status = if quorum_met && for_bps as u32 >= proposal.threshold_pct * 100 {
             ProposalStatus::Passed
-        } else if !quorum_met {
-            ProposalStatus::Rejected
         } else {
             ProposalStatus::Rejected
         };

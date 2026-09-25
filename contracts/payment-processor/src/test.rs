@@ -437,7 +437,7 @@ fn test_admin_transfer_flow() {
     let new_admin = Address::generate(&env);
 
     c.propose_admin(&admin, &new_admin);
-    
+
     // Advance sequence to satisfy time lock
     env.ledger().with_mut(|li| {
         li.sequence_number += 17281;

@@ -38,7 +38,9 @@ pub fn propose_admin<K>(
     if env.storage().instance().has(pending_key) {
         panic!("pending admin proposal already exists");
     }
-    env.storage().instance().set(pending_key, &(new_admin, env.ledger().sequence()));
+    env.storage()
+        .instance()
+        .set(pending_key, &(new_admin, env.ledger().sequence()));
 }
 
 pub fn accept_admin<K>(env: &Env, admin_key: &K, pending_key: &K, new_admin: Address)

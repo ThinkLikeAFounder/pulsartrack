@@ -17,8 +17,11 @@ jobs:
         uses: dtolnay/rust-toolchain@a543b39277eb30f36c65d6493d7b3c2652972468 # v1
         with:
           targets: wasm32-unknown-unknown
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@f0deed1e0edfc6a9be54100b5c490c13a34a17bd # v2.7.7
+          components: rustfmt, clippy
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Run Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Build contracts
         run: cargo build --workspace
       - name: Run contract tests

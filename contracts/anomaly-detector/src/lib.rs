@@ -251,8 +251,7 @@ impl AnomalyDetectorContract {
                 .saturating_mul(threshold_multiplier)
                 .saturating_div(100);
 
-            let impressions_exceeded =
-                params.current_impressions_per_hour > impressions_threshold;
+            let impressions_exceeded = params.current_impressions_per_hour > impressions_threshold;
             let clicks_exceeded = params.current_clicks_per_hour > clicks_threshold;
 
             if !impressions_exceeded && !clicks_exceeded {

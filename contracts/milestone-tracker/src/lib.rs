@@ -2,6 +2,10 @@
 //! Campaign milestone tracking and performance-based payment releases on Stellar.
 
 #![no_std]
+// `create_milestone` takes 8 parameters — all required for the on-chain ABI.
+// Soroban contract functions cannot use builder/struct patterns without
+// changing the ABI, so we suppress the lint at the crate level.
+#![allow(clippy::too_many_arguments)]
 use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, String};
 
 #[contracttype]
@@ -98,7 +102,8 @@ impl MilestoneTrackerContract {
         }
 
         let now = env.ledger().timestamp();
-        let deadline = now.checked_add(duration_secs)
+        let deadline = now
+            .checked_add(duration_secs)
             .expect("milestone deadline timestamp overflows u64");
 
         let counter: u64 = env

@@ -114,4 +114,3 @@ fn test_sync_balance_permissionless() {
     c.sync_balance();
     assert_eq!(c.get_state().balance, 500);
 }
-

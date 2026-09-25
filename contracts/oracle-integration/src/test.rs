@@ -77,10 +77,7 @@ fn test_remove_oracle_decrements_count() {
     c.remove_oracle(&admin, &oracle);
 
     let count: u32 = env.as_contract(&id, || {
-        env.storage()
-            .instance()
-            .get(&DataKey::OracleCount)
-            .unwrap()
+        env.storage().instance().get(&DataKey::OracleCount).unwrap()
     });
     assert_eq!(count, 0);
 }
