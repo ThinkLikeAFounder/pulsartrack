@@ -486,6 +486,11 @@ impl SubscriptionManagerContract {
 
         sub.auto_renew = false;
         save_subscription(&env, &sub);
+
+        env.events().publish(
+            (symbol_short!("sub"), symbol_short!("cancel")),
+            (subscriber.clone(), sub.tier, sub.expires_at),
+        );
     }
 
     // ----------------------------------------------------------
