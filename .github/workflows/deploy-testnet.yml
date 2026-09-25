@@ -18,25 +18,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@a543b39277eb30f36c65d6493d7b3c2652972468 # v1
         with:
           targets: wasm32-unknown-unknown
 
       - name: Cache Rust build
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        uses: Swatinem/rust-cache@f0deed1e0edfc6a9be54100b5c490c13a34a17bd # v2.7.7
 
       # A prebuilt release binary, instead of compiling the CLI from source.
       - name: Install Stellar CLI
-        uses: stellar/stellar-cli@v23.0.1
+        uses: stellar/stellar-cli@a66cb314df6373b94a86b9fc285cf66cb346d030 # v23.0.1
 
       - name: Build contract WASMs
         run: cargo build --release --target wasm32-unknown-unknown
@@ -70,7 +64,7 @@ jobs:
       # Deployment records are uploaded rather than pushed to main, which
       # branch protection may reject.
       - name: Upload deployment records
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         with:
           name: deployment-records
           path: deployments/

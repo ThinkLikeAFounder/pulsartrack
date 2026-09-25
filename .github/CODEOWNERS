@@ -1,0 +1,11 @@
+# CODEOWNERS for PulsarTrack repository
+
+# Smart contracts holding funds
+/contracts/ @ThinkLikeAFounder
+
+# Authentication & authorization code
+/backend/src/middleware/ @ThinkLikeAFounder
+/backend/src/lib/jwt.ts @ThinkLikeAFounder
+
+# CI/CD Workflows
+/.github/workflows/ @ThinkLikeAFounder
