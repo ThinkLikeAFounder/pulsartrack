@@ -1,11 +1,14 @@
 import { stroopsToXlm, STROOPS_PER_XLM } from './stellar-config';
 
 /**
- * Format XLM amount from stroops
+ * Format XLM amount from stroops to a fixed-decimal string with "XLM" suffix.
+ *
+ * `stroopsToXlm` returns a lossless string; this helper converts to `Number`
+ * for display formatting only — no arithmetic should rely on the conversion.
  */
 export function formatXlm(stroops: bigint | number, decimals = 2): string {
   const xlm = stroopsToXlm(stroops);
-  return `${xlm.toFixed(decimals)} XLM`;
+  return `${Number(xlm).toFixed(decimals)} XLM`;
 }
 
 /**

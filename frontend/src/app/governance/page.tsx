@@ -103,14 +103,14 @@ export default function GovernancePage() {
                 label: 'Your PULSAR Balance',
                 value: balanceLoading
                   ? 'Loading...'
-                  : `${stroopsToXlm(balance || 0n).toFixed(2)} PULSAR`,
+                  : `${Number(stroopsToXlm(balance || 0n)).toFixed(2)} PULSAR`,
                 icon: BarChart2,
               },
               {
                 label: 'Voting Power',
                 value: balanceLoading
                   ? 'Loading...'
-                  : stroopsToXlm(balance || 0n).toFixed(0),
+                  : Number(stroopsToXlm(balance || 0n)).toFixed(0),
                 icon: Vote,
               },
               {

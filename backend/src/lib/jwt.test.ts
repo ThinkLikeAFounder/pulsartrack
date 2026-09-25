@@ -81,4 +81,54 @@ describe("jwt", () => {
     );
   });
 
+  it("rejects a token with missing exp claim", () => {
+    const header = encode({ alg: "HS256", typ: "JWT" });
+    const now = Math.floor(Date.now() / 1000);
+    const body = encode({ sub: address, iat: now });
+
+    expect(() => decodeJwt(`${header}.${body}.${sign(header, body)}`)).toThrow(
+      "Token missing or invalid exp claim",
+    );
+  });
+
+  it("rejects a token with exp as a string", () => {
+    const header = encode({ alg: "HS256", typ: "JWT" });
+    const now = Math.floor(Date.now() / 1000);
+    const body = encode({ sub: address, iat: now, exp: `${now + TOKEN_EXPIRY}` });
+
+    expect(() => decodeJwt(`${header}.${body}.${sign(header, body)}`)).toThrow(
+      "Token missing or invalid exp claim",
+    );
+  });
+
+  it("rejects a token with exp as null", () => {
+    const header = encode({ alg: "HS256", typ: "JWT" });
+    const now = Math.floor(Date.now() / 1000);
+    const body = encode({ sub: address, iat: now, exp: null });
+
+    expect(() => decodeJwt(`${header}.${body}.${sign(header, body)}`)).toThrow(
+      "Token missing or invalid exp claim",
+    );
+  });
+
+  it("rejects a token with wrong alg header", () => {
+    const header = encode({ alg: "none", typ: "JWT" });
+    const now = Math.floor(Date.now() / 1000);
+    const body = encode({ sub: address, iat: now, exp: now + TOKEN_EXPIRY });
+
+    expect(() => decodeJwt(`${header}.${body}.${sign(header, body)}`)).toThrow(
+      "Invalid token header",
+    );
+  });
+
+  it("rejects a token with missing typ header", () => {
+    const header = encode({ alg: "HS256" });
+    const now = Math.floor(Date.now() / 1000);
+    const body = encode({ sub: address, iat: now, exp: now + TOKEN_EXPIRY });
+
+    expect(() => decodeJwt(`${header}.${body}.${sign(header, body)}`)).toThrow(
+      "Invalid token header",
+    );
+  });
+
 });

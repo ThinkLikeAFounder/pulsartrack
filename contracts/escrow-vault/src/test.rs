@@ -1022,16 +1022,16 @@ fn test_admin_transfer_flow() {
     let (c, admin, _, _) = setup(&env);
     let new_admin = Address::generate(&env);
 
-    c.propose_admin(&admin, &new_admin);
+    client.propose_admin(&admin, &new_admin);
     // common-admin enforces a minimum delay (17280 ledgers) before accept_admin
     env.ledger().with_mut(|li| {
         li.sequence_number += 17_280;
     });
-    c.accept_admin(&new_admin);
+    client.accept_admin(&new_admin);
 
     // Verify new admin can perform admin actions
     let fraud = Address::generate(&env);
-    c.set_fraud_contract(&new_admin, &fraud);
+    client.set_fraud_contract(&new_admin, &fraud);
 }
 
 #[test]
@@ -1043,7 +1043,7 @@ fn test_propose_admin_unauthorized() {
     let stranger = Address::generate(&env);
     let new_admin = Address::generate(&env);
 
-    c.propose_admin(&stranger, &new_admin);
+    client.propose_admin(&stranger, &new_admin);
 }
 
 #[test]
@@ -1055,8 +1055,8 @@ fn test_accept_admin_unauthorized() {
     let new_admin = Address::generate(&env);
     let stranger = Address::generate(&env);
 
-    c.propose_admin(&admin, &new_admin);
-    c.accept_admin(&stranger);
+    client.propose_admin(&admin, &new_admin);
+    client.accept_admin(&stranger);
 }
 
 // ─── set_dispute_contract ────────────────────────────────────────────────────
@@ -1068,7 +1068,7 @@ fn test_set_dispute_contract() {
     let (c, admin, _, _) = setup(&env);
     let dispute_addr = Address::generate(&env);
 
-    c.set_dispute_contract(&admin, &dispute_addr);
+    client.set_dispute_contract(&admin, &dispute_addr);
 }
 
 #[test]
@@ -1080,5 +1080,5 @@ fn test_set_dispute_contract_unauthorized() {
     let stranger = Address::generate(&env);
     let dispute_addr = Address::generate(&env);
 
-    c.set_dispute_contract(&stranger, &dispute_addr);
+    client.set_dispute_contract(&stranger, &dispute_addr);
 }

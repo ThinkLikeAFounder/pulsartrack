@@ -41,7 +41,7 @@ export function SubscriptionStatus({ subscription, onCancel, onRenew }: Subscrip
   const daysLeft = isExpired ? 0 : Math.ceil((expiresMs - now) / 86400000);
   const isExpiringSoon = !isExpired && daysLeft <= 7;
   const tierStyle = TIER_COLORS[subscription.tier] || TIER_COLORS.Starter;
-  const pricePaid = stroopsToXlm(subscription.amount_paid).toFixed(2);
+  const pricePaid = Number(stroopsToXlm(subscription.amount_paid)).toFixed(2);
 
   return (
     <div className="bg-gray-800 border border-gray-700 rounded-xl p-5 space-y-4">

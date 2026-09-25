@@ -21,7 +21,7 @@ import {
   useSubscribe,
 } from '@/hooks/useContract';
 import { formatAddress } from '@/lib/display-utils';
-import { stroopsToXlm } from '@/lib/stellar-config';
+import { formatXlm } from '@/lib/display-utils';
 
 type PublisherTab = 'overview' | 'auctions' | 'earnings' | 'subscription';
 
@@ -178,7 +178,7 @@ export default function PublisherPage() {
                 label: 'Total Earned',
                 value: earningsLoading
                   ? 'Loading...'
-                  : `${stroopsToXlm(earnings || 0n).toFixed(2)} XLM`,
+                  : `${formatXlm(earnings || 0n)}`,
                 bgClass: 'bg-green-100',
                 iconClass: 'text-green-600',
               },
@@ -368,7 +368,7 @@ export default function PublisherPage() {
                       </div>
                       <p className="text-sm text-gray-600 mb-2">
                         Current Bid:{' '}
-                        {stroopsToXlm(auction.current_bid || 0n).toFixed(4)} XLM
+                        {formatXlm(auction.current_bid || 0n, 4)}
                       </p>
                       <p className="text-sm text-gray-500">
                         Ends:{' '}
@@ -410,7 +410,7 @@ export default function PublisherPage() {
                       Available Balance
                     </p>
                     <p className="text-3xl font-bold text-green-600">
-                      {stroopsToXlm(earnings || 0n).toFixed(2)} XLM
+                      {formatXlm(earnings || 0n)}
                     </p>
                   </div>
                   <button className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium">

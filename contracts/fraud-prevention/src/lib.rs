@@ -511,38 +511,44 @@ impl FraudPreventionContract {
     }
 }
 
-// External contract clients wrapped in a module to avoid symbol name conflicts.
-// The structs/impls below are only invoked as contract endpoints (via their
-// generated Client), so rustc's dead-code analysis can't see the usage.
-#[allow(dead_code)]
-mod mocks {
+// External contract clients — only the trait + generated Client are needed in
+// production (for cross-contract calls). Full mock implementations live under
+// #[cfg(test)] so they don't leak into the WASM build and cause symbol
+// collisions (see #909).
+
+#[contractclient(name = "CampaignLifecycleContractClient")]
+pub trait CampaignLifecycleContract {
+    fn pause_for_fraud(fraud_contract: Address, campaign_id: u64);
+}
+
+#[contractclient(name = "PublisherNetworkContractClient")]
+pub trait PublisherNetworkContract {
+    fn suspend_publisher(fraud_contract: Address, publisher: Address);
+}
+
+#[cfg(test)]
+pub(crate) mod mocks {
     use super::*;
 
     #[contract]
     pub struct CampaignLifecycleContract;
     #[contractimpl]
     impl CampaignLifecycleContract {
-        pub fn pause_for_fraud(env: Env, fraud_contract: Address, campaign_id: u64) {
-            let _ = (env, fraud_contract, campaign_id);
-        }
+        pub fn pause_for_fraud(_env: Env, _fraud_contract: Address, _campaign_id: u64) {}
     }
 
     #[contract]
     pub struct PublisherNetworkContract;
     #[contractimpl]
     impl PublisherNetworkContract {
-        pub fn suspend_publisher(env: Env, fraud_contract: Address, publisher: Address) {
-            let _ = (env, fraud_contract, publisher);
-        }
+        pub fn suspend_publisher(_env: Env, _fraud_contract: Address, _publisher: Address) {}
     }
 
     #[contract]
     pub struct EscrowVaultContract;
     #[contractimpl]
     impl EscrowVaultContract {
-        pub fn hold_for_fraud(env: Env, fraud_contract: Address, escrow_id: u64) {
-            let _ = (env, fraud_contract, escrow_id);
-        }
+        pub fn hold_for_fraud(_env: Env, _fraud_contract: Address, _escrow_id: u64) {}
     }
 }
 

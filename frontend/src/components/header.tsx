@@ -13,6 +13,7 @@ import { TxHistory } from "./wallet/TxHistory";
 import { checkPendingTransactions } from "../lib/tx-recovery";
 import { useTxNotifications } from "../hooks/useTxNotifications";
 import { useThemeStore, ThemeMode } from "../store/theme-store";
+import { CURRENT_NETWORK } from "../lib/stellar-config";
 
 export function Header() {
   const { address, isConnected, networkMismatch, _hydrated } = useWalletStore();
@@ -58,7 +59,7 @@ export function Header() {
           <AlertTriangle className="w-4 h-4" />
           <span>
             Please switch your Freighter wallet to{" "}
-            {process.env.NEXT_PUBLIC_STELLAR_NETWORK || "testnet"}
+            {CURRENT_NETWORK}
           </span>
         </div>
       )}

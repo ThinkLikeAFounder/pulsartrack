@@ -45,18 +45,32 @@ function safeCompareSignatures(actual: string, expected: string): boolean {
 export function decodeJwt(token: string): Record<string, any> {
   const parts = token.split(".");
   if (parts.length !== 3) throw new Error("Malformed token");
-  const [header, body, sig] = parts;
+  const [headerB64, body, sig] = parts;
+
+  // Validate header: must be exactly {"alg":"HS256","typ":"JWT"}.
+  const header = JSON.parse(Buffer.from(headerB64, "base64url").toString());
+  if (header.alg !== "HS256" || header.typ !== "JWT") {
+    throw new Error("Invalid token header");
+  }
+
   const expected = crypto
     .createHmac("sha256", JWT_SECRET)
-    .update(`${header}.${body}`)
+    .update(`${headerB64}.${body}`)
     .digest("base64url");
   if (!safeCompareSignatures(sig, expected)) {
     throw new Error("Invalid token signature");
   }
+
   const payload = JSON.parse(Buffer.from(body, "base64url").toString());
+
+  // exp must be present and a finite number; reject tokens without it.
+  if (typeof payload.exp !== "number" || !Number.isFinite(payload.exp)) {
+    throw new Error("Token missing or invalid exp claim");
+  }
   if (payload.exp < Math.floor(Date.now() / 1000)) {
     throw new Error("Token expired");
   }
+
   return payload;
 }
 

@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Auction } from '@/types/contracts';
 import { usePlaceBid } from '@/hooks/useContract';
-import { stroopsToXlm, xlmToStroops } from '@/lib/stellar-config';
+import { stroopsToXlm, xlmToStroops, STROOPS_PER_XLM } from '@/lib/stellar-config';
 import { createBidSchema, BidFormData } from '@/lib/validation/schemas';
 
 interface BidFormProps {
@@ -19,13 +19,19 @@ export function BidForm({ auction, campaignId, onSuccess, onCancel }: BidFormPro
   const [submitError, setSubmitError] = useState<string | null>(null);
   const { placeBid, isPending } = usePlaceBid();
 
-  const floorXlm = stroopsToXlm(auction.floor_price);
-  const currentBidXlm = auction.winning_bid
-    ? stroopsToXlm(auction.winning_bid)
-    : null;
-  const minBid = currentBidXlm ? currentBidXlm * 1.05 : floorXlm;
+  // All arithmetic stays in integer stroops to avoid floating-point drift.
+  const floorStroops = BigInt(auction.floor_price);
+  const currentBidStroops = auction.winning_bid ? BigInt(auction.winning_bid) : null;
+  const minBidStroops = currentBidStroops
+    ? currentBidStroops + (currentBidStroops * 5n) / 100n // 5% above current bid
+    : floorStroops;
+  const minBidXlm = Number(minBidStroops) / STROOPS_PER_XLM;
 
-  const schema = useMemo(() => createBidSchema(minBid), [minBid]);
+  // Display helpers
+  const floorXlm = stroopsToXlm(floorStroops);
+  const currentBidXlm = currentBidStroops ? stroopsToXlm(currentBidStroops) : null;
+
+  const schema = useMemo(() => createBidSchema(minBidXlm), [minBidXlm]);
 
   const {
     register,
@@ -71,7 +77,7 @@ export function BidForm({ auction, campaignId, onSuccess, onCancel }: BidFormPro
             {currentBidXlm ? 'Current Bid' : 'No bids yet'}
           </p>
           <p className="text-green-400 font-medium">
-            {currentBidXlm ? `${currentBidXlm.toFixed(4)} XLM` : '—'}
+            {currentBidXlm ? `${currentBidXlm} XLM` : '—'}
           </p>
         </div>
       </div>
@@ -102,8 +108,8 @@ export function BidForm({ auction, campaignId, onSuccess, onCancel }: BidFormPro
               id="bid-amount"
               type="number"
               {...register('bidAmountXlm')}
-              placeholder={minBid.toFixed(4)}
-              min={minBid}
+              placeholder={minBidXlm.toFixed(4)}
+              min={minBidXlm}
               step="0.0001"
               className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 pr-12 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm"
             />
@@ -114,7 +120,7 @@ export function BidForm({ auction, campaignId, onSuccess, onCancel }: BidFormPro
           {errors.bidAmountXlm ? (
             <p className="text-red-400 text-xs mt-1">{errors.bidAmountXlm.message}</p>
           ) : (
-            <p className="text-xs text-gray-500 mt-1">Minimum: {minBid.toFixed(4)} XLM</p>
+            <p className="text-xs text-gray-500 mt-1">Minimum: {minBidXlm.toFixed(4)} XLM</p>
           )}
         </div>
 

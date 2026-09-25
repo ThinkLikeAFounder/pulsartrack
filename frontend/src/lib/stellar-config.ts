@@ -135,7 +135,12 @@ export function xlmToStroops(xlm: number): bigint {
     throw new Error(`Invalid XLM amount: ${xlm} cannot be negative`);
   }
 
-  const xlmStr = xlm.toString();
+  // Use toFixed(7) to get a fixed-point decimal string — toString() produces
+  // exponent notation for values below 1e-7 (e.g. 0.0000001 → "1e-7"), which
+  // breaks the split-on-dot logic below. toFixed(7) always produces a plain
+  // decimal, e.g. "0.0000001". We round to 7 decimal places (the stroop
+  // precision limit) so values like 0.12345678 become "0.1234568".
+  const xlmStr = xlm.toFixed(7);
   const [whole, fraction] = xlmStr.split('.');
 
   if (fraction && fraction.length > 7) {
