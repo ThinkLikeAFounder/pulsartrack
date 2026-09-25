@@ -270,6 +270,11 @@ impl PayoutAutomationContract {
             &env.current_contract_address(),
             &amount,
         );
+
+        env.events().publish(
+            (symbol_short!("payout"), symbol_short!("fund")),
+            (sender, amount),
+        );
     }
 
     pub fn add_publisher_earnings(env: Env, admin: Address, publisher: Address, amount: i128) {
@@ -318,6 +323,11 @@ impl PayoutAutomationContract {
             &key,
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
+        );
+
+        env.events().publish(
+            (symbol_short!("payout"), symbol_short!("earn")),
+            (publisher, amount),
         );
     }
 
