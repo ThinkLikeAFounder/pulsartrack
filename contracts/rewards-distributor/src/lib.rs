@@ -236,9 +236,7 @@ impl RewardsDistributorContract {
         } else {
             // Use a 10_000 bps scaling factor to preserve precision for small rewards
             // with long vesting durations, preventing integer division truncation to 0.
-            let vested_bps = rewards.total_earned as u128
-                * vesting_fraction as u128
-                * 10_000
+            let vested_bps = rewards.total_earned as u128 * vesting_fraction as u128 * 10_000
                 / rewards.vesting_duration as u128;
             (vested_bps / 10_000) as i128
         };

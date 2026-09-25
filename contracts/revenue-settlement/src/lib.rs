@@ -2,8 +2,8 @@
 //! Automated revenue distribution and settlement for the PulsarTrack ecosystem on Stellar.
 
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, token, Address, Env};
 use pulsar_common_fees::{calculate_fee_bps, checked_add};
+use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, token, Address, Env};
 
 #[contracttype]
 #[derive(Clone)]

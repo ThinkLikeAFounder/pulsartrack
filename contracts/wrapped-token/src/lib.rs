@@ -2,7 +2,9 @@
 //! Manages wrapped tokens from other chains for use in PulsarTrack campaigns on Stellar.
 
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, token, Address, Env, String};
+use soroban_sdk::{
+    contract, contractimpl, contracttype, symbol_short, token, Address, Env, String,
+};
 
 #[contracttype]
 #[derive(Clone)]

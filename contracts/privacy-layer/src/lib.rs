@@ -47,7 +47,7 @@ pub struct DataRequest {
 pub enum DataKey {
     Admin,
     PendingAdmin,
-    Verifier,           // Trusted ZKP verifier address
+    Verifier, // Trusted ZKP verifier address
     RequestCounter,
     Consent(Address),
     Proof(BytesN<32>),
@@ -77,7 +77,9 @@ impl PrivacyLayerContract {
             .instance()
             .set(&DataKey::RequestCounter, &0u64);
         // Initialize with no verifier - must be set separately for security
-        env.storage().instance().set(&DataKey::Verifier, &None::<Address>);
+        env.storage()
+            .instance()
+            .set(&DataKey::Verifier, &None::<Address>);
     }
 
     pub fn set_verifier(env: Env, admin: Address, verifier: Option<Address>) {
@@ -123,7 +125,9 @@ impl PrivacyLayerContract {
             consent_hash: consent_hash.into(),
             consented_at: env.ledger().timestamp(),
             expires_at: expires_in.map(|d| {
-                env.ledger().timestamp().checked_add(d)
+                env.ledger()
+                    .timestamp()
+                    .checked_add(d)
                     .expect("consent expiry timestamp overflows u64")
             }),
         };
@@ -201,9 +205,13 @@ impl PrivacyLayerContract {
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
         admin.require_auth();
-        
+
         // Check if a verifier is configured - if so, only verifier can verify
-        let verifier: Option<Address> = env.storage().instance().get(&DataKey::Verifier).unwrap_or(None);
+        let verifier: Option<Address> = env
+            .storage()
+            .instance()
+            .get(&DataKey::Verifier)
+            .unwrap_or(None);
         if let Some(v) = verifier {
             // If verifier is set, only the verifier can verify proofs
             if admin != v {
@@ -245,10 +253,12 @@ impl PrivacyLayerContract {
             .get::<DataKey, PrivacyConsent>(&consent_key)
         {
             // Bump TTL on persistent consent entry
-            env.storage()
-                .persistent()
-                .extend_ttl(&consent_key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
-            
+            env.storage().persistent().extend_ttl(
+                &consent_key,
+                PERSISTENT_LIFETIME_THRESHOLD,
+                PERSISTENT_BUMP_AMOUNT,
+            );
+
             // Check if consent has expired
             if let Some(expires) = consent.expires_at {
                 if expires <= env.ledger().timestamp() {
@@ -286,11 +296,17 @@ impl PrivacyLayerContract {
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
         let consent_key = DataKey::Consent(user.clone());
-        if let Some(consent) = env.storage().persistent().get::<DataKey, PrivacyConsent>(&consent_key) {
+        if let Some(consent) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, PrivacyConsent>(&consent_key)
+        {
             // Bump TTL on persistent consent entry
-            env.storage()
-                .persistent()
-                .extend_ttl(&consent_key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
+            env.storage().persistent().extend_ttl(
+                &consent_key,
+                PERSISTENT_LIFETIME_THRESHOLD,
+                PERSISTENT_BUMP_AMOUNT,
+            );
             Some(consent)
         } else {
             None

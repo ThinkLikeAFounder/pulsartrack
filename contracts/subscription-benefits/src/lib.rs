@@ -114,7 +114,7 @@ impl SubscriptionBenefitsContract {
         if admin != stored_admin {
             panic!("unauthorized");
         }
-        
+
         let _ttl_key = DataKey::SubscriberTier(subscriber);
         env.storage().persistent().set(&_ttl_key, &tier);
         env.storage().persistent().extend_ttl(
@@ -133,7 +133,7 @@ impl SubscriptionBenefitsContract {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-            
+
         let actual_tier: u32 = env
             .storage()
             .persistent()

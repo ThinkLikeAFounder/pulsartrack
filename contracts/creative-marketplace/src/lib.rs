@@ -2,10 +2,10 @@
 //! A marketplace for buying, selling and licensing ad creatives on Stellar.
 
 #![no_std]
+use pulsar_common_fees::calculate_fee_bps;
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, token, Address, Env, String,
 };
-use pulsar_common_fees::calculate_fee_bps;
 
 #[contracttype]
 #[derive(Clone, PartialEq)]
@@ -199,7 +199,9 @@ impl CreativeMarketplaceContract {
             .get::<DataKey, License>(&DataKey::License(listing_id, buyer.clone()))
         {
             // Only block if the license is still valid (not expired)
-            let is_valid = existing_license.expires_at.is_none_or(|exp| exp > env.ledger().timestamp());
+            let is_valid = existing_license
+                .expires_at
+                .is_none_or(|exp| exp > env.ledger().timestamp());
             if is_valid {
                 panic!("already licensed");
             }
@@ -223,7 +225,10 @@ impl CreativeMarketplaceContract {
         let token_client = token::Client::new(&env, &token_addr);
 
         let now = env.ledger().timestamp();
-        let expires_at = license_duration_secs.map(|d| now.checked_add(d).expect("license expiry timestamp overflows u64"));
+        let expires_at = license_duration_secs.map(|d| {
+            now.checked_add(d)
+                .expect("license expiry timestamp overflows u64")
+        });
 
         let license = License {
             listing_id,

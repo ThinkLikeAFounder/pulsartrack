@@ -628,9 +628,7 @@ impl GovernanceTokenContract {
             let new_old_power = old_delegate_power.saturating_sub(delegator_balance);
             old_delegate_cp = Some(old_delegation.delegate.clone());
             let _ttl_key = DataKey::DelegatedPower(old_delegation.delegate);
-            env.storage()
-                .persistent()
-                .set(&_ttl_key, &new_old_power);
+            env.storage().persistent().set(&_ttl_key, &new_old_power);
             env.storage().persistent().extend_ttl(
                 &_ttl_key,
                 PERSISTENT_LIFETIME_THRESHOLD,
@@ -706,9 +704,7 @@ impl GovernanceTokenContract {
             from_delegate_cp = Some(delegation_info.delegate.clone());
             revoked_delegate = Some(delegation_info.delegate.clone());
             let _ttl_key = DataKey::DelegatedPower(delegation_info.delegate);
-            env.storage()
-                .persistent()
-                .set(&_ttl_key, &new_power);
+            env.storage().persistent().set(&_ttl_key, &new_power);
             env.storage().persistent().extend_ttl(
                 &_ttl_key,
                 PERSISTENT_LIFETIME_THRESHOLD,
@@ -931,11 +927,7 @@ impl GovernanceTokenContract {
 
     /// Retrieve a previously taken voting snapshot.
     /// Returns None if no snapshot exists for this voter at the given ledger.
-    pub fn get_voting_snapshot(
-        env: Env,
-        voter: Address,
-        ledger_sequence: u32,
-    ) -> Option<i128> {
+    pub fn get_voting_snapshot(env: Env, voter: Address, ledger_sequence: u32) -> Option<i128> {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -959,7 +951,12 @@ impl GovernanceTokenContract {
     }
 
     pub fn cancel_admin_proposal(env: Env, current_admin: Address) {
-        pulsar_common_admin::cancel_admin_proposal(&env, &DataKey::Admin, &DataKey::PendingAdmin, current_admin);
+        pulsar_common_admin::cancel_admin_proposal(
+            &env,
+            &DataKey::Admin,
+            &DataKey::PendingAdmin,
+            current_admin,
+        );
     }
 }
 

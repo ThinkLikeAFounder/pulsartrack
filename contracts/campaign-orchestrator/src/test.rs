@@ -178,7 +178,7 @@ fn setup_campaign_with_publisher(
     Address,
     u64,
 ) {
-    let (c, admin, token_admin, token) = setup(env);
+    let (c, admin, _token_admin, token) = setup(env);
     let advertiser = Address::generate(env);
     let publisher = Address::generate(env);
 

@@ -129,7 +129,9 @@ impl VestingScheduleContract {
             panic!("cliff period has not ended");
         }
 
-        let elapsed = now.saturating_sub(schedule.start_time).min(schedule.duration);
+        let elapsed = now
+            .saturating_sub(schedule.start_time)
+            .min(schedule.duration);
         let vested = (schedule.total_amount * elapsed as i128) / schedule.duration as i128;
         let claimable = vested.saturating_sub(schedule.claimed_amount);
 

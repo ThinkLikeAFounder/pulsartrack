@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   xlmToStroops,
   stroopsToXlm,
@@ -9,8 +9,6 @@ import {
   getSorobanRpcUrl,
   getNetworkPassphrase,
   validateRequiredEnv,
-  NETWORKS,
-  STROOPS_PER_XLM,
 } from './stellar-config';
 
 describe('xlmToStroops', () => {
@@ -81,20 +79,22 @@ describe('round-trip conversions', () => {
 });
 
 describe('Explorer URLs', () => {
-  it('generates correct mainnet transaction URL', () => {
-    process.env.NEXT_PUBLIC_NETWORK = 'mainnet';
-    const url = getExplorerTxUrl('abc123');
-    expect(url).toContain('stellar.expert');
-    expect(url).toContain('public');
-    expect(url).toContain('abc123');
+  beforeEach(() => {
+    vi.resetModules();
   });
 
-  it('generates correct testnet transaction URL', () => {
-    process.env.NEXT_PUBLIC_NETWORK = 'testnet';
+  it('generates correct mainnet transaction URL', async () => {
+    vi.stubEnv('NEXT_PUBLIC_NETWORK', 'mainnet');
+    const { getExplorerTxUrl } = await import('./stellar-config');
     const url = getExplorerTxUrl('abc123');
-    expect(url).toContain('stellar.expert');
-    expect(url).toContain('testnet');
-    expect(url).toContain('abc123');
+    expect(url).toBe('https://stellar.expert/explorer/public/tx/abc123');
+  });
+
+  it('generates correct testnet transaction URL', async () => {
+    vi.stubEnv('NEXT_PUBLIC_NETWORK', 'testnet');
+    const { getExplorerTxUrl } = await import('./stellar-config');
+    const url = getExplorerTxUrl('abc123');
+    expect(url).toBe('https://stellar.expert/explorer/testnet/tx/abc123');
   });
 
   it('generates address URLs', () => {
@@ -125,9 +125,9 @@ describe('Network configuration URLs', () => {
     expect(sorobanUrl).toContain('soroban');
   });
 
-  it('returns network passphrase', () => {
+  it('returns testnet passphrase for default network', () => {
     const passphrase = getNetworkPassphrase();
-    expect(passphrase).toMatch(/Stellar Network/);
+    expect(passphrase).toBe('Test SDF Network ; September 2015');
   });
 });
 
@@ -163,3 +163,16 @@ describe('validateRequiredEnv', () => {
     expect(() => validateRequiredEnv()).toThrow('NEXT_PUBLIC_NETWORK');
   });
 });
+
+describe('frontend/.env.example divergence check', () => {
+  it('ensures frontend/.env.example lists every REQUIRED_ENV_VARS entry', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const envExamplePath = path.resolve(__dirname, '../../.env.example');
+    const content = fs.readFileSync(envExamplePath, 'utf-8');
+    for (const key of REQUIRED_ENV_VARS) {
+      expect(content).toContain(key);
+    }
+  });
+});
+

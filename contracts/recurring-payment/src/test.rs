@@ -270,8 +270,16 @@ fn test_execute_payment_transfers_balance_via_allowance() {
     c.execute_payment(&admin, &id);
 
     let token_client = soroban_sdk::token::Client::new(&env, &token);
-    assert_eq!(token_client.balance(&payee), 1_000, "payee should receive 1000");
-    assert_eq!(token_client.balance(&payer), 9_000, "payer should be debited 1000");
+    assert_eq!(
+        token_client.balance(&payee),
+        1_000,
+        "payee should receive 1000"
+    );
+    assert_eq!(
+        token_client.balance(&payer),
+        9_000,
+        "payer should be debited 1000"
+    );
 
     let payment = c.get_payment(&id).unwrap();
     assert_eq!(payment.total_payments, 1);
@@ -340,4 +348,3 @@ fn test_recurring_lifecycle_events() {
         ]
     );
 }
-

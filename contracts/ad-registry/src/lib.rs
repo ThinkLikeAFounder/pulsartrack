@@ -2,6 +2,10 @@
 //! Manages ad creative assets, validation, and performance tracking on Stellar.
 
 #![no_std]
+// `register_content` takes 10 parameters — all required for the on-chain ABI.
+// Soroban contract functions cannot use builder/struct patterns without
+// changing the ABI, so we suppress the lint at the crate level.
+#![allow(clippy::too_many_arguments)]
 use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, String};
 
 // ============================================================
@@ -364,9 +368,11 @@ impl AdRegistryContract {
         perf.total_views += 1;
         perf.last_shown = env.ledger().timestamp();
 
-        if perf.total_views > 0 {
-            perf.click_through_rate = (perf.total_clicks * 10_000) / perf.total_views;
-        }
+        perf.click_through_rate = perf
+            .total_clicks
+            .checked_mul(10_000)
+            .and_then(|v| v.checked_div(perf.total_views))
+            .unwrap_or(0);
 
         let _ttl_key = DataKey::Performance(content_id);
         env.storage().persistent().set(&_ttl_key, &perf);
@@ -397,9 +403,11 @@ impl AdRegistryContract {
 
         perf.total_clicks += 1;
 
-        if perf.total_views > 0 {
-            perf.click_through_rate = (perf.total_clicks * 10_000) / perf.total_views;
-        }
+        perf.click_through_rate = perf
+            .total_clicks
+            .checked_mul(10_000)
+            .and_then(|v| v.checked_div(perf.total_views))
+            .unwrap_or(0);
 
         let _ttl_key = DataKey::Performance(content_id);
         env.storage().persistent().set(&_ttl_key, &perf);

@@ -220,7 +220,7 @@ fn test_create_escrow_time_lock_overflow() {
     let token_addr = deploy_token(&env, &token_admin);
     let admin = Address::generate(&env);
     let oracle = Address::generate(&env);
-    let contract_id = env.register_contract(None, EscrowVaultContract);
+    let contract_id = env.register(EscrowVaultContract {}, ());
     let client = EscrowVaultContractClient::new(&env, &contract_id);
     client.initialize(&admin, &token_addr, &oracle);
 
@@ -255,7 +255,7 @@ fn test_create_escrow_expires_at_overflow() {
     let token_addr = deploy_token(&env, &token_admin);
     let admin = Address::generate(&env);
     let oracle = Address::generate(&env);
-    let contract_id = env.register_contract(None, EscrowVaultContract);
+    let contract_id = env.register(EscrowVaultContract {}, ());
     let client = EscrowVaultContractClient::new(&env, &contract_id);
     client.initialize(&admin, &token_addr, &oracle);
 
@@ -392,7 +392,7 @@ fn test_approve_release_refunded_fails() {
     let token_addr = deploy_token(&env, &token_admin);
     let admin = Address::generate(&env);
     let oracle = Address::generate(&env);
-    let contract_id = env.register_contract(None, EscrowVaultContract);
+    let contract_id = env.register(EscrowVaultContract {}, ());
     let client = EscrowVaultContractClient::new(&env, &contract_id);
     client.initialize(&admin, &token_addr, &oracle);
 
@@ -430,7 +430,7 @@ fn test_approve_release_disputed_fails() {
     let token_addr = deploy_token(&env, &token_admin);
     let admin = Address::generate(&env);
     let oracle = Address::generate(&env);
-    let contract_id = env.register_contract(None, EscrowVaultContract);
+    let contract_id = env.register(EscrowVaultContract {}, ());
     let client = EscrowVaultContractClient::new(&env, &contract_id);
     client.initialize(&admin, &token_addr, &oracle);
 
@@ -1022,16 +1022,16 @@ fn test_admin_transfer_flow() {
     let (c, admin, _, _) = setup(&env);
     let new_admin = Address::generate(&env);
 
-    client.propose_admin(&admin, &new_admin);
+    c.propose_admin(&admin, &new_admin);
     // common-admin enforces a minimum delay (17280 ledgers) before accept_admin
     env.ledger().with_mut(|li| {
         li.sequence_number += 17_280;
     });
-    client.accept_admin(&new_admin);
+    c.accept_admin(&new_admin);
 
     // Verify new admin can perform admin actions
     let fraud = Address::generate(&env);
-    client.set_fraud_contract(&new_admin, &fraud);
+    c.set_fraud_contract(&new_admin, &fraud);
 }
 
 #[test]
@@ -1043,7 +1043,7 @@ fn test_propose_admin_unauthorized() {
     let stranger = Address::generate(&env);
     let new_admin = Address::generate(&env);
 
-    client.propose_admin(&stranger, &new_admin);
+    c.propose_admin(&stranger, &new_admin);
 }
 
 #[test]
@@ -1055,8 +1055,8 @@ fn test_accept_admin_unauthorized() {
     let new_admin = Address::generate(&env);
     let stranger = Address::generate(&env);
 
-    client.propose_admin(&admin, &new_admin);
-    client.accept_admin(&stranger);
+    c.propose_admin(&admin, &new_admin);
+    c.accept_admin(&stranger);
 }
 
 // ─── set_dispute_contract ────────────────────────────────────────────────────
@@ -1068,7 +1068,7 @@ fn test_set_dispute_contract() {
     let (c, admin, _, _) = setup(&env);
     let dispute_addr = Address::generate(&env);
 
-    client.set_dispute_contract(&admin, &dispute_addr);
+    c.set_dispute_contract(&admin, &dispute_addr);
 }
 
 #[test]
@@ -1080,5 +1080,5 @@ fn test_set_dispute_contract_unauthorized() {
     let stranger = Address::generate(&env);
     let dispute_addr = Address::generate(&env);
 
-    client.set_dispute_contract(&stranger, &dispute_addr);
+    c.set_dispute_contract(&stranger, &dispute_addr);
 }

@@ -189,7 +189,12 @@ impl RecurringPaymentContract {
 
         // Use SEP-41 allowance pattern for automated execution
         let token_client = token::Client::new(&env, &recurring.token);
-        token_client.transfer_from(&env.current_contract_address(), &recurring.payer, &recurring.recipient, &recurring.amount);
+        token_client.transfer_from(
+            &env.current_contract_address(),
+            &recurring.payer,
+            &recurring.recipient,
+            &recurring.amount,
+        );
 
         recurring.total_payments += 1;
         recurring.last_payment = now;

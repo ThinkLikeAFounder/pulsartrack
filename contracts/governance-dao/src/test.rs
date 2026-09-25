@@ -78,9 +78,7 @@ impl MockGovToken {
         if from_bal < amount {
             panic!("insufficient balance");
         }
-        env.storage()
-            .persistent()
-            .set(&from, &(from_bal - amount));
+        env.storage().persistent().set(&from, &(from_bal - amount));
         let to_bal = env
             .storage()
             .persistent()
@@ -577,7 +575,12 @@ fn test_finalize_proposal_passes_at_51_pct_exact() {
     let proposal_id = client.create_proposal(&proposer, &make_title(&env), &make_desc(&env), &None);
 
     client.cast_vote(&voter_for, &proposal_id, &VoteChoice::For, &510_000i128);
-    client.cast_vote(&voter_against, &proposal_id, &VoteChoice::Against, &490_000i128);
+    client.cast_vote(
+        &voter_against,
+        &proposal_id,
+        &VoteChoice::Against,
+        &490_000i128,
+    );
 
     env.ledger().with_mut(|li| {
         li.sequence_number = 200;
@@ -609,7 +612,12 @@ fn test_finalize_proposal_passes_at_51_1_pct() {
     let proposal_id = client.create_proposal(&proposer, &make_title(&env), &make_desc(&env), &None);
 
     client.cast_vote(&voter_for, &proposal_id, &VoteChoice::For, &511_000i128);
-    client.cast_vote(&voter_against, &proposal_id, &VoteChoice::Against, &489_000i128);
+    client.cast_vote(
+        &voter_against,
+        &proposal_id,
+        &VoteChoice::Against,
+        &489_000i128,
+    );
 
     env.ledger().with_mut(|li| {
         li.sequence_number = 200;
@@ -638,7 +646,12 @@ fn test_finalize_proposal_rejected_at_50_99_pct_with_bps() {
     let proposal_id = client.create_proposal(&proposer, &make_title(&env), &make_desc(&env), &None);
 
     client.cast_vote(&voter_for, &proposal_id, &VoteChoice::For, &5_099i128);
-    client.cast_vote(&voter_against, &proposal_id, &VoteChoice::Against, &4_901i128);
+    client.cast_vote(
+        &voter_against,
+        &proposal_id,
+        &VoteChoice::Against,
+        &4_901i128,
+    );
 
     env.ledger().with_mut(|li| {
         li.sequence_number = 200;
@@ -664,7 +677,12 @@ fn test_finalize_proposal_rejected_at_exactly_50_pct() {
     let proposal_id = client.create_proposal(&proposer, &make_title(&env), &make_desc(&env), &None);
 
     client.cast_vote(&voter_for, &proposal_id, &VoteChoice::For, &500_000i128);
-    client.cast_vote(&voter_against, &proposal_id, &VoteChoice::Against, &500_000i128);
+    client.cast_vote(
+        &voter_against,
+        &proposal_id,
+        &VoteChoice::Against,
+        &500_000i128,
+    );
 
     env.ledger().with_mut(|li| {
         li.sequence_number = 200;
@@ -899,8 +917,7 @@ fn test_double_vote_after_ttl_window_rejected() {
     let proposer = Address::generate(&env);
     let voter = Address::generate(&env);
 
-    let proposal_id =
-        client.create_proposal(&proposer, &make_title(&env), &make_desc(&env), &None);
+    let proposal_id = client.create_proposal(&proposer, &make_title(&env), &make_desc(&env), &None);
 
     // Voter A casts their vote at ledger 0
     client.cast_vote(&voter, &proposal_id, &VoteChoice::For, &1_000i128);

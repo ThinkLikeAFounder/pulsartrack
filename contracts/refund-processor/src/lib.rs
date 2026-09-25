@@ -36,8 +36,8 @@ pub struct RefundRequest {
 #[derive(Clone)]
 pub struct Campaign {
     pub total_budget: i128,
-    pub end_time: u64,           // Campaign end timestamp
-    pub refund_deadline: u64,    // Deadline for submitting refund requests
+    pub end_time: u64,        // Campaign end timestamp
+    pub refund_deadline: u64, // Deadline for submitting refund requests
 }
 
 #[contracttype]
@@ -235,9 +235,10 @@ impl RefundProcessorContract {
 
         let _ttl_key = DataKey::Refund(refund_id);
         env.storage().persistent().set(&_ttl_key, &refund);
-        env.storage()
-            .persistent()
-            .remove(&DataKey::PendingRefund(refund.campaign_id, refund.requester.clone()));
+        env.storage().persistent().remove(&DataKey::PendingRefund(
+            refund.campaign_id,
+            refund.requester.clone(),
+        ));
         env.storage().persistent().extend_ttl(
             &_ttl_key,
             PERSISTENT_LIFETIME_THRESHOLD,
@@ -281,9 +282,10 @@ impl RefundProcessorContract {
         refund.status = RefundStatus::Processed;
         let _ttl_key = DataKey::Refund(refund_id);
         env.storage().persistent().set(&_ttl_key, &refund);
-        env.storage()
-            .persistent()
-            .remove(&DataKey::PendingRefund(refund.campaign_id, refund.requester.clone()));
+        env.storage().persistent().remove(&DataKey::PendingRefund(
+            refund.campaign_id,
+            refund.requester.clone(),
+        ));
         env.storage().persistent().extend_ttl(
             &_ttl_key,
             PERSISTENT_LIFETIME_THRESHOLD,
