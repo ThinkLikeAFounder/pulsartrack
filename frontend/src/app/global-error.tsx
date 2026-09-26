@@ -66,7 +66,8 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
               Try Again
             </button>
 
-            {/* Hard navigation since the root layout may be broken */}
+            {/* Hard navigation since the root layout may be broken — <Link> requires the router context which is unavailable when the root layout has crashed */}
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a
               href="/"
               className="flex items-center justify-center gap-2 w-full py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors font-medium"

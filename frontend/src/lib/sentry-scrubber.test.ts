@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import fs from "fs";
 import path from "path";
-import { isSensitiveKey, scrub, scrubEvent, scrubString } from "./sentry-scrubber";
+import { isSensitiveKey, scrubEvent, scrubString } from "./sentry-scrubber";
 
 describe("Frontend Sentry Scrubber", () => {
   it("should recognize sensitive keys via pattern matching", () => {

@@ -67,6 +67,28 @@ impl MockGovToken {
             .set(&(account, ledger_sequence), &amount);
     }
 
+    /// Total supply as of a ledger strictly before `ledger_sequence`.
+    ///
+    /// Tests seed history with `set_past_total_supply`; absent a seeded entry
+    /// this falls back to the mock's current total supply.
+    pub fn get_past_total_supply(env: Env, ledger_sequence: u32) -> i128 {
+        if let Some(v) = env
+            .storage()
+            .persistent()
+            .get::<u32, i128>(&(-1i32 as u32, ledger_sequence))
+        {
+            return v;
+        }
+        Self::total_supply(env)
+    }
+
+    /// Seed the historical total supply visible at `ledger_sequence`.
+    pub fn set_past_total_supply(env: Env, ledger_sequence: u32, amount: i128) {
+        env.storage()
+            .persistent()
+            .set(&(-1i32 as u32, ledger_sequence), &amount);
+    }
+
     /// Token transfer: move `amount` from `from` to `to`.
     pub fn transfer(env: Env, from: Address, to: Address, amount: i128) {
         from.require_auth();
@@ -1134,4 +1156,108 @@ fn test_proposal_records_snapshot_ledger_at_creation() {
 
     assert_eq!(proposal.snapshot_ledger, 777);
     assert_eq!(proposal.start_ledger, 777);
+}
+
+// ─── Quorum snapshot: supply measured at snapshot, not finalization (#929) ───
+
+#[test]
+fn test_mint_after_snapshot_does_not_change_quorum_result() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+
+    // Total supply at snapshot = 1_000; quorum_bps=1_000 (10%) → need ≥100 votes
+    let (client, _, token_addr) = setup_with_mock_token(&env, 1_000);
+    let token = MockGovTokenClient::new(&env, &token_addr);
+
+    let proposer = Address::generate(&env);
+    let voter = Address::generate(&env);
+    let proposal_id = client.create_proposal(&proposer, &make_title(&env), &make_desc(&env), &None);
+    let snapshot_ledger = client.get_proposal(&proposal_id).unwrap().snapshot_ledger;
+
+    token.set_past_total_supply(&snapshot_ledger, &1_000i128);
+
+    client.cast_vote(&voter, &proposal_id, &VoteChoice::For, &200i128);
+
+    // Mint more tokens after the snapshot — supply grows to 5_000 but
+    // finalize_proposal should still see supply=1_000 at the snapshot.
+    let new_holder = Address::generate(&env);
+    token.set_balance(&new_holder, &4_000i128);
+
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 200;
+    });
+
+    client.finalize_proposal(&proposal_id);
+
+    let proposal = client.get_proposal(&proposal_id).unwrap();
+    // 200 votes out of 1_000 supply at snapshot = 20% ≥ 10% quorum → Passed
+    assert!(
+        matches!(proposal.status, ProposalStatus::Passed),
+        "proposal should pass because quorum is measured against snapshot supply, not inflated live supply"
+    );
+}
+
+#[test]
+fn test_burn_after_snapshot_does_not_change_quorum_result() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+
+    // Total supply at snapshot = 10_000; quorum needs ≥1_000 votes; cast only 500
+    let (client, _, token_addr) = setup_with_mock_token(&env, 10_000);
+    let token = MockGovTokenClient::new(&env, &token_addr);
+
+    let proposer = Address::generate(&env);
+    let voter = Address::generate(&env);
+    let proposal_id = client.create_proposal(&proposer, &make_title(&env), &make_desc(&env), &None);
+    let snapshot_ledger = client.get_proposal(&proposal_id).unwrap().snapshot_ledger;
+
+    token.set_past_total_supply(&snapshot_ledger, &10_000i128);
+
+    client.cast_vote(&voter, &proposal_id, &VoteChoice::For, &500i128);
+
+    // Burn tokens after the snapshot — supply drops to 2_000 but
+    // finalize_proposal should still see supply=10_000 at the snapshot.
+    // 500 votes / 10_000 supply = 5% < 10% quorum → Rejected
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 200;
+    });
+
+    client.finalize_proposal(&proposal_id);
+
+    let proposal = client.get_proposal(&proposal_id).unwrap();
+    assert!(
+        matches!(proposal.status, ProposalStatus::Rejected),
+        "proposal should be rejected because quorum uses snapshot supply (10_000), not burned supply (2_000)"
+    );
+}
+
+#[test]
+fn test_proposal_passes_with_snapshot_supply_not_live_supply() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+
+    // Snapshot supply = 1_000; 200 votes = 20% ≥ 10% quorum, 100% For ≥ 51% → Passed
+    let (client, _, token_addr) = setup_with_mock_token(&env, 1_000);
+    let token = MockGovTokenClient::new(&env, &token_addr);
+
+    let proposer = Address::generate(&env);
+    let voter = Address::generate(&env);
+    let proposal_id = client.create_proposal(&proposer, &make_title(&env), &make_desc(&env), &None);
+    let snapshot_ledger = client.get_proposal(&proposal_id).unwrap().snapshot_ledger;
+
+    token.set_past_total_supply(&snapshot_ledger, &1_000i128);
+
+    client.cast_vote(&voter, &proposal_id, &VoteChoice::For, &200i128);
+
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 200;
+    });
+
+    client.finalize_proposal(&proposal_id);
+
+    let proposal = client.get_proposal(&proposal_id).unwrap();
+    assert!(matches!(proposal.status, ProposalStatus::Passed));
 }

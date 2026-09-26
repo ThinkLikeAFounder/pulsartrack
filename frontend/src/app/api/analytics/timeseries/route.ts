@@ -9,7 +9,6 @@ export interface AnalyticsTimeseriesPoint {
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const campaignIds = searchParams.get('campaignIds') || '';
-  const timeframe = searchParams.get('timeframe') || '30d';
 
   if (!campaignIds) {
     return NextResponse.json(
