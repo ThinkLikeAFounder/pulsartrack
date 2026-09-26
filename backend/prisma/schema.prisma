@@ -134,12 +134,13 @@ model LedgerEvent {
   id             String   @id @default(uuid()) @db.Uuid
   ledgerSequence BigInt   @map("ledger_sequence")
   txHash         String   @map("tx_hash") @db.VarChar(128)
+  eventIndex     Int      @default(0) @map("event_index")
   contractId     String?  @map("contract_id") @db.VarChar(64)
   eventType      String   @map("event_type") @db.VarChar(50)
   eventData      Json?    @map("event_data")
   indexedAt       DateTime @default(now()) @map("indexed_at") @db.Timestamptz()
 
-  @@unique([txHash, eventType])
+  @@unique([txHash, eventIndex])
   @@index([contractId])
   @@index([eventType])
   @@index([ledgerSequence])

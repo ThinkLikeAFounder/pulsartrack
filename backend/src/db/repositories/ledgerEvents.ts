@@ -4,6 +4,7 @@ interface LedgerEventRow {
   id: string;
   ledger_sequence: number;
   tx_hash: string;
+  event_index: number;
   contract_id: string | null;
   event_type: string;
   event_data: unknown;
@@ -35,16 +36,17 @@ export async function findByType(eventType: string, limit = 50): Promise<LedgerE
 export async function create(data: {
   ledger_sequence: number;
   tx_hash: string;
+  event_index?: number;
   contract_id?: string;
   event_type: string;
   event_data?: unknown;
 }): Promise<LedgerEventRow | null> {
   const { rows } = await pool.query(
-    `INSERT INTO ledger_events (ledger_sequence, tx_hash, contract_id, event_type, event_data)
-     VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT (tx_hash, event_type) DO NOTHING
+    `INSERT INTO ledger_events (ledger_sequence, tx_hash, event_index, contract_id, event_type, event_data)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (tx_hash, event_index) DO NOTHING
      RETURNING *`,
-    [data.ledger_sequence, data.tx_hash, data.contract_id ?? null, data.event_type, data.event_data ? JSON.stringify(data.event_data) : null],
+    [data.ledger_sequence, data.tx_hash, data.event_index ?? 0, data.contract_id ?? null, data.event_type, data.event_data ? JSON.stringify(data.event_data) : null],
   );
   return rows[0] ?? null;
 }
