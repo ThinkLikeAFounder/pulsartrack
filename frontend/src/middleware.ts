@@ -23,7 +23,7 @@ function generateNonce(): string {
  *   - "enforce" → Content-Security-Policy (blocks violations)
  *   - anything else or unset → Content-Security-Policy-Report-Only
  */
-export function middleware(request: NextRequest) {
+export function middleware(_request: NextRequest) {
   const nonce = generateNonce();
   const isDev = process.env.NODE_ENV !== "production";
   const enforceCsp = process.env.CSP_MODE === "enforce";

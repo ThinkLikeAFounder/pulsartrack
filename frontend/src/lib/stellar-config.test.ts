@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   xlmToStroops,
   stroopsToXlm,
-  getExplorerTxUrl,
   getExplorerAddressUrl,
   getExplorerContractUrl,
   getHorizonUrl,
