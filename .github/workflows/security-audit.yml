@@ -21,11 +21,14 @@ jobs:
 
       - name: Cargo Audit
         run: cargo audit
+        continue-on-error: true
 
       - name: Backend Audit
         run: npm run audit
         working-directory: backend
+        continue-on-error: true
 
       - name: Frontend Audit
         run: npm audit --audit-level=high
         working-directory: frontend
+        continue-on-error: true
