@@ -18,6 +18,8 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
           components: rustfmt, clippy
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@f0deed1e0edfc6a9be54100b5c490c13a34a17bd # v2.7.7
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Run Clippy
@@ -25,7 +27,7 @@ jobs:
       - name: Build contracts
         run: cargo build --workspace
       - name: Build contracts for WASM
-        run: cargo build --workspace --target wasm32-unknown-unknown
+        run: cargo build --release --target wasm32-unknown-unknown
       - name: Run contract tests
         run: cargo test --workspace
 
