@@ -163,7 +163,7 @@ PY
 
   echo "  -> $CONTRACT_ID"
 
-  # Update deploy file
+  # Update deploy file and ensure it persists
   python3 - "$NAME" "$CONTRACT_ID" "$DEPLOY_FILE" <<'PY'
 import json
 import sys
@@ -172,6 +172,7 @@ name, contract_id, deploy_file = sys.argv[1], sys.argv[2], sys.argv[3]
 with open(deploy_file, encoding="utf-8") as f:
     data = json.load(f)
 data["contracts"][name] = contract_id
+data["last_updated"] = __import__("datetime").datetime.utcnow().isoformat()
 with open(deploy_file, "w", encoding="utf-8") as f:
     json.dump(data, f, indent=2)
     f.write("\n")

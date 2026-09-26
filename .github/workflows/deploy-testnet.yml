@@ -48,7 +48,7 @@ jobs:
           echo "$STELLAR_DEPLOYER_SECRET" | stellar keys add pulsartrack-deployer --secret-key
 
       - name: Run deployment script
-        run: ./scripts/deploy.sh
+        run: ./scripts/deploy.sh --force
         env:
           STELLAR_NETWORK: testnet
           STELLAR_IDENTITY: pulsartrack-deployer
@@ -61,10 +61,15 @@ jobs:
           STELLAR_NETWORK: testnet
           STELLAR_IDENTITY: pulsartrack-deployer
 
-      # Deployment records are uploaded rather than pushed to main, which
-      # branch protection may reject.
-      - name: Upload deployment records
-        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
-        with:
-          name: deployment-records
-          path: deployments/
+      - name: Commit and push deployment records
+        run: |
+          git config user.name "deploy-bot"
+          git config user.email "deploy@pulsartrack.local"
+          git add deployments/
+          if ! git diff --cached --exit-code > /dev/null; then
+            git commit -m "chore: update deployment records for $STELLAR_NETWORK"
+            git push origin main
+          else
+            echo "No deployment record changes to commit"
+          fi
+        continue-on-error: true
