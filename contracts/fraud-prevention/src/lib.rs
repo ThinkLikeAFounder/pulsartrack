@@ -516,11 +516,13 @@ impl FraudPreventionContract {
 // #[cfg(test)] so they don't leak into the WASM build and cause symbol
 // collisions (see #909).
 
+#[cfg(test)]
 #[contractclient(name = "CampaignLifecycleContractClient")]
 pub trait CampaignLifecycleContract {
     fn pause_for_fraud(fraud_contract: Address, campaign_id: u64);
 }
 
+#[cfg(test)]
 #[contractclient(name = "PublisherNetworkContractClient")]
 pub trait PublisherNetworkContract {
     fn suspend_publisher(fraud_contract: Address, publisher: Address);

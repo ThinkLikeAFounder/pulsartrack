@@ -220,7 +220,7 @@ fn test_create_escrow_time_lock_overflow() {
     let token_addr = deploy_token(&env, &token_admin);
     let admin = Address::generate(&env);
     let oracle = Address::generate(&env);
-    let contract_id = env.register(EscrowVaultContract {}, ());
+    let contract_id = env.register(EscrowVaultContract, ());
     let client = EscrowVaultContractClient::new(&env, &contract_id);
     client.initialize(&admin, &token_addr, &oracle);
 
@@ -255,7 +255,7 @@ fn test_create_escrow_expires_at_overflow() {
     let token_addr = deploy_token(&env, &token_admin);
     let admin = Address::generate(&env);
     let oracle = Address::generate(&env);
-    let contract_id = env.register(EscrowVaultContract {}, ());
+    let contract_id = env.register(EscrowVaultContract, ());
     let client = EscrowVaultContractClient::new(&env, &contract_id);
     client.initialize(&admin, &token_addr, &oracle);
 
@@ -392,7 +392,7 @@ fn test_approve_release_refunded_fails() {
     let token_addr = deploy_token(&env, &token_admin);
     let admin = Address::generate(&env);
     let oracle = Address::generate(&env);
-    let contract_id = env.register(EscrowVaultContract {}, ());
+    let contract_id = env.register(EscrowVaultContract, ());
     let client = EscrowVaultContractClient::new(&env, &contract_id);
     client.initialize(&admin, &token_addr, &oracle);
 
@@ -430,7 +430,7 @@ fn test_approve_release_disputed_fails() {
     let token_addr = deploy_token(&env, &token_admin);
     let admin = Address::generate(&env);
     let oracle = Address::generate(&env);
-    let contract_id = env.register(EscrowVaultContract {}, ());
+    let contract_id = env.register(EscrowVaultContract, ());
     let client = EscrowVaultContractClient::new(&env, &contract_id);
     client.initialize(&admin, &token_addr, &oracle);
 
