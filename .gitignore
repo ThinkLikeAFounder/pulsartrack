@@ -8,6 +8,7 @@ target/
 # ── Stellar / Soroban ────────────────────────────────
 .soroban/
 .stellar/
+contracts/*/test_snapshots/
 
 # ── Node / Next.js ───────────────────────────────────
 node_modules/

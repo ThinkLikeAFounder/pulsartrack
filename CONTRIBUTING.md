@@ -120,10 +120,17 @@ cargo test --workspace
 cargo test -p campaign-contract
 ```
 
+> **Note:** Soroban test snapshots (`contracts/*/test_snapshots/`) are generated
+> build artifacts and are git-ignored. Running `cargo test` may create or modify
+> these files locally — this is expected and they should not be committed.
+
 ### Backend
 
 ```bash
 cd backend
+
+# Lint
+npm run lint
 
 # Type check
 npm run typecheck
