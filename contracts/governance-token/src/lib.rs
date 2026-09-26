@@ -51,6 +51,10 @@ pub enum DataKey {
     CheckpointCount(Address),
     /// The nth checkpoint for an account: (ledger_sequence, voting_power).
     Checkpoint(Address, u32), // Address, checkpoint index
+    /// Number of total-supply checkpoints written.
+    TotalSupplyCheckpointCount,
+    /// The nth total-supply checkpoint: (ledger_sequence, supply).
+    TotalSupplyCheckpoint(u32),
 }
 
 /// A point-in-time record of an account's voting power.
@@ -518,6 +522,7 @@ impl GovernanceTokenContract {
         if let Some(d) = to_delegate_cp {
             Self::write_checkpoint(&env, &d);
         }
+        Self::write_total_supply_checkpoint(&env);
 
         env.events()
             .publish((symbol_short!("mint"),), (recipient, amount));
@@ -591,6 +596,7 @@ impl GovernanceTokenContract {
         if let Some(d) = from_delegate_cp {
             Self::write_checkpoint(&env, &d);
         }
+        Self::write_total_supply_checkpoint(&env);
 
         env.events()
             .publish((symbol_short!("burn"),), (from, amount));
@@ -888,6 +894,122 @@ impl GovernanceTokenContract {
             .persistent()
             .get(&DataKey::CheckpointCount(account))
             .unwrap_or(0)
+    }
+
+    /// Record a total-supply checkpoint at the current ledger.
+    ///
+    /// Called on every mint and burn so that `get_past_total_supply` can
+    /// resolve the supply as of any historical ledger, matching the
+    /// checkpoint-based approach already used for per-account voting power.
+    fn write_total_supply_checkpoint(env: &Env) {
+        let supply: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::TotalSupply)
+            .unwrap_or(0);
+        let current_ledger = env.ledger().sequence();
+
+        let count: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::TotalSupplyCheckpointCount)
+            .unwrap_or(0);
+
+        // Collapse repeated writes within the same ledger into one entry.
+        if count > 0 {
+            let last_key = DataKey::TotalSupplyCheckpoint(count - 1);
+            let last: Checkpoint = env.storage().persistent().get(&last_key).unwrap();
+            if last.ledger == current_ledger {
+                let updated = Checkpoint {
+                    ledger: current_ledger,
+                    power: supply,
+                };
+                env.storage().persistent().set(&last_key, &updated);
+                env.storage().persistent().extend_ttl(
+                    &last_key,
+                    PERSISTENT_LIFETIME_THRESHOLD,
+                    PERSISTENT_BUMP_AMOUNT,
+                );
+                return;
+            }
+        }
+
+        let key = DataKey::TotalSupplyCheckpoint(count);
+        env.storage().persistent().set(
+            &key,
+            &Checkpoint {
+                ledger: current_ledger,
+                power: supply,
+            },
+        );
+        env.storage().persistent().extend_ttl(
+            &key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+
+        let count_key = DataKey::TotalSupplyCheckpointCount;
+        env.storage()
+            .persistent()
+            .set(&count_key, &(count + 1));
+        env.storage().persistent().extend_ttl(
+            &count_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+    }
+
+    /// Total supply as of a ledger strictly before `ledger_sequence`.
+    ///
+    /// Mirrors `get_past_votes` but for the global supply. Governance-dao
+    /// should use this for quorum calculations so that mints/burns after a
+    /// proposal's snapshot cannot change the quorum denominator.
+    pub fn get_past_total_supply(env: Env, ledger_sequence: u32) -> i128 {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+
+        if ledger_sequence > env.ledger().sequence() {
+            panic!("cannot read supply for a future ledger");
+        }
+
+        let count: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::TotalSupplyCheckpointCount)
+            .unwrap_or(0);
+        if count == 0 {
+            return 0;
+        }
+
+        // Binary search for the newest checkpoint strictly older than
+        // `ledger_sequence`.
+        let mut low: u32 = 0;
+        let mut high: u32 = count;
+        while low < high {
+            let mid = low + (high - low) / 2;
+            let cp: Checkpoint = env
+                .storage()
+                .persistent()
+                .get(&DataKey::TotalSupplyCheckpoint(mid))
+                .unwrap();
+            if cp.ledger < ledger_sequence {
+                low = mid + 1;
+            } else {
+                high = mid;
+            }
+        }
+
+        if low == 0 {
+            return 0;
+        }
+
+        let cp: Checkpoint = env
+            .storage()
+            .persistent()
+            .get(&DataKey::TotalSupplyCheckpoint(low - 1))
+            .unwrap();
+        cp.power
     }
 
     /// Take a voting snapshot for a voter at a given ledger sequence.

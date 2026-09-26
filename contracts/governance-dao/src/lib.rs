@@ -15,15 +15,20 @@ use soroban_sdk::{
 // Governance token voting interface
 // ============================================================
 
-/// The subset of the governance token used for vote weighting.
+/// The subset of the governance token used for vote weighting and quorum.
 ///
 /// `get_past_votes` resolves an account's voting power from the token's
 /// checkpoint history, using only checkpoints strictly older than the ledger
 /// asked about. Governance must weight votes with this rather than with a live
 /// `balance()` read, which is what made flash-loan vote inflation possible.
+///
+/// `get_past_total_supply` resolves the total supply as of a past ledger so
+/// that quorum is measured against the snapshot supply, not the live supply
+/// at finalization time.
 #[soroban_sdk::contractclient(name = "GovTokenClient")]
 pub trait GovTokenInterface {
     fn get_past_votes(env: Env, account: Address, ledger_sequence: u32) -> i128;
+    fn get_past_total_supply(env: Env, ledger_sequence: u32) -> i128;
 }
 
 // ============================================================
@@ -399,11 +404,8 @@ impl GovernanceDaoContract {
             .instance()
             .get(&DataKey::GovernanceToken)
             .unwrap();
-        let total_supply: i128 = env.invoke_contract(
-            &token_address,
-            &soroban_sdk::Symbol::new(&env, "total_supply"),
-            soroban_sdk::vec![&env],
-        );
+        let total_supply: i128 = GovTokenClient::new(&env, &token_address)
+            .get_past_total_supply(&proposal.snapshot_ledger);
 
         let total_votes = proposal
             .votes_for
