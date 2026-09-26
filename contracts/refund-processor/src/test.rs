@@ -160,8 +160,35 @@ fn test_approve_refund_non_positive_amount() {
     env.mock_all_auths();
     let (c, admin, _, _) = setup(&env);
     let requester = Address::generate(&env);
+    setup_campaign(&env, &c.address, 1, 100_000);
     let id = c.request_refund(&requester, &1u64, &50_000i128, &s(&env, "reason"));
     c.approve_refund(&admin, &id, &0i128);
+}
+
+#[test]
+#[should_panic(expected = "invalid amount")]
+fn test_approve_refund_negative_amount() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin, _, _) = setup(&env);
+    let requester = Address::generate(&env);
+    setup_campaign(&env, &c.address, 1, 100_000);
+    let id = c.request_refund(&requester, &1u64, &50_000i128, &s(&env, "reason"));
+    c.approve_refund(&admin, &id, &-1i128);
+}
+
+#[test]
+fn test_approve_refund_valid_amount_succeeds() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin, _, _) = setup(&env);
+    let requester = Address::generate(&env);
+    setup_campaign(&env, &c.address, 1, 100_000);
+    let id = c.request_refund(&requester, &1u64, &50_000i128, &s(&env, "reason"));
+    c.approve_refund(&admin, &id, &30_000i128);
+    let refund = c.get_refund(&id).unwrap();
+    assert!(matches!(refund.status, RefundStatus::Approved));
+    assert_eq!(refund.amount_approved, 30_000i128);
 }
 
 #[test]

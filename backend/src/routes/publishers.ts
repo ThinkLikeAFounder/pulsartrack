@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import pool from "../config/database";
+import * as publishersRepo from "../db/repositories/publishers";
 import { callReadOnly, toAddressScVal } from "../services/soroban-client";
 import { CONTRACT_IDS } from "../config/stellar";
 import { requireAuth, rateLimitWrite } from "../middleware/auth";
@@ -19,42 +19,37 @@ router.get(
       const rawLimit = parseInt(req.query.limit as string);
       const limit = Math.min(Math.max(isNaN(rawLimit) ? 20 : rawLimit, 1), 100);
 
-const { rows } = await pool.query(
-        `SELECT address, display_name, tier, reputation_score,
-              impressions_served, earnings_stroops, last_activity
-        FROM publishers
-        WHERE status IN ('Verified', 'Pending')
-        ORDER BY earnings_stroops DESC, reputation_score DESC
-        LIMIT $1`,
-        [limit],
+      const publishers = await publishersRepo.findMany(
+        { status: "Verified" },
+        limit,
       );
 
-      const publishers = rows.map((r) => ({
+      const result = publishers.map((r) => ({
         address: r.address,
-        displayName: r.display_name,
+        displayName: r.displayName,
         tier: r.tier,
-        reputationScore: r.reputation_score,
-        impressionsServed: Number(r.impressions_served),
-        earningsXlm: Number(r.earnings_stroops) / 1e7,
-        lastActivity: r.last_activity,
+        reputationScore: r.reputationScore,
+        impressionsServed: Number(r.impressionsServed),
+        earningsXlm: Number(r.earningsStroops) / 1e7,
+        lastActivity: r.lastActivity,
       }));
 
-      if (publishers.length > 0 && CONTRACT_IDS.PUBLISHER_REPUTATION) {
+      if (result.length > 0 && CONTRACT_IDS.PUBLISHER_REPUTATION) {
         try {
           const onChainScore = await callReadOnly(
             CONTRACT_IDS.PUBLISHER_REPUTATION,
             "get_reputation",
-            [toAddressScVal(publishers[0].address)],
+            [toAddressScVal(result[0].address)],
           );
           if (onChainScore != null) {
-            publishers[0].reputationScore = onChainScore;
+            result[0].reputationScore = onChainScore;
           }
         } catch {
           // On-chain enrichment is best-effort
         }
       }
 
-      res.json({ publishers });
+      res.json({ publishers: result });
     } catch (err: any) {
       req.log?.error({ err }, "Failed to fetch publisher leaderboard");
       const details =
@@ -70,13 +65,13 @@ const { rows } = await pool.query(
 );
 
 router.post(
-	"/register",
-	requireAuth,
-	rateLimitWrite(),
-	validate({
-	  body: {
-	    displayName: {
-	      type: "string",
+  "/register",
+  requireAuth,
+  rateLimitWrite(),
+  validate({
+    body: {
+      displayName: {
+        type: "string",
         required: true,
         minLength: 1,
         maxLength: 100,
@@ -89,19 +84,18 @@ router.post(
       const address = req.stellarAddress;
       const { displayName, website } = req.body;
 
-      const { rows } = await pool.query(
-        `INSERT INTO publishers (address, display_name, website)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (address) DO NOTHING
-       RETURNING *`,
-        [address, displayName, website],
-      );
-
-      if (rows.length === 0) {
+      const existing = await publishersRepo.findByAddress(address);
+      if (existing) {
         return res.status(409).json({ error: "Publisher already registered" });
       }
 
-      res.status(201).json(rows[0]);
+      const publisher = await publishersRepo.create({
+        address,
+        displayName,
+        website: website || null,
+      });
+
+      res.status(201).json(publisher);
     } catch (err: any) {
       req.log?.error({ err }, "Failed to register publisher");
       const details =

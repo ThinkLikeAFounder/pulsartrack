@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import pool from '../config/database';
+import * as campaignsRepo from '../db/repositories/campaigns';
 import { callReadOnly } from '../services/soroban-client';
 import { CONTRACT_IDS } from '../config/stellar';
 import { requireAuth, rateLimitWrite } from '../middleware/auth';
@@ -9,17 +9,7 @@ const router = Router();
 
 router.get('/stats', async (_req: Request, res: Response) => {
   try {
-    const { rows } = await pool.query(`
-      SELECT
-        COUNT(*)::int AS total_campaigns,
-        COUNT(*) FILTER (WHERE status = 'Active')::int AS active_campaigns,
-        COALESCE(SUM(impressions), 0)::bigint AS total_impressions,
-        COALESCE(SUM(clicks), 0)::bigint AS total_clicks,
-        COALESCE(SUM(spent_stroops), 0)::bigint AS total_spent_stroops
-      FROM campaigns
-    `);
-
-    const stats = rows[0];
+    const stats = await campaignsRepo.getStats();
 
     let onChainTotal: number | null = null;
     if (CONTRACT_IDS.CAMPAIGN_ORCHESTRATOR) {
@@ -34,11 +24,12 @@ router.get('/stats', async (_req: Request, res: Response) => {
     }
 
     res.json({
-      total_campaigns: (onChainTotal != null && onChainTotal > 0) ? onChainTotal : Number(stats.total_campaigns),
-      active_campaigns: Number(stats.active_campaigns),
-      total_impressions: Number(stats.total_impressions),
-      total_clicks: Number(stats.total_clicks),
-      total_spent_xlm: Number(stats.total_spent_stroops) / 1e7,
+      total_campaigns: (onChainTotal != null && onChainTotal > 0) ? onChainTotal : stats.totalCampaigns ?? 0,
+      active_campaigns: stats.activeCampaigns ?? 0,
+      total_impressions: stats.totalImpressions ?? 0,
+      total_clicks: stats.totalClicks ?? 0,
+      total_spent_xlm: (stats.totalSpentStroops ?? 0) / 1e7,
+      ...(stats._partial && { _partial: stats._partial }),
     });
   } catch (err: any) {
     _req.log?.error({ err }, 'Failed to fetch campaign stats');
@@ -59,14 +50,15 @@ router.post('/', requireAuth, rateLimitWrite(), validate({
     const address = req.stellarAddress;
     const { title, contentId, budgetStroops, dailyBudgetStroops } = req.body;
 
-    const { rows } = await pool.query(
-      `INSERT INTO campaigns (advertiser, title, content_id, budget_stroops, daily_budget_stroops)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING *`,
-      [address, title, contentId, budgetStroops, dailyBudgetStroops]
-    );
+    const campaign = await campaignsRepo.create({
+      advertiser: address,
+      title,
+      contentId,
+      budgetStroops: BigInt(budgetStroops),
+      dailyBudgetStroops: BigInt(dailyBudgetStroops),
+    });
 
-    res.status(201).json(rows[0]);
+    res.status(201).json(campaign);
   } catch (err: any) {
     req.log?.error({ err }, 'Failed to create campaign');
     const details = process.env.NODE_ENV === 'development' ? err.message : undefined;
