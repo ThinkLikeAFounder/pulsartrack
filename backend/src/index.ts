@@ -7,6 +7,7 @@ import { validateContractIds } from "./config/stellar";
 import prisma from "./db/prisma";
 import redisClient from "./config/redis";
 import { validateSimulationAccount } from "./services/soroban-client";
+import { startEventIndexer, stopEventIndexer } from "./services/event-indexer";
 import { EnvValidationError, loadEnv } from "./config/env";
 import { logger } from "./lib/logger";
 import { runMigrations } from "./db/migrate";
@@ -18,6 +19,8 @@ const server = createServer(app);
 setupWebSocketServer(server);
 
 async function closeResources() {
+  stopEventIndexer();
+
   try {
     await prisma.$disconnect();
     logger.info("[PulsarTrack] Prisma disconnected");
@@ -127,6 +130,9 @@ async function start() {
     logger.info(
       `[Network]         ${process.env.STELLAR_NETWORK || "testnet"}`,
     );
+    // Start the background event indexer after the server is listening,
+    // so it does not block startup and has access to the DB.
+    startEventIndexer();
   });
 }
 
