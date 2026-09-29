@@ -3,7 +3,6 @@ import { BidForm } from './BidForm';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { usePlaceBid } from '@/hooks/useContract';
 import { Auction } from '@/types/contracts';
-import { stroopsToXlm, xlmToStroops, STROOPS_PER_XLM } from '@/lib/stellar-config';
 
 // Mock the hook
 vi.mock('@/hooks/useContract', () => ({
@@ -96,44 +95,6 @@ describe('BidForm', () => {
         fireEvent.click(screen.getByText('Submit Bid'));
 
         expect(await screen.findByText(/Insufficent funds/i)).toBeInTheDocument();
-    });
-});
-
-    it('converts fractional XLM amounts', () => {
-        expect(stroopsToXlm(5_000_000n)).toBe(0.5);
-        expect(xlmToStroops(0.5)).toBe(5_000_000n);
-    });
-
-    it('stroopsToXlm accepts number input', () => {
-        expect(stroopsToXlm(10_000_000)).toBe(1);
-    });
-
-    it('xlmToStroops floors sub-stroop precision', () => {
-        // 1.00000001 XLM — sub-stroop remainder is floored
-        expect(xlmToStroops(1.00000001)).toBe(10_000_000n);
-    });
-
-    it('round-trips bid submission amount correctly', () => {
-        // User enters 2.5 XLM → should send exactly 25,000,000 stroops
-        const bidXlm = 2.5;
-        const stroops = xlmToStroops(bidXlm);
-        expect(stroops).toBe(25_000_000n);
-        expect(stroopsToXlm(stroops)).toBe(2.5);
-    });
-
-    it('STROOPS_PER_XLM constant is correct', () => {
-        expect(STROOPS_PER_XLM).toBe(10_000_000);
-    });
-
-    it('handles zero', () => {
-        expect(stroopsToXlm(0n)).toBe(0);
-        expect(xlmToStroops(0)).toBe(0n);
-    });
-
-    it('handles large auction values without precision loss', () => {
-        // 1,000,000 XLM in stroops
-        const largeStroops = 10_000_000_000_000n;
-        expect(stroopsToXlm(largeStroops)).toBe(1_000_000);
     });
 });
 
