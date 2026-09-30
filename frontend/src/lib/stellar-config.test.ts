@@ -54,34 +54,6 @@ describe('xlmToStroops', () => {
   });
 });
 
-  it('converts decimal amounts without floating-point error', () => {
-    expect(xlmToStroops(0.57)).toBe(BigInt(5_700_000));
-    expect(xlmToStroops(19.99)).toBe(BigInt(199_900_000));
-  });
-
-  it('converts one stroop exactly', () => {
-    expect(xlmToStroops(0.0000001)).toBe(BigInt(1));
-  });
-
-  it('converts large amounts exactly', () => {
-    expect(xlmToStroops(1_000_000)).toBe(BigInt(10_000_000_000_000));
-  });
-
-  it('throws on non-finite values', () => {
-    expect(() => xlmToStroops(NaN)).toThrow('not a finite number');
-    expect(() => xlmToStroops(Infinity)).toThrow('not a finite number');
-    expect(() => xlmToStroops(-Infinity)).toThrow('not a finite number');
-  });
-
-  it('throws on negative values', () => {
-    expect(() => xlmToStroops(-1)).toThrow('cannot be negative');
-  });
-
-  it('throws on amounts with more than 7 decimal places', () => {
-    expect(() => xlmToStroops(0.12345678)).toThrow('more than 7 decimal places');
-  });
-});
-
 describe('stroopsToXlm', () => {
   it('converts stroops to XLM string without precision loss', () => {
     expect(stroopsToXlm(10_000_000n)).toBe('1');
@@ -121,7 +93,6 @@ describe('round-trip conversions', () => {
       expect(back).toBe(expected);
     }
   });
-});
 });
 
 describe('Explorer URLs', () => {
