@@ -1,6 +1,6 @@
 <div align="center">
 
-# PulsarTrack
+# PulsarTrack.
 
 **Privacy-preserving, blockchain-powered ad tracking on the Stellar network.**
 
