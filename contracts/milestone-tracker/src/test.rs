@@ -100,6 +100,28 @@ fn test_update_progress_achieves() {
 }
 
 #[test]
+fn test_update_progress_skips_disputed_milestone() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _, oracle) = setup(&env);
+    let advertiser = Address::generate(&env);
+    let id = c.create_milestone(
+        &advertiser,
+        &1u64,
+        &s(&env, "1000 views"),
+        &s(&env, "views"),
+        &1000u64,
+        &50_000i128,
+        &86_400u64,
+    );
+    c.dispute_milestone(&advertiser, &id);
+    c.update_progress(&oracle, &id, &1000u64);
+    let m = c.get_milestone(&id).unwrap();
+    assert!(matches!(m.status, MilestoneStatus::Disputed));
+    assert_eq!(m.current_value, 0);
+}
+
+#[test]
 fn test_dispute_pending_milestone() {
     let env = Env::default();
     env.mock_all_auths();
