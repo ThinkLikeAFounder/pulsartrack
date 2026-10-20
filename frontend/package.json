@@ -21,7 +21,7 @@
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
     "@pulsartrack/sentry-scrubber": "file:../packages/sentry-scrubber",
-    "@sentry/nextjs": "^10.72.0",
+    "@sentry/nextjs": "^11.8.0",
     "@stellar/freighter-api": "^6.0.1",
     "@stellar/stellar-sdk": "^17.2.1",
     "@tanstack/react-query": "^5.90.21",
