@@ -1,6 +1,6 @@
 # Frontend Dockerfile - Multi-stage build for Next.js
 # Stage 1: Dependencies
-FROM node:22-alpine AS deps
+FROM node:26-alpine AS deps
 WORKDIR /app
 
 # Install dependencies based on the preferred package manager
@@ -8,7 +8,7 @@ COPY package.json package-lock.json* ./
 RUN npm ci
 
 # Stage 2: Builder
-FROM node:22-alpine AS builder
+FROM node:26-alpine AS builder
 WORKDIR /app
 
 # Copy dependencies from deps stage
@@ -87,7 +87,7 @@ ENV NEXT_PUBLIC_CONTRACT_SUBSCRIPTION_MANAGER=$NEXT_PUBLIC_CONTRACT_SUBSCRIPTION
 RUN npm run build
 
 # Stage 3: Runner (Production)
-FROM node:22-alpine AS runner
+FROM node:26-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
