@@ -314,6 +314,7 @@ impl MilestoneTrackerContract {
 
         if milestone.status == MilestoneStatus::Achieved
             || milestone.status == MilestoneStatus::Missed
+            || milestone.status == MilestoneStatus::Disputed
         {
             panic!("already finalized");
         }
