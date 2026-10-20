@@ -52,7 +52,7 @@
     "eslint-plugin-jsx-a11y": "^6.10.0",
     "eslint-plugin-react": "^7.37.0",
     "eslint-plugin-react-hooks": "^7.1.0",
-    "globals": "^16.4.0",
+    "globals": "^17.13.0",
     "jsdom": "^28.1.0",
     "tailwindcss": "^4",
     "typescript": "^5",
