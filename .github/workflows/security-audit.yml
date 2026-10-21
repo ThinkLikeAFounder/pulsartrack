@@ -66,7 +66,7 @@ jobs:
 
       - name: Create or update security audit issue
         if: failure() && github.event_name == 'schedule'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const title = 'Scheduled security audit failed';
