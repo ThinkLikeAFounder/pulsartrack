@@ -38,11 +38,14 @@ router.get('/:address/transactions', addressParamValidation, async (req: Request
   try {
     const address = req.params.address as string;
     const parsed = parseInt(req.query.limit as string);
-    const limit = Number.isNaN(parsed) ? 20 : Math.min(parsed, 200);
+    const limit = Number.isNaN(parsed) ? 20 : Math.min(Math.max(parsed, 1), 200);
     const cursor = typeof req.query.cursor === 'string' ? req.query.cursor : undefined;
     const order = req.query.order === 'asc' ? 'asc' : 'desc';
 
     const result = await getAccountTransactions(address, limit, cursor, order);
+    if (!result) {
+      return res.status(404).json({ error: 'Account not found or not funded' });
+    }
     const transactions = result.records;
     const nextCursor =
       transactions.length === limit

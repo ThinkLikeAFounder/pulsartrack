@@ -212,7 +212,7 @@ impl CampaignLifecycleContract {
 
         // Validate state transition
         let old_state = lifecycle.state.clone();
-        Self::_validate_transition(&old_state, &new_state);
+        Self::_validate_transition(&old_state, &new_state, &env, campaign_id);
 
         // Apply state
         let now = env.ledger().timestamp();
@@ -403,7 +403,7 @@ impl CampaignLifecycleContract {
             .unwrap_or(0)
     }
 
-    fn _validate_transition(from: &LifecycleState, to: &LifecycleState) {
+    fn _validate_transition(from: &LifecycleState, to: &LifecycleState, env: &Env, campaign_id: u64) {
         let valid = match from {
             LifecycleState::Draft => matches!(
                 to,
@@ -431,6 +431,17 @@ impl CampaignLifecycleContract {
         };
         if !valid {
             panic!("invalid state transition");
+        }
+
+        if from == &LifecycleState::Active && to == &LifecycleState::Expired {
+            let lifecycle: CampaignLifecycle = env
+                .storage()
+                .persistent()
+                .get(&DataKey::Lifecycle(campaign_id))
+                .expect("lifecycle not found");
+            if env.ledger().sequence() <= lifecycle.current_end_ledger {
+                panic!("campaign has not expired yet");
+            }
         }
     }
 

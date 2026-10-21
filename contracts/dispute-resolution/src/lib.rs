@@ -234,6 +234,10 @@ impl DisputeResolutionContract {
             panic!("cannot assign arbitrator to a finalized dispute");
         }
 
+        if arbitrator == dispute.claimant || arbitrator == dispute.respondent {
+            panic!("arbitrator cannot be a party to the dispute");
+        }
+
         dispute.arbitrator = Some(arbitrator);
         dispute.status = DisputeStatus::UnderReview;
         let _ttl_key = DataKey::Dispute(dispute_id);
@@ -269,6 +273,20 @@ impl DisputeResolutionContract {
             }
         } else {
             panic!("not assigned arbitrator");
+        }
+
+        let is_authorized: bool = env
+            .storage()
+            .persistent()
+            .get(&DataKey::ArbitratorApproved(arbitrator.clone()))
+            .unwrap_or(false);
+
+        if !is_authorized {
+            panic!("arbitrator is no longer authorized");
+        }
+
+        if arbitrator == dispute.claimant || arbitrator == dispute.respondent {
+            panic!("arbitrator cannot be a party to the dispute");
         }
 
         match dispute.status {

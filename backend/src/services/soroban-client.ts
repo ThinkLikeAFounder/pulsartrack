@@ -24,11 +24,10 @@ export async function validateSimulationAccount() {
   try {
     await server.getAccount(SIMULATION_ACCOUNT);
     logger.info(`[Soroban] Simulation account ${SIMULATION_ACCOUNT} validated`);
-  } catch (err) {
+  } catch {
     logger.error(`[Soroban] Simulation account ${SIMULATION_ACCOUNT} not found or unfunded. Read-only calls will fail.`);
     if (process.env.NODE_ENV === "production") {
-      logger.fatal("[Soroban] Aborting due to missing simulation account in production");
-      process.exit(1);
+      throw new Error("[Soroban] Simulation account is unavailable in production");
     }
   }
 }

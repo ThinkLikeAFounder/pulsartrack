@@ -288,10 +288,11 @@ export default function AdvertiserPage() {
                   </div>
                 )}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="campaign-title" className="block text-sm font-medium text-gray-700 mb-1">
                     Campaign Title
                   </label>
                   <input
+                    id="campaign-title"
                     type="text"
                     value={form.title}
                     onChange={(e) =>
@@ -304,10 +305,11 @@ export default function AdvertiserPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="campaign-content-id" className="block text-sm font-medium text-gray-700 mb-1">
                     Content ID (IPFS Hash)
                   </label>
                   <input
+                    id="campaign-content-id"
                     type="text"
                     value={form.contentId}
                     onChange={(e) =>
@@ -321,10 +323,11 @@ export default function AdvertiserPage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="campaign-budget" className="block text-sm font-medium text-gray-700 mb-1">
                       Total Budget (XLM)
                     </label>
                     <input
+                      id="campaign-budget"
                       type="number"
                       value={form.budgetXlm}
                       onChange={(e) =>
@@ -338,10 +341,11 @@ export default function AdvertiserPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="campaign-daily-budget" className="block text-sm font-medium text-gray-700 mb-1">
                       Daily Budget (XLM)
                     </label>
                     <input
+                      id="campaign-daily-budget"
                       type="number"
                       value={form.dailyBudgetXlm}
                       onChange={(e) =>
@@ -357,10 +361,11 @@ export default function AdvertiserPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="campaign-duration" className="block text-sm font-medium text-gray-700 mb-1">
                     Duration (days)
                   </label>
                   <input
+                    id="campaign-duration"
                     type="number"
                     value={form.durationDays}
                     onChange={(e) =>

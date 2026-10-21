@@ -264,3 +264,72 @@ fn test_last_attester_does_not_override_consensus() {
     assert_eq!(consensus_after.total_attesters, 2);
     assert_eq!(consensus_after.avg_impressions, 1050);
 }
+
+#[test]
+fn test_reset_attestations_recovers_stuck_consensus() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin) = setup(&env);
+    let data_hash = BytesN::from_array(&env, &[1u8; 32]);
+
+    // Fill every slot with alternating 0 / 10000 bps fraud rates so the
+    // deviation permanently exceeds MAX_DEVIATION_BPS.
+    let mut attesters = soroban_sdk::Vec::new(&env);
+    for i in 0..MAX_CONSENSUS_ATTESTERS {
+        let att = Address::generate(&env);
+        c.authorize_attester(&admin, &att);
+        let fraud_rate = if i % 2 == 0 { 0u32 } else { 10_000u32 };
+        c.submit_attestation(
+            &att,
+            &1u64,
+            &1000u64,
+            &100u64,
+            &fraud_rate,
+            &80u32,
+            &data_hash,
+        );
+        attesters.push_back(att);
+    }
+
+    let late = Address::generate(&env);
+    c.authorize_attester(&admin, &late);
+    assert!(c
+        .try_submit_attestation(&late, &1u64, &1000u64, &100u64, &500u32, &80u32, &data_hash)
+        .is_err());
+    assert!(c.try_finalize_consensus(&admin, &1u64).is_err());
+
+    c.reset_attestations(&admin, &1u64);
+
+    assert_eq!(c.get_attestation_count(&1u64), 0);
+    let att1 = attesters.get(0).unwrap();
+    let att2 = attesters.get(1).unwrap();
+    assert!(c.get_attestation(&1u64, &att1).is_none());
+
+    // Previous attesters can resubmit and consensus can now be reached.
+    c.submit_attestation(&att1, &1u64, &1000u64, &100u64, &500u32, &80u32, &data_hash);
+    c.submit_attestation(&att2, &1u64, &1100u64, &110u64, &600u32, &85u32, &data_hash);
+    c.finalize_consensus(&admin, &1u64);
+
+    let consensus = c.get_consensus(&1u64).unwrap();
+    assert_eq!(consensus.total_attesters, 2);
+    assert_eq!(consensus.avg_impressions, 1050);
+}
+
+#[test]
+#[should_panic(expected = "consensus already finalized")]
+fn test_reset_attestations_rejects_finalized_consensus() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin) = setup(&env);
+    let att1 = Address::generate(&env);
+    let att2 = Address::generate(&env);
+    let data_hash = BytesN::from_array(&env, &[1u8; 32]);
+
+    c.authorize_attester(&admin, &att1);
+    c.authorize_attester(&admin, &att2);
+    c.submit_attestation(&att1, &1u64, &1000u64, &100u64, &500u32, &80u32, &data_hash);
+    c.submit_attestation(&att2, &1u64, &1100u64, &110u64, &600u32, &85u32, &data_hash);
+    c.finalize_consensus(&admin, &1u64);
+
+    c.reset_attestations(&admin, &1u64);
+}

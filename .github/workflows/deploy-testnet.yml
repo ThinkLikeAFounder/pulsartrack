@@ -33,7 +33,7 @@ jobs:
 
       # A prebuilt release binary, instead of compiling the CLI from source.
       - name: Install Stellar CLI
-        uses: stellar/stellar-cli@v23
+        uses: stellar/stellar-cli@v28.1.0
 
       - name: Build contract WASMs
         run: cargo build --release --target wasm32-unknown-unknown

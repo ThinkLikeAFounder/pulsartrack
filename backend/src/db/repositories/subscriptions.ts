@@ -8,11 +8,24 @@ interface SubscriptionRow {
   subscriber: string;
   tier: string;
   is_annual: boolean;
-  amount_paid_stroops: number;
+  amount_paid_stroops: bigint;
   started_at: Date;
   expires_at: Date;
   auto_renew: boolean;
   tx_hash: string | null;
+}
+
+// node-postgres returns BIGINT (OID 20) columns as strings to avoid silent
+// precision loss, so the raw row shape differs from SubscriptionRow.
+interface SubscriptionDbRow extends Omit<SubscriptionRow, 'amount_paid_stroops'> {
+  amount_paid_stroops: string;
+}
+
+function toSubscriptionRow(row: SubscriptionDbRow): SubscriptionRow {
+  return {
+    ...row,
+    amount_paid_stroops: row.amount_paid_stroops != null ? BigInt(row.amount_paid_stroops) : row.amount_paid_stroops,
+  };
 }
 
 function normalizeSubscriptionLimit(take = DEFAULT_SUBSCRIPTION_HISTORY_LIMIT): number {
@@ -27,25 +40,25 @@ export async function findBySubscriber(
   take = DEFAULT_SUBSCRIPTION_HISTORY_LIMIT,
 ): Promise<SubscriptionRow[]> {
   const limit = normalizeSubscriptionLimit(take);
-  const { rows } = await pool.query(
+  const { rows } = await pool.query<SubscriptionDbRow>(
     `SELECT * FROM subscriptions
      WHERE subscriber = $1
      ORDER BY started_at DESC
      LIMIT $2`,
     [subscriber, limit],
   );
-  return rows;
+  return rows.map(toSubscriptionRow);
 }
 
 export async function findActive(subscriber: string): Promise<SubscriptionRow | null> {
-  const { rows } = await pool.query(
+  const { rows } = await pool.query<SubscriptionDbRow>(
     `SELECT * FROM subscriptions
      WHERE subscriber = $1 AND expires_at > NOW()
      ORDER BY expires_at DESC
      LIMIT 1`,
     [subscriber],
   );
-  return rows[0] ?? null;
+  return rows[0] ? toSubscriptionRow(rows[0]) : null;
 }
 
 export async function create(data: {
@@ -58,7 +71,7 @@ export async function create(data: {
   auto_renew?: boolean;
   tx_hash?: string;
 }): Promise<SubscriptionRow> {
-  const { rows } = await pool.query(
+  const { rows } = await pool.query<SubscriptionDbRow>(
     `INSERT INTO subscriptions (subscriber, tier, is_annual, amount_paid_stroops, started_at, expires_at, auto_renew, tx_hash)
      VALUES ($1, $2, $3, $4, COALESCE($5, NOW()), $6, $7, $8)
      RETURNING *`,
@@ -73,5 +86,5 @@ export async function create(data: {
       data.tx_hash ?? null,
     ],
   );
-  return rows[0];
+  return toSubscriptionRow(rows[0]);
 }

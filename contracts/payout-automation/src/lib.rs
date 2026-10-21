@@ -119,6 +119,15 @@ impl PayoutAutomationContract {
             panic!("amount below minimum payout");
         }
 
+        let max_pending: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::MaxPendingAmount)
+            .unwrap_or(MAX_PENDING_AMOUNT);
+        if amount > max_pending {
+            panic!("amount exceeds maximum pending cap");
+        }
+
         let counter: u64 = env
             .storage()
             .instance()
@@ -156,26 +165,6 @@ impl PayoutAutomationContract {
             .instance()
             .set(&DataKey::PayoutCounter, &payout_id);
 
-        // Check if pending_amount exceeds cap after adding
-        let max_pending: i128 = env
-            .storage()
-            .instance()
-            .get(&DataKey::MaxPendingAmount)
-            .unwrap_or(MAX_PENDING_AMOUNT);
-        let pending_amount = env
-            .storage()
-            .persistent()
-            .get::<_, PublisherEarnings>(&DataKey::PublisherEarnings(recipient.clone()))
-            .map(|earnings| earnings.pending_amount)
-            .unwrap_or(0);
-        if pending_amount > max_pending {
-            // Trigger an event for the admin to notice the high pending amount
-            env.events().publish(
-                (symbol_short!("payout"), symbol_short!("alert")),
-                (recipient.clone(), pending_amount),
-            );
-        }
-
         env.events().publish(
             (symbol_short!("payout"), symbol_short!("schedule")),
             (payout_id, recipient, amount),
@@ -208,6 +197,16 @@ impl PayoutAutomationContract {
             panic!("too early to execute");
         }
 
+        let key = DataKey::PublisherEarnings(payout.recipient.clone());
+        let mut earnings: PublisherEarnings = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .expect("publisher earnings not found");
+        if payout.amount > earnings.pending_amount {
+            panic!("payout exceeds pending earnings");
+        }
+
         payout.status = PayoutStatus::Completed;
         payout.executed_at = Some(env.ledger().timestamp());
         let _ttl_key = DataKey::Payout(payout_id);
@@ -218,24 +217,12 @@ impl PayoutAutomationContract {
             PERSISTENT_BUMP_AMOUNT,
         );
 
-        // Update publisher earnings
-        let key = DataKey::PublisherEarnings(payout.recipient.clone());
-        let mut earnings: PublisherEarnings =
-            env.storage()
-                .persistent()
-                .get(&key)
-                .unwrap_or(PublisherEarnings {
-                    publisher: payout.recipient.clone(),
-                    pending_amount: 0,
-                    total_paid: 0,
-                    last_payout: 0,
-                });
-
         earnings.total_paid = earnings
             .total_paid
             .checked_add(payout.amount)
             .expect("total_paid overflow");
-        earnings.pending_amount = earnings.pending_amount.saturating_sub(payout.amount);
+        // Cannot underflow: validated against pending_amount above.
+        earnings.pending_amount -= payout.amount;
         earnings.last_payout = env.ledger().timestamp();
         env.storage().persistent().set(&key, &earnings);
         env.storage().persistent().extend_ttl(

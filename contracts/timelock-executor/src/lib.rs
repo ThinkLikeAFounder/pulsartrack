@@ -51,6 +51,30 @@ const INSTANCE_BUMP_AMOUNT: u32 = 86_400;
 const PERSISTENT_LIFETIME_THRESHOLD: u32 = 120_960;
 const PERSISTENT_BUMP_AMOUNT: u32 = 1_051_200;
 
+/// Identity of an operation: sha256 over target + function + args.
+fn operation_hash(env: &Env, target: &Address, function: &Symbol, args: &Vec<Val>) -> BytesN<32> {
+    let mut op_bytes = Bytes::new(env);
+    op_bytes.append(&target.clone().to_xdr(env));
+    op_bytes.append(&function.clone().to_xdr(env));
+    for arg in args.iter() {
+        op_bytes.append(&arg.to_xdr(env));
+    }
+    env.crypto().sha256(&op_bytes).into()
+}
+
+/// Frees the operation's hash so an identical operation can be queued again.
+fn release_operation_hash(env: &Env, entry: &TimelockEntry) {
+    let op_hash = operation_hash(
+        env,
+        &entry.target_contract,
+        &entry.function_name,
+        &entry.args,
+    );
+    env.storage()
+        .persistent()
+        .remove(&DataKey::OperationHash(op_hash));
+}
+
 #[contract]
 pub struct TimelockExecutorContract;
 
@@ -120,13 +144,7 @@ impl TimelockExecutorContract {
             panic!("invalid delay");
         }
 
-        let mut op_bytes = Bytes::new(&env);
-        op_bytes.append(&target_contract.clone().to_xdr(&env));
-        op_bytes.append(&function_name.clone().to_xdr(&env));
-        for arg in args.iter() {
-            op_bytes.append(&arg.to_xdr(&env));
-        }
-        let op_hash: BytesN<32> = env.crypto().sha256(&op_bytes).into();
+        let op_hash = operation_hash(&env, &target_contract, &function_name, &args);
 
         if env
             .storage()
@@ -190,7 +208,7 @@ impl TimelockExecutorContract {
         entry_id
     }
 
-    pub fn execute(env: Env, executor: Address, entry_id: u64) {
+    pub fn execute(env: Env, executor: Address, entry_id: u64) -> bool {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -235,6 +253,7 @@ impl TimelockExecutorContract {
 
         if now > grace_end {
             entry.status = TimelockStatus::Expired;
+            release_operation_hash(&env, &entry);
             let _ttl_key = DataKey::Entry(entry_id);
             env.storage().persistent().set(&_ttl_key, &entry);
             env.storage().persistent().extend_ttl(
@@ -242,7 +261,7 @@ impl TimelockExecutorContract {
                 PERSISTENT_LIFETIME_THRESHOLD,
                 PERSISTENT_BUMP_AMOUNT,
             );
-            panic!("grace period expired");
+            return false;
         }
 
         // CEI: update state before external call to prevent re-entrancy
@@ -267,6 +286,8 @@ impl TimelockExecutorContract {
             (symbol_short!("timelock"), symbol_short!("executed")),
             entry_id,
         );
+
+        true
     }
 
     pub fn cancel(env: Env, admin: Address, entry_id: u64) {
@@ -290,6 +311,7 @@ impl TimelockExecutorContract {
         }
 
         entry.status = TimelockStatus::Cancelled;
+        release_operation_hash(&env, &entry);
         let _ttl_key = DataKey::Entry(entry_id);
         env.storage().persistent().set(&_ttl_key, &entry);
         env.storage().persistent().extend_ttl(

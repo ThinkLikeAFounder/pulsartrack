@@ -320,6 +320,40 @@ fn test_withdraw_when_total_shares_zero() {
 }
 
 #[test]
+#[should_panic(expected = "deposit amount too small for current share price")]
+fn test_deposit_rejects_zero_shares_after_price_appreciation() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _, _, token) = setup(&env);
+    let provider = Address::generate(&env);
+    let borrower = Address::generate(&env);
+
+    mint(&env, &token, &provider, 1_000_000);
+    mint(&env, &token, &borrower, 1_000_000);
+
+    // Provider deposits 500,000 (1:1, so 500,000 shares are minted).
+    c.deposit(&provider, &500_000i128);
+
+    // Borrower borrows and repays with a year's worth of interest, which
+    // inflates total_liquidity relative to total_shares without minting new
+    // shares — raising the share price above 1:1 (mirrors
+    // test_repay_with_interest_distributes_yield).
+    c.borrow(&borrower, &1u64, &100_000i128, &86_400u64);
+    env.ledger().with_mut(|li| {
+        li.timestamp += 31_557_600;
+    });
+    c.repay(&borrower, &1u64, &110_000i128);
+
+    let pool = c.get_pool_state();
+    assert!(pool.total_liquidity > 500_000);
+
+    // A 1-token deposit is now worth less than one share at the inflated
+    // price, so it truncates to 0 shares and must be rejected rather than
+    // silently pulling the tokens with nothing credited.
+    c.deposit(&provider, &1i128);
+}
+
+#[test]
 #[should_panic(expected = "shares must be positive")]
 fn test_withdraw_rejects_zero_shares() {
     let env = Env::default();

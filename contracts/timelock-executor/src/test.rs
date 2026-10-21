@@ -244,7 +244,6 @@ fn test_execute_wrong_executor() {
 }
 
 #[test]
-#[should_panic(expected = "grace period expired")]
 fn test_execute_after_grace_period() {
     let env = Env::default();
     env.mock_all_auths();
@@ -266,7 +265,38 @@ fn test_execute_after_grace_period() {
         li.timestamp = 500 + 172_800 + 1;
     });
 
-    client.execute(&executor, &entry_id);
+    assert!(!client.execute(&executor, &entry_id));
+
+    let entry = client.get_entry(&entry_id).unwrap();
+    assert!(matches!(entry.status, TimelockStatus::Expired));
+}
+
+#[test]
+fn test_requeue_after_expiry() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, executor) = setup(&env);
+    let target = Address::generate(&env);
+    let queue = || {
+        client.queue(
+            &admin,
+            &target,
+            &make_fn(&env),
+            &Vec::new(&env),
+            &make_desc(&env),
+            &500u64,
+        )
+    };
+
+    let entry_id = queue();
+    env.ledger().with_mut(|li| {
+        li.timestamp = 500 + 172_800 + 1;
+    });
+    assert!(!client.execute(&executor, &entry_id));
+
+    // The identical operation can be proposed again.
+    let requeued = queue();
+    assert_ne!(requeued, entry_id);
 }
 
 // ─── cancel ──────────────────────────────────────────────────────────────────
@@ -290,6 +320,33 @@ fn test_cancel_entry() {
 
     let entry = client.get_entry(&entry_id).unwrap();
     assert!(matches!(entry.status, TimelockStatus::Cancelled));
+}
+
+#[test]
+fn test_requeue_after_cancel() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, _) = setup(&env);
+    let target = Address::generate(&env);
+    let queue = || {
+        client.queue(
+            &admin,
+            &target,
+            &make_fn(&env),
+            &Vec::new(&env),
+            &make_desc(&env),
+            &500u64,
+        )
+    };
+
+    let entry_id = queue();
+    client.cancel(&admin, &entry_id);
+
+    // The identical operation can be proposed again.
+    let requeued = queue();
+    assert_ne!(requeued, entry_id);
+    let entry = client.get_entry(&requeued).unwrap();
+    assert!(matches!(entry.status, TimelockStatus::Queued));
 }
 
 #[test]

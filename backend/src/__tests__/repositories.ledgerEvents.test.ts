@@ -65,7 +65,7 @@ describe('ledgerEvents repository', () => {
       await ledgerEvents.create(input);
 
       expect(mockQuery).toHaveBeenCalledWith(
-        expect.stringContaining('ON CONFLICT (tx_hash, event_type) DO NOTHING'),
+        expect.stringContaining('ON CONFLICT (tx_hash, event_index) DO NOTHING'),
         [100, 'abc123', 'CXYZ', 'BidPlaced', '{"amount":100}'],
       );
     });

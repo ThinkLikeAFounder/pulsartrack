@@ -1,21 +1,30 @@
 /**
  * Frontend Sentry Scrubber Tests
- * 
- * The shared test suite lives in packages/sentry-scrubber.
- * This file imports and runs those tests to verify the frontend's integration.
+ *
+ * Verifies that the frontend's thin re-export of @pulsartrack/sentry-scrubber
+ * correctly scrubs sensitive values and identifies sensitive keys.
  */
 
-import { describe, it } from "vitest";
+import { describe, it, expect } from "vitest";
 
 describe("Frontend Sentry Scrubber", () => {
-  it("should use shared scrubber from @pulsartrack/sentry-scrubber package", async () => {
-    // The actual tests are in packages/sentry-scrubber/src/index.test.ts
-    // This file exists to document that frontend uses the shared implementation
-    // Run tests with: npm test packages/sentry-scrubber
-    const { scrubString, isSensitiveKey } = await import("./sentry-scrubber");
-    
-    // Basic smoke test
+  it("scrubString redacts Bearer tokens and does not leak the raw value", async () => {
+    const { scrubString } = await import("./sentry-scrubber");
     const result = scrubString("test Bearer token123");
-    // If this passes, the shared package is properly integrated
+    expect(result).not.toContain("token123");
+    expect(result).toContain("[Filtered]");
+  });
+
+  it("isSensitiveKey returns true for sensitive key names", async () => {
+    const { isSensitiveKey } = await import("./sentry-scrubber");
+    expect(isSensitiveKey("token")).toBe(true);
+    expect(isSensitiveKey("password")).toBe(true);
+    expect(isSensitiveKey("secret")).toBe(true);
+  });
+
+  it("isSensitiveKey returns false for non-sensitive key names", async () => {
+    const { isSensitiveKey } = await import("./sentry-scrubber");
+    expect(isSensitiveKey("userId")).toBe(false);
+    expect(isSensitiveKey("keyboard")).toBe(false);
   });
 });

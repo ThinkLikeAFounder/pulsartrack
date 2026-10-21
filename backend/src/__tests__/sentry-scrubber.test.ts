@@ -5,7 +5,7 @@
  * This file imports and runs those tests to verify the backend's integration.
  */
 
-import { describe, it } from "vitest";
+import { describe, it, expect } from "vitest";
 
 describe("Backend Sentry Scrubber", () => {
   it("should use shared scrubber from @pulsartrack/sentry-scrubber package", async () => {
@@ -16,6 +16,7 @@ describe("Backend Sentry Scrubber", () => {
     
     // Basic smoke test
     const result = scrubString("test Bearer token123");
+    expect(result).not.toContain("token123");
     // If this passes, the shared package is properly integrated
   });
 });

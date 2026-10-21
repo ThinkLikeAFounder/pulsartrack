@@ -139,7 +139,7 @@ impl RecurringPaymentContract {
         payment_id
     }
 
-    pub fn execute_payment(env: Env, caller: Address, payment_id: u64) {
+    pub fn execute_payment(env: Env, caller: Address, payment_id: u64) -> bool {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -183,7 +183,7 @@ impl RecurringPaymentContract {
                     PERSISTENT_LIFETIME_THRESHOLD,
                     PERSISTENT_BUMP_AMOUNT,
                 );
-                panic!("max payments reached");
+                return false;
             }
         }
 
@@ -216,6 +216,8 @@ impl RecurringPaymentContract {
             (symbol_short!("recurring"), symbol_short!("paid")),
             (payment_id, recurring.amount),
         );
+
+        true
     }
 
     pub fn pause_payment(env: Env, payer: Address, payment_id: u64) {

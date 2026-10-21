@@ -185,3 +185,32 @@ fn test_expired_role_removed_from_storage() {
     // The grant should be removed from storage entirely
     assert!(c.get_role_grant(&account, &Role::Moderator).is_none());
 }
+
+
+#[test]
+fn test_regrant_role_does_not_inflate_count() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin) = setup(&env);
+    let account = Address::generate(&env);
+
+    let role_count = || -> u32 {
+        env.as_contract(&c.address, || {
+            env.storage()
+                .instance()
+                .get(&DataKey::RoleCount(Role::Operator))
+                .unwrap_or(0)
+        })
+    };
+
+    c.grant_role(&admin, &account, &Role::Operator, &None);
+    assert_eq!(role_count(), 1);
+
+    // Refreshing the same grant may update grant metadata, but not holder count.
+    c.grant_role(&admin, &account, &Role::Operator, &None);
+    assert_eq!(role_count(), 1);
+
+    let another_account = Address::generate(&env);
+    c.grant_role(&admin, &another_account, &Role::Operator, &None);
+    assert_eq!(role_count(), 2);
+}

@@ -116,9 +116,9 @@ authRouter.post("/verify", verifySignature);
 /**
  * Redis-backed rate limiters
  */
-let ipLimiter: RateLimiterRedis;
-let accountLimiter: RateLimiterRedis;
-let writeLimiter: RateLimiterRedis;
+export let ipLimiter: RateLimiterRedis;
+export let accountLimiter: RateLimiterRedis;
+export let writeLimiter: RateLimiterRedis;
 
 export function configureRateLimiters(redisClient: Redis): void {
   // Per-IP: 100 requests per minute
@@ -155,23 +155,39 @@ export function rateLimit() {
     const ip = req.ip || "unknown";
 
     try {
-      await ipLimiter.consume(ip);
+      if (ipLimiter) {
+        await ipLimiter.consume(ip);
+      }
     } catch {
       res.status(429).json({ error: "Too many requests" });
       return;
     }
 
+    next();
+  };
+}
+
+export function rateLimitAccount() {
+  return async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
     const address = req.stellarAddress;
-    if (address) {
-      try {
-        await accountLimiter.consume(address);
-      } catch {
-        res.status(429).json({ error: "Account rate limit exceeded" });
-        return;
-      }
+    if (!address) {
+      next();
+      return;
     }
 
-    next();
+    try {
+      if (accountLimiter) {
+        await accountLimiter.consume(address);
+      }
+      next();
+    } catch {
+      res.status(429).json({ error: "Account rate limit exceeded" });
+      return;
+    }
   };
 }
 

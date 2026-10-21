@@ -613,6 +613,23 @@ impl GovernanceTokenContract {
             panic!("cannot delegate voting power to self");
         }
 
+        let incoming_power: i128 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::DelegatedPower(delegator.clone()))
+            .unwrap_or(0);
+        if incoming_power > 0 {
+            panic!("cannot delegate voting power while holding delegated power from others");
+        }
+
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::Delegation(delegate_to.clone()))
+        {
+            panic!("cannot delegate voting power to an address that has already delegated its voting power");
+        }
+
         let delegator_balance: i128 = env
             .storage()
             .persistent()

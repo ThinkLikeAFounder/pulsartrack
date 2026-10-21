@@ -12,3 +12,4 @@ pulsar-common-admin = { workspace = true }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils", "alloc"] }
+ed25519-dalek = "2.2.0"

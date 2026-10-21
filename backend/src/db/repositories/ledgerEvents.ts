@@ -2,7 +2,7 @@ import pool from '../../config/database';
 
 interface LedgerEventRow {
   id: string;
-  ledger_sequence: number;
+  ledger_sequence: bigint;
   tx_hash: string;
   event_index: number;
   contract_id: string | null;
@@ -11,26 +11,39 @@ interface LedgerEventRow {
   indexed_at: Date;
 }
 
+// node-postgres returns BIGINT (OID 20) columns as strings to avoid silent
+// precision loss, so the raw row shape differs from LedgerEventRow.
+interface LedgerEventDbRow extends Omit<LedgerEventRow, 'ledger_sequence'> {
+  ledger_sequence: string;
+}
+
+function toLedgerEventRow(row: LedgerEventDbRow): LedgerEventRow {
+  return {
+    ...row,
+    ledger_sequence: row.ledger_sequence != null ? BigInt(row.ledger_sequence) : row.ledger_sequence,
+  };
+}
+
 export async function findByContract(contractId: string, limit = 50): Promise<LedgerEventRow[]> {
-  const { rows } = await pool.query(
+  const { rows } = await pool.query<LedgerEventDbRow>(
     `SELECT * FROM ledger_events
      WHERE contract_id = $1
      ORDER BY ledger_sequence DESC
      LIMIT $2`,
     [contractId, limit],
   );
-  return rows;
+  return rows.map(toLedgerEventRow);
 }
 
 export async function findByType(eventType: string, limit = 50): Promise<LedgerEventRow[]> {
-  const { rows } = await pool.query(
+  const { rows } = await pool.query<LedgerEventDbRow>(
     `SELECT * FROM ledger_events
      WHERE event_type = $1
      ORDER BY indexed_at DESC
      LIMIT $2`,
     [eventType, limit],
   );
-  return rows;
+  return rows.map(toLedgerEventRow);
 }
 
 export async function create(data: {
@@ -41,14 +54,14 @@ export async function create(data: {
   event_type: string;
   event_data?: unknown;
 }): Promise<LedgerEventRow | null> {
-  const { rows } = await pool.query(
+  const { rows } = await pool.query<LedgerEventDbRow>(
     `INSERT INTO ledger_events (ledger_sequence, tx_hash, event_index, contract_id, event_type, event_data)
      VALUES ($1, $2, $3, $4, $5, $6)
      ON CONFLICT (tx_hash, event_index) DO NOTHING
      RETURNING *`,
     [data.ledger_sequence, data.tx_hash, data.event_index ?? 0, data.contract_id ?? null, data.event_type, data.event_data ? JSON.stringify(data.event_data) : null],
   );
-  return rows[0] ?? null;
+  return rows[0] ? toLedgerEventRow(rows[0]) : null;
 }
 
 export async function getLatestSequence(): Promise<bigint> {

@@ -221,7 +221,6 @@ fn test_execute_payment_too_early() {
 }
 
 #[test]
-#[should_panic(expected = "max payments reached")]
 fn test_execute_payment_max_reached() {
     let env = Env::default();
     env.mock_all_auths();
@@ -234,11 +233,13 @@ fn test_execute_payment_max_reached() {
     approve_allowance(&env, &token, &payer, &c.address, 10_000);
 
     env.ledger().with_mut(|li| li.timestamp = 2);
-    c.execute_payment(&payer, &id);
+    assert!(c.execute_payment(&payer, &id));
 
-    // Try to execute second payment (should fail - max reached)
     env.ledger().with_mut(|li| li.timestamp = 4);
-    c.execute_payment(&payer, &id);
+    assert!(!c.execute_payment(&payer, &id));
+
+    let payment = c.get_payment(&id).unwrap();
+    assert!(matches!(payment.status, RecurringStatus::Cancelled));
 }
 
 /// Verify the SEP-41 allowance pattern: payer pre-approves the contract once,

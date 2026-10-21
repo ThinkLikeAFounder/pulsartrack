@@ -78,9 +78,6 @@ async function fetchFromBackend(
   }
 
   const days = timeframeToDays(timeframe);
-  const since = new Date();
-  since.setUTCDate(since.getUTCDate() - days);
-  const sinceIso = since.toISOString();
 
   // Aggregate per-day counts indexed by date string.
   const dayMap = new Map<string, { impressions: number; clicks: number }>();
@@ -90,44 +87,24 @@ async function fetchFromBackend(
     dayMap.set(point.date, { impressions: 0, clicks: 0 });
   }
 
-  // Fetch each campaign's stats from the backend. The backend exposes campaign
-  // records with aggregate impression/click counts on GET /campaigns/:id.
-  // For per-day breakdown we use the impressions endpoint if available,
-  // otherwise fall back to aggregated campaign data spread evenly (degraded).
+  // Fetch only time-bucketed data. Campaign aggregate totals have no temporal
+  // information and must never be spread across days as fabricated history.
   await Promise.all(
     campaignIds.map(async (id) => {
       try {
-        const res = await fetch(`${apiUrl}/campaigns/${id}`, {
+        const res = await fetch(`${apiUrl}/campaigns/${id}/timeseries?days=${days}`, {
           headers: { "Content-Type": "application/json" },
           signal: AbortSignal.timeout(5_000),
         });
         if (!res.ok) return;
-        const campaign = await res.json() as {
-          impressions?: number | string;
-          clicks?: number | string;
-          createdAt?: string;
-        };
-
-        // The backend returns aggregate totals. Distribute them evenly across
-        // the timeframe window as an approximation until a per-day endpoint
-        // is available.
-        const totalImpressions = Number(campaign.impressions ?? 0);
-        const totalClicks = Number(campaign.clicks ?? 0);
-        if (totalImpressions === 0 && totalClicks === 0) return;
-
-        const dates = [...dayMap.keys()];
-        const perDay = Math.floor(totalImpressions / dates.length);
-        const perDayClicks = Math.floor(totalClicks / dates.length);
-        const remainderImpressions = totalImpressions - perDay * dates.length;
-        const remainderClicks = totalClicks - perDayClicks * dates.length;
-
-        dates.forEach((date, idx) => {
-          const entry = dayMap.get(date)!;
-          entry.impressions +=
-            perDay + (idx === dates.length - 1 ? remainderImpressions : 0);
-          entry.clicks +=
-            perDayClicks + (idx === dates.length - 1 ? remainderClicks : 0);
-        });
+        const points = await res.json() as AnalyticsTimeseriesPoint[];
+        for (const point of points) {
+          const entry = dayMap.get(point.date);
+          if (entry) {
+            entry.impressions += Number(point.impressions ?? 0);
+            entry.clicks += Number(point.clicks ?? 0);
+          }
+        }
       } catch {
         // Per-campaign fetch failed — skip this campaign, don't fail the whole request.
       }

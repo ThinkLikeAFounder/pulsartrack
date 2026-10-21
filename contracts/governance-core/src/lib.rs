@@ -110,6 +110,7 @@ impl GovernanceCoreContract {
         };
 
         let _ttl_key = DataKey::RoleGrant(account.clone(), role.clone());
+        let is_new_grant = !env.storage().persistent().has(&_ttl_key);
         env.storage().persistent().set(&_ttl_key, &grant);
         env.storage().persistent().extend_ttl(
             &_ttl_key,
@@ -117,14 +118,16 @@ impl GovernanceCoreContract {
             PERSISTENT_BUMP_AMOUNT,
         );
 
-        let count: u32 = env
-            .storage()
-            .instance()
-            .get(&DataKey::RoleCount(role.clone()))
-            .unwrap_or(0);
-        env.storage()
-            .instance()
-            .set(&DataKey::RoleCount(role), &(count + 1));
+        if is_new_grant {
+            let count: u32 = env
+                .storage()
+                .instance()
+                .get(&DataKey::RoleCount(role.clone()))
+                .unwrap_or(0);
+            env.storage()
+                .instance()
+                .set(&DataKey::RoleCount(role), &(count + 1));
+        }
 
         env.events()
             .publish((symbol_short!("role"), symbol_short!("granted")), account);
@@ -163,6 +166,35 @@ impl GovernanceCoreContract {
             .publish((symbol_short!("role"), symbol_short!("revoked")), account);
     }
 
+    /// Issue #1122: Read-only role check - does not mutate storage
+    /// Use this for simulated queries. Returns true if role is valid and not expired.
+    /// For cleanup/TTL extension, use prune_expired_role() explicitly.
+    pub fn is_role_valid(env: Env, account: Address, role: Role) -> bool {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        let _ttl_key = DataKey::RoleGrant(account.clone(), role.clone());
+        if let Some(grant) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, RoleGrant>(&_ttl_key)
+        {
+            if let Some(expires) = grant.expires_at {
+                // Check expiry without removing - true read-only
+                expires > env.ledger().timestamp()
+            } else {
+                // No expiry means permanent grant
+                true
+            }
+        } else {
+            false
+        }
+    }
+
+    /// Issue #1122: Original has_role for backwards compatibility
+    /// WARNING: This function mutates storage (removes expired grants, extends TTL).
+    /// Must be called as a real transaction, not simulated, to take effect.
+    /// For read-only queries, use is_role_valid() instead.
     pub fn has_role(env: Env, account: Address, role: Role) -> bool {
         env.storage()
             .instance()
@@ -207,6 +239,38 @@ impl GovernanceCoreContract {
         } else {
             false
         }
+    }
+
+    /// Issue #1122: Explicit cleanup function for expired roles
+    /// Call this from maintenance transactions to keep RoleCount accurate
+    pub fn prune_expired_role(env: Env, account: Address, role: Role) -> bool {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        let _ttl_key = DataKey::RoleGrant(account.clone(), role.clone());
+        if let Some(grant) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, RoleGrant>(&_ttl_key)
+        {
+            if let Some(expires) = grant.expires_at {
+                if expires <= env.ledger().timestamp() {
+                    env.storage().persistent().remove(&_ttl_key);
+                    let count: u32 = env
+                        .storage()
+                        .instance()
+                        .get(&DataKey::RoleCount(role.clone()))
+                        .unwrap_or(0);
+                    if count > 0 {
+                        env.storage()
+                            .instance()
+                            .set(&DataKey::RoleCount(role), &(count - 1));
+                    }
+                    return true; // Was expired and pruned
+                }
+            }
+        }
+        false // Not expired or doesn't exist
     }
 
     pub fn update_params(env: Env, admin: Address, params: GovernanceParams) {

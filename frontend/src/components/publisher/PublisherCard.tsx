@@ -32,7 +32,15 @@ export function PublisherCard({ publisher, rank, onSelect }: PublisherCardProps)
         'bg-gray-800 border border-gray-700 rounded-xl p-4 transition-all',
         onSelect && 'cursor-pointer hover:border-indigo-500 hover:bg-gray-750'
       )}
+      role={onSelect ? 'button' : undefined}
+      tabIndex={onSelect ? 0 : undefined}
       onClick={() => onSelect?.(publisher)}
+      onKeyDown={(e) => {
+        if (onSelect && (e.key === 'Enter' || e.key === ' ')) {
+          e.preventDefault();
+          onSelect(publisher);
+        }
+      }}
     >
       <div className="flex items-start gap-3">
         {rank !== undefined && (
@@ -80,7 +88,7 @@ export function PublisherCard({ publisher, rank, onSelect }: PublisherCardProps)
         <div>
           <p className="text-xs text-gray-500">Earnings</p>
           <p className="text-green-400 font-medium text-sm">
-            {formatXlm(publisher.earnings_total)} XLM
+            {formatXlm(publisher.earnings_total)}
           </p>
         </div>
       </div>

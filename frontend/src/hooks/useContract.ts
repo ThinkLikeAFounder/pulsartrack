@@ -9,7 +9,7 @@ import {
   type ContractArg,
   type ScValArg,
 } from "../lib/soroban-client";
-import { CONTRACT_IDS } from "../lib/stellar-config";
+import { CONTRACT_IDS, xlmToStroops } from "../lib/stellar-config";
 import { useWalletStore } from "../store/wallet-store";
 import {
   u64ToScVal,
@@ -295,7 +295,6 @@ export function useCreateCampaign() {
     refundable: boolean;
   }) => {
     if (!address) throw new Error("Wallet not connected");
-    const STROOPS = 10_000_000;
 
     // Convert duration from days to ledgers (assuming ~5 seconds per ledger)
     const durationLedgers = params.durationDays * 17280; // 86400 seconds / 5 seconds per ledger
@@ -307,8 +306,8 @@ export function useCreateCampaign() {
       args: [
         addressToScVal(address), // advertiser
         u32ToScVal(params.campaignType), // campaign_type (u32)
-        i128ToScVal(Math.floor(params.budgetXlm * STROOPS)), // budget in stroops
-        i128ToScVal(Math.floor(params.costPerViewXlm * STROOPS)), // cost_per_view in stroops
+        i128ToScVal(xlmToStroops(params.budgetXlm)), // budget in stroops
+        i128ToScVal(xlmToStroops(params.costPerViewXlm)), // cost_per_view in stroops
         u32ToScVal(durationLedgers), // duration in ledgers (u32)
         u64ToScVal(params.targetViews), // target_views
         u64ToScVal(params.dailyViewLimit), // daily_view_limit
@@ -636,7 +635,6 @@ export function useSubscribe() {
 
   const subscribe = async (params: { planName: string; amountXlm: number }) => {
     if (!address) throw new Error("Wallet not connected");
-    const STROOPS = 10_000_000;
     return mutateAsync({
       contractId: CONTRACT_IDS.SUBSCRIPTION_MANAGER,
       method: "subscribe",
@@ -644,7 +642,7 @@ export function useSubscribe() {
       args: [
         addressToScVal(address),
         stringToScVal(params.planName),
-        i128ToScVal(Math.floor(params.amountXlm * STROOPS)),
+        i128ToScVal(xlmToStroops(params.amountXlm)),
       ],
     });
   };

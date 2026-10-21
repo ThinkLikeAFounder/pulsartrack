@@ -22,8 +22,11 @@ export function BidForm({ auction, campaignId, onSuccess, onCancel }: BidFormPro
   // All arithmetic stays in integer stroops to avoid floating-point drift.
   const floorStroops = BigInt(auction.floor_price);
   const currentBidStroops = auction.winning_bid ? BigInt(auction.winning_bid) : null;
+  
+  // Issue #1123: Match contract's actual rule - current bid + 1 stroop (or floor)
+  // The auction-engine contract only requires amount > current_bid, not + 5%
   const minBidStroops = currentBidStroops
-    ? currentBidStroops + (currentBidStroops * 5n) / 100n // 5% above current bid
+    ? currentBidStroops + 1n // 1 stroop above current bid (contract's actual requirement)
     : floorStroops;
   const minBidXlm = Number(minBidStroops) / STROOPS_PER_XLM;
 

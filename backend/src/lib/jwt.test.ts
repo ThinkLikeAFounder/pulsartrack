@@ -68,7 +68,7 @@ describe("jwt", () => {
   });
 
   it("rejects a malformed token", () => {
-    expect(() => decodeJwt("only.two")).toThrow("Malformed token");
+    expect(() => decodeJwt("only.two")).toThrow("Invalid token format");
   });
 
   it("rejects an expired token", () => {

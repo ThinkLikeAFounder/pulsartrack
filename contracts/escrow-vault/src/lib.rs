@@ -321,6 +321,7 @@ impl EscrowVaultContract {
 
     /// Approve escrow release
     pub fn approve_release(env: Env, approver: Address, escrow_id: u64) {
+        Self::require_not_paused(&env);
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -466,7 +467,11 @@ impl EscrowVaultContract {
 
         escrow.locked_amount -= amount;
         escrow.released_amount += amount;
-        escrow.state = EscrowState::PartiallyReleased;
+        escrow.state = if escrow.locked_amount == 0 {
+            EscrowState::Released
+        } else {
+            EscrowState::PartiallyReleased
+        };
 
         let _ttl_key = DataKey::Escrow(escrow_id);
         env.storage().persistent().set(&_ttl_key, &escrow);

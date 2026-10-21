@@ -35,13 +35,13 @@ export function EarningsDisplay({
         <div className="bg-gray-700/50 rounded-xl p-4">
           <p className="text-xs text-gray-400 uppercase tracking-wide">Total Earnings</p>
           <p className="text-2xl font-bold text-green-400 mt-1">
-            {formatXlm(totalEarnings)} XLM
+            {formatXlm(totalEarnings)}
           </p>
         </div>
         <div className="bg-gray-700/50 rounded-xl p-4">
           <p className="text-xs text-gray-400 uppercase tracking-wide">Pending Payout</p>
           <p className="text-2xl font-bold text-yellow-400 mt-1">
-            {formatXlm(pendingPayout)} XLM
+            {formatXlm(pendingPayout)}
           </p>
           {pendingPayout > BigInt(0) && onWithdraw && (
             <button
@@ -69,7 +69,7 @@ export function EarningsDisplay({
                   <div className="flex justify-between text-xs text-gray-400 mb-1">
                     <span>{period.label}</span>
                     <span className="text-gray-200">
-                      {formatXlm(period.amount)} XLM
+                      {formatXlm(period.amount)}
                       <span className="text-gray-500 ml-1">
                         ({formatNumber(period.impressions)} imp.)
                       </span>

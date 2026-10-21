@@ -73,7 +73,7 @@ export function AnalyticsDashboard({
         />
         <MetricsCard
           label="Total Spent"
-          value={`${formatXlm(totalSpent)} XLM`}
+          value={formatXlm(totalSpent)}
           subValue="across campaigns"
           variant="purple"
         />

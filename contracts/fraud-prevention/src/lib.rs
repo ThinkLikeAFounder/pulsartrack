@@ -257,10 +257,9 @@ impl FraudPreventionContract {
             (campaign_id, publisher, verified),
         );
 
-        if !verified {
-            panic!("verification failed");
-        }
-        true
+        // Return a rejection instead of panicking so the deduplication record,
+        // rate-limit counter, and verification cache commit for failed views.
+        verified
     }
 
     /// Flag suspicious publisher activity
@@ -477,10 +476,9 @@ impl FraudPreventionContract {
         _publisher: &Address,
         proof_data: &Option<BytesN<32>>,
     ) -> u32 {
-        let base_score: u32 = 80;
-        let proof_bonus: u32 = if proof_data.is_some() { 10 } else { 0 };
-
-        let score = base_score + proof_bonus;
+        // A view without proof is a strong fraud signal; a valid proof earns
+        // the high score. This makes the fraud-pause path reachable.
+        let score: u32 = if proof_data.is_some() { 90 } else { 40 };
 
         // If score is very low, trigger campaign pause
         if score < 50 {
@@ -534,7 +532,13 @@ pub(crate) mod mocks {
     pub struct CampaignLifecycleContract;
     #[contractimpl]
     impl CampaignLifecycleContract {
-        pub fn pause_for_fraud(_env: Env, _fraud_contract: Address, _campaign_id: u64) {}
+        pub fn pause_for_fraud(env: Env, _fraud_contract: Address, campaign_id: u64) {
+            env.storage().instance().set(&symbol_short!("paused"), &campaign_id);
+        }
+
+        pub fn paused_campaign(env: Env) -> Option<u64> {
+            env.storage().instance().get(&symbol_short!("paused"))
+        }
     }
 
     #[contract]

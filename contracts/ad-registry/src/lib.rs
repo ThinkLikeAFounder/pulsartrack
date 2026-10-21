@@ -395,6 +395,17 @@ impl AdRegistryContract {
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
         viewer.require_auth();
 
+        let content: AdContent = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Content(content_id))
+            .expect("content not found");
+
+        match content.status {
+            ContentStatus::Approved => {}
+            _ => panic!("content not approved"),
+        }
+
         let mut perf: ContentPerformance = env
             .storage()
             .persistent()

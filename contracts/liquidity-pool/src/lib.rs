@@ -120,8 +120,15 @@ impl LiquidityPoolContract {
         let shares = if pool.total_liquidity == 0 || total_shares == 0 {
             amount
         } else {
-            (amount * total_shares) / pool.total_liquidity
+            amount
+                .checked_mul(total_shares)
+                .expect("share issuance calculation overflows i128")
+                / pool.total_liquidity
         };
+
+        if shares == 0 {
+            panic!("deposit amount too small for current share price");
+        }
 
         pool.total_liquidity += amount;
         pool.last_updated = env.ledger().timestamp();

@@ -21,7 +21,6 @@
 /package.json @devzubby
 /Cargo.toml @devzubby
 /Cargo.lock @devzubby
-/*-lock.yaml @devzubby
 /*-lock.json @devzubby
 /package-lock.json @devzubby
 

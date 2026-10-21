@@ -285,6 +285,57 @@ impl PerformanceOracleContract {
         );
     }
 
+    /// Discards every attestation for a non-finalized campaign so attesters can
+    /// resubmit. Recovers campaigns stuck on divergent data or the attester cap.
+    ///
+    /// O(n) in the number of stored attestations, bounded by
+    /// `MAX_CONSENSUS_ATTESTERS`.
+    pub fn reset_attestations(env: Env, admin: Address, campaign_id: u64) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::ConsensusFinalized(campaign_id))
+        {
+            panic!("consensus already finalized");
+        }
+
+        let count: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::AttestationCount(campaign_id))
+            .unwrap_or(0);
+
+        for i in 0..count {
+            let index_key = DataKey::CampaignAttesterIndex(campaign_id, i);
+            let attester: Address = env
+                .storage()
+                .persistent()
+                .get(&index_key)
+                .expect("attester index not found");
+            env.storage()
+                .persistent()
+                .remove(&DataKey::Attestation(campaign_id, attester));
+            env.storage().persistent().remove(&index_key);
+        }
+        env.storage()
+            .persistent()
+            .remove(&DataKey::AttestationCount(campaign_id));
+
+        env.events().publish(
+            (symbol_short!("oracle"), symbol_short!("reset")),
+            (campaign_id, count),
+        );
+    }
+
     fn _try_build_consensus(env: &Env, campaign_id: u64) -> bool {
         let min_attesters: u32 = env
             .storage()

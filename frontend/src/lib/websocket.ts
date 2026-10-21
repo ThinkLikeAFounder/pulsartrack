@@ -180,8 +180,10 @@ export class PulsarWebSocket {
   }
 
   private scheduleReconnect(): void {
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) return;
-
+    // Issue #1124: Don't give up after maxReconnectAttempts
+    // Continue retrying at maximum backoff interval indefinitely
+    // This prevents permanent disconnection after brief outages
+    
     // Clear any pending timer before scheduling a new one to prevent accumulation
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
@@ -190,7 +192,8 @@ export class PulsarWebSocket {
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.reconnectAttempts++;
-      this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30000); // exponential backoff
+      // Exponential backoff up to 30s, then keep retrying at 30s intervals
+      this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30000);
       this.connect();
     }, this.reconnectDelay);
   }
@@ -237,6 +240,15 @@ export class PulsarWebSocket {
 
   get isConnected(): boolean {
     return this.authenticated && this.ws?.readyState === WebSocket.OPEN;
+  }
+
+  /// Issue #1124: Expose reconnection state for UI
+  get connectionState(): { connected: boolean; reconnecting: boolean; attempts: number } {
+    return {
+      connected: this.isConnected,
+      reconnecting: this.reconnectTimer !== null,
+      attempts: this.reconnectAttempts,
+    };
   }
 }
 
