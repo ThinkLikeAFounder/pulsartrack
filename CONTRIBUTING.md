@@ -6,7 +6,7 @@ Thank you for your interest in contributing to PulsarTrack! This guide will help
 
 ### Finding an Issue to Work On
 
-1. Browse the [Issues](https://github.com/greyforreal/pulsartrack/issues) page
+1. Browse the [Issues](https://github.com/ThinkLikeAFounder/pulsartrack/issues) page
 2. Look for issues labeled `good first issue` or `help wanted`
 3. Read the issue description carefully to understand the requirements
 4. Comment on the issue to let maintainers know you'd like to work on it
@@ -24,7 +24,7 @@ Thank you for your interest in contributing to PulsarTrack! This guide will help
 #### Clone the Repository
 
 ```bash
-git clone https://github.com/greyforreal/pulsartrack.git
+git clone https://github.com/ThinkLikeAFounder/pulsartrack.git
 cd pulsartrack
 ```
 

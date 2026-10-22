@@ -5,11 +5,16 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc",
+    "build": "node init && tsc",
     "test": "vitest --run",
     "test:watch": "vitest"
   },
-  "keywords": ["sentry", "scrubber", "security", "stellar"],
+  "keywords": [
+    "sentry",
+    "scrubber",
+    "security",
+    "stellar"
+  ],
   "author": "",
   "license": "Apache-2.0",
   "devDependencies": {

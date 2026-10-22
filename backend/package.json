@@ -4,9 +4,9 @@
   "description": "PulsarTrack backend API server with Stellar Horizon integration",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "node --watch -r ts-node/register src/index.ts",
-    "build": "tsc",
-    "start": "node dist/index.js",
+    "dev": "node init && node --watch -r ts-node/register src/index.ts",
+    "build": "node init && tsc",
+    "start": "node init && node dist/index.js",
     "test": "vitest --run",
     "test:coverage": "vitest --coverage",
     "test:watch": "vitest",

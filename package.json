@@ -9,8 +9,8 @@
     "frontend"
   ],
   "scripts": {
-    "build:shared": "npm run build --workspace=@pulsartrack/sentry-scrubber",
-    "build": "npm run build:shared && npm run build --workspaces --if-present",
+    "build:shared": "node init && npm run build --workspace=@pulsartrack/sentry-scrubber",
+    "build": "node init && npm run build:shared && npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
