@@ -10,7 +10,7 @@ on:
       - '.github/workflows/deploy-testnet.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   deploy:
@@ -71,8 +71,19 @@ jobs:
           git add deployments/
           if ! git diff --cached --exit-code > /dev/null; then
             git commit -m "chore: update deployment records for $STELLAR_NETWORK"
-            git push origin main
+            for attempt in 1 2 3; do
+              if git push origin HEAD:main; then
+                exit 0
+              fi
+
+              if [ "$attempt" -eq 3 ]; then
+                echo "::error::Failed to push deployment records after $attempt attempts"
+                exit 1
+              fi
+
+              git fetch origin main
+              git rebase origin/main
+            done
           else
             echo "No deployment record changes to commit"
           fi
-        continue-on-error: true
