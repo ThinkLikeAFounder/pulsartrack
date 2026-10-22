@@ -180,8 +180,10 @@ impl MilestoneTrackerContract {
             .get(&DataKey::Milestone(milestone_id))
             .expect("milestone not found");
 
-        if milestone.status == MilestoneStatus::Achieved {
-            return; // Already achieved, no update needed
+        if milestone.status == MilestoneStatus::Achieved
+            || milestone.status == MilestoneStatus::Disputed
+        {
+            return; // Already finalized or under dispute, no update needed
         }
 
         milestone.current_value = current_value;
@@ -312,6 +314,7 @@ impl MilestoneTrackerContract {
 
         if milestone.status == MilestoneStatus::Achieved
             || milestone.status == MilestoneStatus::Missed
+            || milestone.status == MilestoneStatus::Disputed
         {
             panic!("already finalized");
         }

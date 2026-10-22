@@ -51,8 +51,7 @@ pub enum DataKey {
     WrapRecordCounter,
     WrappedToken(String), // symbol
     WrapRecord(u64),
-    UserBalance(String, Address), // symbol, user
-    ProcessedTx(String),          // source transaction ID
+    ProcessedTx(String), // source transaction ID
 }
 
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17_280;
@@ -306,6 +305,32 @@ impl WrappedTokenContract {
         env.storage()
             .instance()
             .set(&DataKey::MintingPaused, &paused);
+    }
+
+    pub fn set_wrapped_token_active(env: Env, admin: Address, symbol: String, active: bool) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+
+        let mut wrapped: WrappedToken = env
+            .storage()
+            .persistent()
+            .get(&DataKey::WrappedToken(symbol.clone()))
+            .expect("token not registered");
+
+        wrapped.is_active = active;
+        let _ttl_key = DataKey::WrappedToken(symbol);
+        env.storage().persistent().set(&_ttl_key, &wrapped);
+        env.storage().persistent().extend_ttl(
+            &_ttl_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
     }
 
     pub fn get_wrapped_token(env: Env, symbol: String) -> Option<WrappedToken> {
