@@ -38,8 +38,13 @@ export function WalletBalance() {
   useEffect(() => {
     if (isConnected && address) {
       const controller = new AbortController();
-      fetchBalance(controller.signal);
-      return () => controller.abort();
+      const task = window.setTimeout(() => {
+        void fetchBalance(controller.signal);
+      }, 0);
+      return () => {
+        window.clearTimeout(task);
+        controller.abort();
+      };
     }
   }, [isConnected, address, fetchBalance]);
 
