@@ -193,3 +193,166 @@ fn test_daily_limit_enforced() {
     // Second deposit of 30 would push total to 110, exceeding limit
     c.deposit_for_bridge(&sender, &token_id, &30i128, &chain, &s(&env, "0x2"));
 }
+
+fn setup_with_relayer(env: &Env) -> (TokenBridgeContractClient<'_>, Address, Address) {
+    let admin = Address::generate(env);
+    let relayer = Address::generate(env);
+    let id = env.register(TokenBridgeContract, ());
+    let c = TokenBridgeContractClient::new(env, &id);
+    c.initialize(&admin, &relayer);
+    (c, admin, relayer)
+}
+
+#[test]
+fn test_mark_failed_and_refund_lifecycle() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin, relayer) = setup_with_relayer(&env);
+
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin);
+    let token_id = token_contract.address();
+
+    let chain = s(&env, "ethereum");
+    c.add_supported_chain(&admin, &chain, &1_000_000i128);
+
+    let amount = 10_000i128;
+    let sender = Address::generate(&env);
+
+    let token_stellar_client = token::StellarAssetClient::new(&env, &token_id);
+    token_stellar_client.mint(&sender, &amount);
+
+    let deposit_id = c.deposit_for_bridge(&sender, &token_id, &amount, &chain, &s(&env, "0x123"));
+
+    let deposit_before = c.get_deposit(&deposit_id).unwrap();
+    assert!(deposit_before.status == BridgeStatus::Pending);
+
+    // Relayer marks deposit as failed
+    c.mark_failed(&relayer, &deposit_id);
+
+    let deposit_failed = c.get_deposit(&deposit_id).unwrap();
+    assert!(deposit_failed.status == BridgeStatus::Failed);
+
+    // Initial sender balance after deposit should be 0
+    let token_client = token::Client::new(&env, &token_id);
+    assert_eq!(token_client.balance(&sender), 0);
+
+    // Admin refunds the failed deposit
+    c.refund_deposit(&admin, &deposit_id);
+
+    let deposit_refunded = c.get_deposit(&deposit_id).unwrap();
+    assert!(deposit_refunded.status == BridgeStatus::Refunded);
+
+    // Sender receives full amount (principal + bridge fee)
+    assert_eq!(token_client.balance(&sender), amount);
+}
+
+#[test]
+fn test_mark_failed_by_admin() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin, _) = setup_with_relayer(&env);
+
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin);
+    let token_id = token_contract.address();
+
+    let chain = s(&env, "ethereum");
+    c.add_supported_chain(&admin, &chain, &1_000_000i128);
+
+    let amount = 5_000i128;
+    let sender = Address::generate(&env);
+
+    let token_stellar_client = token::StellarAssetClient::new(&env, &token_id);
+    token_stellar_client.mint(&sender, &amount);
+
+    let deposit_id = c.deposit_for_bridge(&sender, &token_id, &amount, &chain, &s(&env, "0xabc"));
+
+    // Admin marks deposit as failed
+    c.mark_failed(&admin, &deposit_id);
+
+    let deposit = c.get_deposit(&deposit_id).unwrap();
+    assert!(deposit.status == BridgeStatus::Failed);
+}
+
+#[test]
+#[should_panic(expected = "unauthorized")]
+fn test_mark_failed_unauthorized() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin, _) = setup_with_relayer(&env);
+
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin);
+    let token_id = token_contract.address();
+
+    let chain = s(&env, "ethereum");
+    c.add_supported_chain(&admin, &chain, &1_000_000i128);
+
+    let amount = 5_000i128;
+    let sender = Address::generate(&env);
+
+    let token_stellar_client = token::StellarAssetClient::new(&env, &token_id);
+    token_stellar_client.mint(&sender, &amount);
+
+    let deposit_id = c.deposit_for_bridge(&sender, &token_id, &amount, &chain, &s(&env, "0xabc"));
+
+    let unauthorized = Address::generate(&env);
+    c.mark_failed(&unauthorized, &deposit_id);
+}
+
+#[test]
+#[should_panic(expected = "not pending")]
+fn test_mark_failed_already_completed() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin, relayer) = setup_with_relayer(&env);
+
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin);
+    let token_id = token_contract.address();
+
+    let chain = s(&env, "ethereum");
+    c.add_supported_chain(&admin, &chain, &1_000_000i128);
+
+    let amount = 5_000i128;
+    let sender = Address::generate(&env);
+
+    let token_stellar_client = token::StellarAssetClient::new(&env, &token_id);
+    token_stellar_client.mint(&sender, &amount);
+
+    let deposit_id = c.deposit_for_bridge(&sender, &token_id, &amount, &chain, &s(&env, "0xabc"));
+
+    let tx_hash = BytesN::from_array(&env, &[1u8; 32]);
+    c.confirm_bridge(&relayer, &deposit_id, &tx_hash);
+
+    // Attempting to mark as failed when already completed must fail
+    c.mark_failed(&relayer, &deposit_id);
+}
+
+#[test]
+#[should_panic(expected = "not pending")]
+fn test_mark_failed_already_failed() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin, relayer) = setup_with_relayer(&env);
+
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin);
+    let token_id = token_contract.address();
+
+    let chain = s(&env, "ethereum");
+    c.add_supported_chain(&admin, &chain, &1_000_000i128);
+
+    let amount = 5_000i128;
+    let sender = Address::generate(&env);
+
+    let token_stellar_client = token::StellarAssetClient::new(&env, &token_id);
+    token_stellar_client.mint(&sender, &amount);
+
+    let deposit_id = c.deposit_for_bridge(&sender, &token_id, &amount, &chain, &s(&env, "0xabc"));
+
+    c.mark_failed(&relayer, &deposit_id);
+    // Second call must fail
+    c.mark_failed(&relayer, &deposit_id);
+}
