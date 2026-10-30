@@ -23,17 +23,17 @@
     "@pulsartrack/sentry-scrubber": "file:../packages/sentry-scrubber",
     "@sentry/nextjs": "^10.72.0",
     "@stellar/freighter-api": "^6.0.1",
-    "@stellar/stellar-sdk": "^17.2.1",
-    "@tanstack/react-query": "^5.90.21",
+    "@stellar/stellar-sdk": "^17.4.0",
+    "@tanstack/react-query": "^5.105.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "lucide-react": "^0.567.0",
-    "next": "16.4.2",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "react-hook-form": "^7.71.2",
+    "next": "16.4.3",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-hook-form": "^7.91.0",
     "zod": "^4.3.6",
-    "zustand": "^5.0.11"
+    "zustand": "^5.0.16"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
@@ -56,7 +56,7 @@
     "jsdom": "^28.1.0",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "typescript-eslint": "^8.56.0",
+    "typescript-eslint": "^8.72.1",
     "vitest": "^4.0.18",
     "vitest-canvas-mock": "^1.1.3",
     "yaml": "^2.9.1"
