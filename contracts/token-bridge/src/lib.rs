@@ -242,6 +242,47 @@ impl TokenBridgeContract {
         );
     }
 
+    pub fn mark_failed(env: Env, caller: Address, deposit_id: u64) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        caller.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        let stored_relayer: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::RelayerAddress)
+            .unwrap();
+        if caller != stored_admin && caller != stored_relayer {
+            panic!("unauthorized");
+        }
+
+        let mut deposit: BridgeDeposit = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Deposit(deposit_id))
+            .expect("deposit not found");
+
+        if deposit.status != BridgeStatus::Pending {
+            panic!("not pending");
+        }
+
+        deposit.status = BridgeStatus::Failed;
+
+        let _ttl_key = DataKey::Deposit(deposit_id);
+        env.storage().persistent().set(&_ttl_key, &deposit);
+        env.storage().persistent().extend_ttl(
+            &_ttl_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+
+        env.events().publish(
+            (symbol_short!("bridge"), symbol_short!("failed")),
+            deposit_id,
+        );
+    }
+
     pub fn refund_deposit(env: Env, admin: Address, deposit_id: u64) {
         env.storage()
             .instance()
