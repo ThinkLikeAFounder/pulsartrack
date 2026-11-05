@@ -24,7 +24,7 @@
   "dependencies": {
     "@prisma/client": "^5.22.0",
     "@pulsartrack/sentry-scrubber": "file:../packages/sentry-scrubber",
-    "@sentry/node": "^10.72.0",
+    "@sentry/node": "^11.8.0",
     "@stellar/stellar-sdk": "^17.2.1",
     "cors": "^2.8.6",
     "date-fns": "^4.1.0",
