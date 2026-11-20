@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { getHorizonUrl } from '../../lib/stellar-config';
+import { getHorizonUrl, isDemoMode } from '../../lib/stellar-config';
+import { getWorld } from '../../lib/demo-store';
 import { useWalletStore } from '../../store/wallet-store';
 import { TrendingUp, RefreshCw } from 'lucide-react';
 
@@ -13,6 +14,11 @@ export function WalletBalance() {
 
   const fetchBalance = useCallback(async (signal?: AbortSignal) => {
     if (!address) return;
+    if (isDemoMode()) {
+      setXlmBalance((Number(getWorld().xlmBalance) / 1e7).toFixed(2));
+      setError(null);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -36,11 +42,12 @@ export function WalletBalance() {
   }, [address]);
 
   useEffect(() => {
-    if (isConnected && address) {
-      const controller = new AbortController();
-      fetchBalance(controller.signal);
-      return () => controller.abort();
-    }
+    if (!isConnected || !address) return;
+    const controller = new AbortController();
+    // Deferred to a microtask so the state updates inside fetchBalance never
+    // run synchronously within the effect's commit phase.
+    void Promise.resolve().then(() => fetchBalance(controller.signal));
+    return () => controller.abort();
   }, [isConnected, address, fetchBalance]);
 
   if (!isConnected || !address) return null;

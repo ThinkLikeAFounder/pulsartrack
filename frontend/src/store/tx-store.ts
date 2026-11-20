@@ -82,14 +82,27 @@ export const useTransactionStore = create<TransactionStore>()(
     }),
     {
       name: "pulsar-tx-storage",
-      storage: createJSONStorage(() =>
-        typeof window !== "undefined"
-          ? localStorage
-          : ({
-              getItem: () => null,
-              setItem: () => {},
-              removeItem: () => {},
-            } satisfies StateStorage),
+      storage: createJSONStorage(
+        () =>
+          typeof window !== "undefined"
+            ? localStorage
+            : ({
+                getItem: () => null,
+                setItem: () => {},
+                removeItem: () => {},
+              } satisfies StateStorage),
+        {
+          // A transaction's `result` can be a Soroban return value containing
+          // bigints (i128/u64 amounts) — JSON.stringify throws on those by
+          // default, which previously crashed persistence for any successful
+          // transaction whose result carried a bigint anywhere in it.
+          replacer: (_key, value) =>
+            typeof value === "bigint" ? { __bigint__: value.toString() } : value,
+          reviver: (_key, value) =>
+            typeof value === "object" && value !== null && (value as { __bigint__?: string }).__bigint__ !== undefined
+              ? BigInt((value as { __bigint__: string }).__bigint__)
+              : value,
+        },
       ),
       // Issue #368 — signal rehydration completion to eliminate header flicker.
       onRehydrateStorage: () => (state) => {

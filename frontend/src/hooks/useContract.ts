@@ -34,6 +34,13 @@ export function useContractCall() {
       queryClient.invalidateQueries({
         queryKey: ["contract", variables.contractId],
       });
+      // These list queries aggregate several individual contract reads under
+      // their own key (not "contract"), so a write anywhere needs to
+      // invalidate them explicitly too or the UI won't reflect it until the
+      // next scheduled refetch.
+      queryClient.invalidateQueries({ queryKey: ["advertiser_campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["publisher_auctions"] });
+      queryClient.invalidateQueries({ queryKey: ["governance_proposals"] });
     },
   });
 }
@@ -625,6 +632,71 @@ export function usePublisherAuctions(
     },
     enabled: enabled && !!publisherAddress && (auctionCount ?? 0) > 0,
   });
+}
+
+/**
+ * Hook to get every open auction across all publishers, for advertisers
+ * browsing the RTB marketplace to bid on.
+ */
+export function useOpenAuctions(auctionCount: number | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ["open_auctions", auctionCount],
+    queryFn: async () => {
+      if (!auctionCount || auctionCount === 0) return [];
+      const auctions: Record<string, unknown>[] = [];
+      const promises = [];
+      for (let i = 1; i <= auctionCount; i++) {
+        promises.push(
+          callReadOnly({
+            contractId: CONTRACT_IDS.AUCTION_ENGINE,
+            method: "get_auction",
+            args: [u64ToScVal(i)],
+          })
+            .then((auction: unknown) => {
+              if (isRecord(auction)) {
+                auctions.push({ ...auction, auction_id: BigInt(i) });
+              }
+            })
+            .catch(() => null),
+        );
+      }
+      await Promise.all(promises);
+      return auctions.sort((a, b) => Number(b.auction_id) - Number(a.auction_id));
+    },
+    enabled: enabled && (auctionCount ?? 0) > 0,
+  });
+}
+
+/**
+ * Hook for a publisher to list a new impression slot for real-time bidding.
+ */
+export function useCreateAuction() {
+  const { mutateAsync, ...rest } = useContractCall();
+  const { address } = useWalletStore();
+
+  const createAuction = async (params: {
+    impressionSlot: string;
+    floorPriceXlm: number;
+    reservePriceXlm: number;
+    durationHours: number;
+  }) => {
+    if (!address) throw new Error("Wallet not connected");
+    const STROOPS = 10_000_000;
+    return mutateAsync({
+      contractId: CONTRACT_IDS.AUCTION_ENGINE,
+      method: "create_auction",
+      source: address,
+      args: [
+        addressToScVal(address),
+        stringToScVal(params.impressionSlot),
+        i128ToScVal(Math.floor(params.floorPriceXlm * STROOPS)),
+        i128ToScVal(Math.floor(params.reservePriceXlm * STROOPS)),
+        u64ToScVal(Math.floor(params.durationHours * 3600)),
+      ],
+    });
+  };
+
+  return { createAuction, ...rest };
 }
 
 /**

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from 'react';
-import { PlusCircle, BarChart3, DollarSign, TrendingUp, Eye, MousePointer } from 'lucide-react';
+import { PlusCircle, BarChart3, DollarSign, TrendingUp, Eye, MousePointer, Gavel } from 'lucide-react';
 import { useWalletStore } from '@/store/wallet-store';
 import { WalletConnectButton } from '@/components/wallet/WalletModal';
 import {
@@ -9,11 +9,15 @@ import {
   useCampaignCount,
   useAdvertiserCampaigns,
   useAdvertiserStats,
+  useAuctionCount,
+  useOpenAuctions,
   AdvertiserCampaign,
 } from '@/hooks/useContract';
 import { formatXlm, formatNumber } from '@/lib/display-utils';
+import { AuctionList } from '@/components/auction/AuctionList';
+import type { Auction } from '@/types/contracts';
 
-type AdvertiserTab = 'campaigns' | 'create' | 'analytics';
+type AdvertiserTab = 'campaigns' | 'create' | 'auctions' | 'analytics';
 
 interface CampaignForm {
   title: string;
@@ -50,6 +54,9 @@ export default function AdvertiserPage() {
   const { data: campaignCount } = useCampaignCount();
   const { data: campaigns, isLoading: isCampaignsLoading } =
     useAdvertiserCampaigns(address as string, Number(campaignCount));
+  const { data: auctionCount } = useAuctionCount();
+  const { data: openAuctions, isLoading: isAuctionsLoading, refetch: refetchAuctions } =
+    useOpenAuctions(auctionCount);
 
   const [form, setForm] = useState<CampaignForm>(EMPTY_FORM);
   const [activeTab, setActiveTab] = useState<AdvertiserTab>('campaigns');
@@ -177,6 +184,7 @@ export default function AdvertiserPage() {
             {([
               { id: "campaigns", label: "My Campaigns", icon: BarChart3 },
               { id: "create", label: "Create Campaign", icon: PlusCircle },
+              { id: "auctions", label: "RTB Auctions", icon: Gavel },
               { id: "analytics", label: "Analytics", icon: TrendingUp },
             ] as Array<{ id: AdvertiserTab; label: string; icon: typeof BarChart3 }>).map(({ id, label, icon: Icon }) => (
               <button
@@ -288,10 +296,11 @@ export default function AdvertiserPage() {
                   </div>
                 )}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="campaign-title" className="block text-sm font-medium text-gray-700 mb-1">
                     Campaign Title
                   </label>
                   <input
+                    id="campaign-title"
                     type="text"
                     value={form.title}
                     onChange={(e) =>
@@ -304,10 +313,11 @@ export default function AdvertiserPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="campaign-content-id" className="block text-sm font-medium text-gray-700 mb-1">
                     Content ID (IPFS Hash)
                   </label>
                   <input
+                    id="campaign-content-id"
                     type="text"
                     value={form.contentId}
                     onChange={(e) =>
@@ -321,10 +331,11 @@ export default function AdvertiserPage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="campaign-budget" className="block text-sm font-medium text-gray-700 mb-1">
                       Total Budget (XLM)
                     </label>
                     <input
+                      id="campaign-budget"
                       type="number"
                       value={form.budgetXlm}
                       onChange={(e) =>
@@ -338,10 +349,11 @@ export default function AdvertiserPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="campaign-daily-budget" className="block text-sm font-medium text-gray-700 mb-1">
                       Daily Budget (XLM)
                     </label>
                     <input
+                      id="campaign-daily-budget"
                       type="number"
                       value={form.dailyBudgetXlm}
                       onChange={(e) =>
@@ -357,10 +369,11 @@ export default function AdvertiserPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="campaign-duration" className="block text-sm font-medium text-gray-700 mb-1">
                     Duration (days)
                   </label>
                   <input
+                    id="campaign-duration"
                     type="number"
                     value={form.durationDays}
                     onChange={(e) =>
@@ -386,6 +399,22 @@ export default function AdvertiserPage() {
                   to sign with Freighter.
                 </p>
               </form>
+            </div>
+          )}
+
+          {activeTab === "auctions" && (
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-6">
+              <h2 className="text-lg font-semibold text-white mb-1">
+                Real-Time Bidding Marketplace
+              </h2>
+              <p className="text-sm text-gray-400 mb-4">
+                Bid on open impression slots from publishers across the network.
+              </p>
+              <AuctionList
+                auctions={(openAuctions ?? []) as unknown as Auction[]}
+                isLoading={isAuctionsLoading}
+                onRefresh={() => refetchAuctions()}
+              />
             </div>
           )}
 

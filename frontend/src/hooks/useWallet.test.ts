@@ -21,6 +21,7 @@ vi.mock('@/lib/wallet', () => ({
     verifyNetwork: vi.fn(),
     getFreighterNetworkLabel: vi.fn(),
     getWalletData: vi.fn(),
+    disconnectDemoWallet: vi.fn(),
 }));
 
 vi.mock('@/lib/error-handler', () => ({

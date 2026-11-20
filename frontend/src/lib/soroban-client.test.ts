@@ -30,6 +30,7 @@ const NETWORK_PASSPHRASE = 'Test SDF Network ; September 2015';
 vi.mock('./stellar-config', () => ({
   getSorobanRpcUrl: () => SOROBAN_RPC_URL,
   getNetworkPassphrase: () => NETWORK_PASSPHRASE,
+  isDemoMode: () => false,
   // Inlined rather than referencing SIM_ACCOUNT: this factory is hoisted above
   // the const declarations and this property is evaluated eagerly (unlike the
   // getters above), so referencing SIM_ACCOUNT here is a TDZ error.

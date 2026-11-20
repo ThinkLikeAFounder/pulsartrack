@@ -18,6 +18,7 @@ import {
   usePublisherEarnings,
   useAuctionCount,
   usePublisherAuctions,
+  useCreateAuction,
   useSubscribe,
 } from '@/hooks/useContract';
 import { formatAddress } from '@/lib/display-utils';
@@ -119,6 +120,15 @@ export default function PublisherPage() {
     isConnected,
   );
   const { subscribe, isPending: subscribeLoading } = useSubscribe();
+  const { createAuction, isPending: creatingAuction } = useCreateAuction();
+  const [showCreateAuction, setShowCreateAuction] = useState(false);
+  const [auctionForm, setAuctionForm] = useState({
+    impressionSlot: '',
+    floorPriceXlm: '1',
+    reservePriceXlm: '0.5',
+    durationHours: '24',
+  });
+  const [auctionFormError, setAuctionFormError] = useState<string | null>(null);
 
   if (!isConnected) {
     return (
@@ -344,9 +354,144 @@ export default function PublisherPage() {
 
           {activeTab === 'auctions' && (
             <div className="bg-white rounded-xl border border-gray-200 p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                Real-Time Bidding Auctions
-              </h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-gray-900">
+                  Real-Time Bidding Auctions
+                </h2>
+                {!showCreateAuction && (
+                  <button
+                    onClick={() => setShowCreateAuction(true)}
+                    className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm"
+                  >
+                    Create Impression Slot
+                  </button>
+                )}
+              </div>
+
+              {showCreateAuction && (
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    setAuctionFormError(null);
+                    if (!auctionForm.impressionSlot.trim()) {
+                      setAuctionFormError('Impression slot name is required');
+                      return;
+                    }
+                    try {
+                      await createAuction({
+                        impressionSlot: auctionForm.impressionSlot,
+                        floorPriceXlm: parseFloat(auctionForm.floorPriceXlm) || 0,
+                        reservePriceXlm: parseFloat(auctionForm.reservePriceXlm) || 0,
+                        durationHours: parseFloat(auctionForm.durationHours) || 24,
+                      });
+                      setShowCreateAuction(false);
+                      setAuctionForm({
+                        impressionSlot: '',
+                        floorPriceXlm: '1',
+                        reservePriceXlm: '0.5',
+                        durationHours: '24',
+                      });
+                    } catch (err) {
+                      setAuctionFormError(
+                        err instanceof Error ? err.message : 'Failed to create auction',
+                      );
+                    }
+                  }}
+                  className="mb-6 p-4 border border-gray-200 rounded-lg bg-gray-50 space-y-3"
+                >
+                  <div>
+                    <label htmlFor="auction-slot-name" className="block text-sm font-medium text-gray-700 mb-1">
+                      Impression Slot Name
+                    </label>
+                    <input
+                      id="auction-slot-name"
+                      type="text"
+                      value={auctionForm.impressionSlot}
+                      onChange={(e) =>
+                        setAuctionForm({ ...auctionForm, impressionSlot: e.target.value })
+                      }
+                      placeholder="homepage-hero-banner"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      required
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label htmlFor="auction-floor-price" className="block text-sm font-medium text-gray-700 mb-1">
+                        Floor (XLM)
+                      </label>
+                      <input
+                        id="auction-floor-price"
+                        type="number"
+                        min="0.0001"
+                        step="0.0001"
+                        value={auctionForm.floorPriceXlm}
+                        onChange={(e) =>
+                          setAuctionForm({ ...auctionForm, floorPriceXlm: e.target.value })
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="auction-reserve-price" className="block text-sm font-medium text-gray-700 mb-1">
+                        Reserve (XLM)
+                      </label>
+                      <input
+                        id="auction-reserve-price"
+                        type="number"
+                        min="0"
+                        step="0.0001"
+                        value={auctionForm.reservePriceXlm}
+                        onChange={(e) =>
+                          setAuctionForm({ ...auctionForm, reservePriceXlm: e.target.value })
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="auction-duration" className="block text-sm font-medium text-gray-700 mb-1">
+                        Duration (hours)
+                      </label>
+                      <input
+                        id="auction-duration"
+                        type="number"
+                        min="1"
+                        max="720"
+                        value={auctionForm.durationHours}
+                        onChange={(e) =>
+                          setAuctionForm({ ...auctionForm, durationHours: e.target.value })
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        required
+                      />
+                    </div>
+                  </div>
+                  {auctionFormError && (
+                    <div className="p-2 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                      {auctionFormError}
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <button
+                      type="submit"
+                      disabled={creatingAuction}
+                      className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors text-sm font-medium"
+                    >
+                      {creatingAuction ? 'Listing...' : 'List Impression Slot'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowCreateAuction(false)}
+                      className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              )}
+
               {auctionsLoading ? (
                 <div className="text-center py-12 text-gray-500">
                   <p>Loading auctions...</p>
@@ -380,16 +525,21 @@ export default function PublisherPage() {
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-12 text-gray-500">
-                  <Clock className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                  <p>
-                    No active auctions. Create an impression slot to start
-                    receiving bids.
-                  </p>
-                  <button className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm">
-                    Create Impression Slot
-                  </button>
-                </div>
+                !showCreateAuction && (
+                  <div className="text-center py-12 text-gray-500">
+                    <Clock className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                    <p>
+                      No active auctions. Create an impression slot to start
+                      receiving bids.
+                    </p>
+                    <button
+                      onClick={() => setShowCreateAuction(true)}
+                      className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm"
+                    >
+                      Create Impression Slot
+                    </button>
+                  </div>
+                )
               )}
             </div>
           )}

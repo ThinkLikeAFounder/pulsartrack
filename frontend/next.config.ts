@@ -4,6 +4,9 @@ import { withSentryConfig } from "@sentry/nextjs";
 const nextConfig: NextConfig = {
   output: "standalone",
   serverExternalPackages: ["@stellar/stellar-sdk", "@stellar/stellar-base"],
+  experimental: {
+    agentUpgrade: "security",
+  },
 };
 
 export default withSentryConfig(nextConfig, {

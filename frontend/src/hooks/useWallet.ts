@@ -10,6 +10,7 @@ import {
   verifyNetwork,
   getFreighterNetworkLabel,
   getWalletData,
+  disconnectDemoWallet,
 } from "../lib/wallet";
 import { parseStellarError } from "../lib/error-handler";
 
@@ -69,8 +70,9 @@ export function useWallet() {
   }, [setAddress, setConnected, setFreighterNetwork, setNetworkMismatch, setNetwork]);
 
   const disconnect = useCallback(() => {
-    // Freighter doesn't have a programmatic disconnect
-    // Clear local state only
+    // Freighter doesn't have a programmatic disconnect; in demo mode there's
+    // no extension at all, so forget the persisted demo address too.
+    disconnectDemoWallet();
     storeDisconnect();
   }, [storeDisconnect]);
 
