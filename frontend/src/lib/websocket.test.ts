@@ -346,26 +346,31 @@ describe('PulsarWebSocket', () => {
       expect(constructionSpy).toHaveBeenCalledTimes(4);
     });
 
-    it('stops reconnecting after maxReconnectAttempts (5)', () => {
+    it('keeps reconnecting at the 30s cap past maxReconnectAttempts (5)', () => {
       const client = new PulsarWebSocket('ws://test.example.com');
       client.connect();
       triggerOpen();
 
-      // Never re-open: a successful open resets reconnectAttempts, so the cap
-      // is only reachable across consecutive failed reconnects.
-      for (let i = 0; i < 5; i++) {
+      // Never re-open: a successful open resets reconnectAttempts, so these
+      // are consecutive failed reconnects. Backoff: 3s, 6s, 12s, 24s, 30s.
+      const delays = [3000, 6000, 12000, 24000, 30000];
+      for (const delay of delays) {
         triggerClose();
-        vi.advanceTimersByTime(3000 * Math.pow(2, i));
+        vi.advanceTimersByTime(delay);
       }
 
       // 1 initial + 5 reconnect attempts
       expect(constructionSpy).toHaveBeenCalledTimes(6);
 
-      // 6th close is past maxReconnectAttempts and must NOT reconnect
-      triggerClose();
-      vi.advanceTimersByTime(60000);
-
-      expect(constructionSpy).toHaveBeenCalledTimes(6);
+      // Issue #1124: attempts past maxReconnectAttempts still reconnect,
+      // at the 30s backoff cap
+      for (let i = 0; i < 3; i++) {
+        triggerClose();
+        vi.advanceTimersByTime(29999);
+        expect(constructionSpy).toHaveBeenCalledTimes(6 + i);
+        vi.advanceTimersByTime(1);
+        expect(constructionSpy).toHaveBeenCalledTimes(7 + i);
+      }
     });
 
     it('resets reconnect counters after a successful reconnection', () => {
