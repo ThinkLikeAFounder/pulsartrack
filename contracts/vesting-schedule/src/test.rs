@@ -72,6 +72,41 @@ fn test_upsert_schedule_preserves_claimed_amount() {
 }
 
 #[test]
+#[should_panic(expected = "total_amount below claimed amount")]
+fn test_upsert_schedule_rejects_total_below_claimed() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, token_addr) = setup(&env);
+    let beneficiary = Address::generate(&env);
+
+    mint(&env, &token_addr, &client.address, 100_000);
+    client.upsert_schedule(
+        &admin,
+        &beneficiary,
+        &token_addr,
+        &100_000i128,
+        &0u64,
+        &100u64,
+        &0u64,
+    );
+
+    env.ledger().with_mut(|li| {
+        li.timestamp = 40;
+    });
+    assert_eq!(client.claim(&beneficiary), 40_000);
+
+    client.upsert_schedule(
+        &admin,
+        &beneficiary,
+        &token_addr,
+        &39_999i128,
+        &0u64,
+        &100u64,
+        &0u64,
+    );
+}
+
+#[test]
 fn test_claim_full_schedule() {
     let env = Env::default();
     env.mock_all_auths();

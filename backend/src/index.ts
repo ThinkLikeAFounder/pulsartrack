@@ -12,7 +12,7 @@ import { EnvValidationError, loadEnv } from "./config/env";
 import { logger } from "./lib/logger";
 import { runMigrations } from "./db/migrate";
 
-const PORT = parseInt(process.env.PORT || "4000", 10);
+const PORT = parseInt(process.env.PORT || "3001", 10);
 
 const server = createServer(app);
 
@@ -68,17 +68,17 @@ async function gracefulShutdown(signal: string) {
 
   const forceShutdownTimer = setTimeout(() => {
     logger.error("[PulsarTrack] Forced shutdown after timeout");
-    process.exit(1);
+    process.exitCode = 1;
   }, 10000);
 
   try {
     const exitCode = await shutdown(0, true);
     clearTimeout(forceShutdownTimer);
-    process.exit(exitCode);
+    process.exitCode = exitCode;
   } catch (err) {
     clearTimeout(forceShutdownTimer);
     logger.error({ err }, "[PulsarTrack] Graceful shutdown failed");
-    process.exit(1);
+    process.exitCode = 1;
   }
 }
 
@@ -100,7 +100,7 @@ async function start() {
       logger.fatal(
         "[DB] PostgreSQL connection failed — aborting in production",
       );
-      process.exit(1);
+      throw new Error("PostgreSQL connection failed");
     }
     logger.warn("[DB] Could not connect to PostgreSQL — running without DB");
   } else {
@@ -109,17 +109,17 @@ async function start() {
       await runMigrations(pool);
     } catch (err) {
       logger.fatal({ err }, "[DB] Schema migration failed");
-      if (process.env.NODE_ENV === "production") process.exit(1);
+      if (process.env.NODE_ENV === "production") throw err;
     }
   }
 
   try {
     await prisma.$connect();
     logger.info("[DB] Prisma client connected");
-  } catch (err) {
+  } catch (_err) {
     if (process.env.NODE_ENV === "production") {
       logger.fatal("[DB] Prisma connection failed — aborting in production");
-      process.exit(1);
+      throw err;
     }
     logger.warn("[DB] Prisma client unavailable — running without ORM");
   }
@@ -142,11 +142,11 @@ if (process.env.NODE_ENV !== "test") {
       // Config is broken before anything was opened — report and exit
       // without attempting a resource teardown.
       console.error(err.message);
-      process.exit(1);
+      process.exitCode = 1;
     }
     console.error("Failed to start server:", err);
     const exitCode = await shutdown(1);
-    process.exit(exitCode);
+    process.exitCode = exitCode;
   });
 }
 

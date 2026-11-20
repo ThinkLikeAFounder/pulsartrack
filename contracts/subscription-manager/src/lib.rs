@@ -36,7 +36,7 @@ pub struct SubscriptionPlan {
     pub price_annual: i128,
     pub max_campaigns: u32,
     pub max_impressions_per_month: u64,
-    pub max_publishers: u32,
+    pub max_publishers: u32, // informational only: no contract tracks per-subscriber publishers
     pub analytics_enabled: bool,
     pub api_access: bool,
 }
@@ -47,12 +47,14 @@ pub struct Subscription {
     pub subscriber: Address,
     pub tier: SubscriptionTier,
     pub is_annual: bool,
-    pub amount_paid: i128, // last payment amount; used for proration
+    pub amount_paid: i128, // total paid for [period_start, expires_at]; used for proration
     pub started_at: u64,   // original subscription start; preserved across upgrades
+    pub period_start: u64, // start of the paid window covered by `amount_paid`
     pub expires_at: u64,
     pub auto_renew: bool,
     pub campaigns_used: u32,   // preserved across upgrades and renewals
-    pub impressions_used: u64, // preserved across upgrades and renewals
+    pub impressions_used: u64, // impressions in the current monthly window
+    pub impressions_period_start: u64, // start of the current monthly impression window
 }
 
 // ============================================================
@@ -96,13 +98,32 @@ fn tier_rank(tier: &SubscriptionTier) -> u32 {
     }
 }
 
+/// Length of a monthly billing period / impression quota window.
+const MONTH_SECS: u64 = 30 * 24 * 3600;
+
 /// Returns the billing period in seconds.
 #[inline]
 fn plan_period_secs(is_annual: bool) -> u64 {
     if is_annual {
         365 * 24 * 3600u64
     } else {
-        30 * 24 * 3600u64
+        MONTH_SECS
+    }
+}
+
+/// Extends `sub` by one paid period.
+///
+/// While active, the new period stacks on `expires_at` and the payment is
+/// added to `amount_paid`, so proration covers the whole paid window. After a
+/// lapse, the unpaid gap is dropped: the paid window restarts at `now`.
+fn apply_renewal(sub: &mut Subscription, amount: i128, period: u64, now: u64) {
+    if sub.expires_at > now {
+        sub.amount_paid += amount;
+        sub.expires_at += period;
+    } else {
+        sub.amount_paid = amount;
+        sub.period_start = now;
+        sub.expires_at = now + period;
     }
 }
 
@@ -116,14 +137,14 @@ fn plan_period_secs(is_annual: bool) -> u64 {
 ///
 /// Returns 0 if `now >= expires_at` (expired; no credit due).
 #[inline]
-fn prorated_credit(amount_paid: i128, started_at: u64, expires_at: u64, now: u64) -> i128 {
+fn prorated_credit(amount_paid: i128, period_start: u64, expires_at: u64, now: u64) -> i128 {
     if now >= expires_at {
         return 0;
     }
     let remaining_secs = (expires_at - now) as i128;
     // Use the actual subscription period rather than a fixed constant,
     // so annual and monthly subs are both handled correctly.
-    let total_period_secs = (expires_at - started_at) as i128;
+    let total_period_secs = (expires_at - period_start) as i128;
     if total_period_secs == 0 {
         return 0;
     }
@@ -287,10 +308,12 @@ impl SubscriptionManagerContract {
             is_annual,
             amount_paid: amount,
             started_at: now,
+            period_start: now,
             expires_at: now + period,
             auto_renew,
             campaigns_used: 0,
             impressions_used: 0,
+            impressions_period_start: now,
         };
         save_subscription(&env, &sub);
 
@@ -309,7 +332,7 @@ impl SubscriptionManagerContract {
     /// - Computes a prorated credit for remaining time on the current plan.
     /// - Charges only the delta (`new_price - credit`), clamped to 0.
     /// - Preserves `campaigns_used` and `impressions_used`.
-    /// - Resets the billing period from now for the new tier.
+    /// - Resets the billing period from now for the new tier; `started_at` is preserved.
     ///
     /// Panics:
     /// - no active subscription exists.
@@ -346,7 +369,7 @@ impl SubscriptionManagerContract {
         // Prorate credit from the existing subscription.
         let credit = prorated_credit(
             existing.amount_paid,
-            existing.started_at,
+            existing.period_start,
             existing.expires_at,
             now,
         );
@@ -364,12 +387,14 @@ impl SubscriptionManagerContract {
             tier: new_tier,
             is_annual,
             amount_paid: new_price, // store full price for future proration
-            started_at: now,
+            started_at: existing.started_at,
+            period_start: now,
             expires_at: now + period,
             auto_renew,
             // Preserve accumulated usage data.
             campaigns_used: existing.campaigns_used,
             impressions_used: existing.impressions_used,
+            impressions_period_start: existing.impressions_period_start,
         };
         save_subscription(&env, &sub);
 
@@ -410,11 +435,9 @@ impl SubscriptionManagerContract {
         charge(&env, &subscriber, amount);
 
         // Stack on top of remaining time; never go backwards.
-        let base = existing.expires_at.max(now);
-        existing.expires_at = base + period;
+        apply_renewal(&mut existing, amount, period, now);
         existing.is_annual = is_annual;
         existing.auto_renew = auto_renew;
-        existing.amount_paid = amount;
 
         save_subscription(&env, &existing);
 
@@ -456,9 +479,7 @@ impl SubscriptionManagerContract {
         // Transfer funds using allowance where this contract is spender.
         charge_with_allowance(&env, &subscriber, amount);
 
-        let base = sub.expires_at.max(now);
-        sub.expires_at = base + period;
-        sub.amount_paid = amount;
+        apply_renewal(&mut sub, amount, period, now);
 
         save_subscription(&env, &sub);
 
@@ -514,6 +535,10 @@ impl SubscriptionManagerContract {
         let mut sub = load_subscription(&env, &subscriber)
             .unwrap_or_else(|| panic!("subscription not found"));
 
+        let plan = load_plan(&env, sub.tier.clone());
+        if sub.campaigns_used >= plan.max_campaigns {
+            panic!("campaign quota exceeded");
+        }
         sub.campaigns_used += 1;
         save_subscription(&env, &sub);
     }
@@ -535,7 +560,20 @@ impl SubscriptionManagerContract {
         let mut sub = load_subscription(&env, &subscriber)
             .unwrap_or_else(|| panic!("subscription not found"));
 
-        sub.impressions_used += count;
+        let now = env.ledger().timestamp();
+        if now >= sub.impressions_period_start + MONTH_SECS {
+            // Roll the monthly window forward in whole months from its anchor.
+            let months = (now - sub.impressions_period_start) / MONTH_SECS;
+            sub.impressions_period_start += months * MONTH_SECS;
+            sub.impressions_used = 0;
+        }
+
+        let plan = load_plan(&env, sub.tier.clone());
+        let new_total = sub.impressions_used.saturating_add(count);
+        if new_total > plan.max_impressions_per_month {
+            panic!("impression quota exceeded");
+        }
+        sub.impressions_used = new_total;
         save_subscription(&env, &sub);
     }
 

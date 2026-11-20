@@ -4,6 +4,12 @@
 #![no_std]
 use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, String};
 
+mod campaign_lifecycle {
+    soroban_sdk::contractimport!(
+        file = "../campaign-lifecycle/target/wasm32-unknown-unknown/release/pulsar_campaign_lifecycle.wasm"
+    );
+}
+
 #[contracttype]
 #[derive(Clone)]
 pub struct TargetingParams {
@@ -56,6 +62,7 @@ pub struct TargetingScore {
 pub enum DataKey {
     Admin,
     PendingAdmin,
+    LifecycleContract,
     TargetingConfig(u64),         // campaign_id
     TargetingScore(u64, Address), // campaign_id, publisher
     AuthorizedOracle(Address),
@@ -72,7 +79,7 @@ pub struct TargetingEngineContract;
 
 #[contractimpl]
 impl TargetingEngineContract {
-    pub fn initialize(env: Env, admin: Address) {
+    pub fn initialize(env: Env, admin: Address, lifecycle_contract: Address) {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -81,6 +88,9 @@ impl TargetingEngineContract {
         }
         admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage()
+            .instance()
+            .set(&DataKey::LifecycleContract, &lifecycle_contract);
     }
 
     pub fn add_oracle(env: Env, admin: Address, oracle: Address) {
@@ -125,16 +135,22 @@ impl TargetingEngineContract {
             panic!("invalid age range");
         }
 
-        let config_key = DataKey::TargetingConfig(campaign_id);
-        if let Some(existing) = env
+        let lifecycle_contract = env
             .storage()
-            .persistent()
-            .get::<DataKey, TargetingConfig>(&config_key)
-        {
-            if existing.advertiser != advertiser {
-                panic!("unauthorized: campaign belongs to a different advertiser");
-            }
+            .instance()
+            .get::<DataKey, Address>(&DataKey::LifecycleContract)
+            .expect("lifecycle contract not configured");
+
+        let lifecycle_client = campaign_lifecycle::Client::new(&env, &lifecycle_contract);
+        let campaign = lifecycle_client
+            .get_lifecycle(&campaign_id)
+            .expect("campaign not found");
+
+        if campaign.advertiser != advertiser {
+            panic!("unauthorized: campaign belongs to a different advertiser");
         }
+
+        let config_key = DataKey::TargetingConfig(campaign_id);
 
         let config = TargetingConfig {
             campaign_id,

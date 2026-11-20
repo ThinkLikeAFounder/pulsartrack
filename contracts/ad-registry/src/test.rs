@@ -217,6 +217,17 @@ fn test_track_click() {
 }
 
 #[test]
+#[should_panic(expected = "content not approved")]
+fn test_track_click_unapproved() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _) = setup(&env);
+    let viewer = Address::generate(&env);
+    let cid = register(&c, &env);
+    c.track_click(&cid, &viewer);
+}
+
+#[test]
 fn test_get_content_nonexistent() {
     let env = Env::default();
     env.mock_all_auths();

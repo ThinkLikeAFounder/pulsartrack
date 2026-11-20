@@ -64,10 +64,19 @@ async function poll() {
         const eventType = event.topic?.[0] || 'unknown';
         const eventData = event.value || null;
 
+        // Extract the stable event_index from the event's unique id field.
+        // The id format is "{TOID}-{event_index}" where event_index is a
+        // 10-character zero-padded number representing the event's position
+        // within its transaction. This is stable across polls for the same
+        // event, unlike the loop counter i which resets each poll (#1094).
+        const eventId = (event as any).id || '';
+        const eventIndexStr = eventId.split('-')[1] || '0';
+        const eventIndex = parseInt(eventIndexStr, 10) || 0;
+
         const result = await ledgerEventsRepo.create({
           ledger_sequence: ledgerSeq,
           tx_hash: txHash,
-          event_index: i,
+          event_index: eventIndex,
           contract_id: contractId,
           event_type: typeof eventType === 'string' ? eventType : JSON.stringify(eventType),
           event_data: eventData,

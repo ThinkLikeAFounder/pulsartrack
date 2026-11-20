@@ -92,6 +92,7 @@ impl MultisigTreasuryContract {
         description: String,
         expires_in: u64,
     ) -> u64 {
+        Self::require_not_paused(&env);
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -158,6 +159,7 @@ impl MultisigTreasuryContract {
     /// Returns `false` when the transaction has expired. Expiry is a successful
     /// state transition (rather than a panic) so the `Expired` status commits.
     pub fn approve_transaction(env: Env, signer: Address, tx_id: u64) -> bool {
+        Self::require_not_paused(&env);
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -296,6 +298,7 @@ impl MultisigTreasuryContract {
     }
 
     pub fn reject_transaction(env: Env, signer: Address, tx_id: u64) {
+        Self::require_not_paused(&env);
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);

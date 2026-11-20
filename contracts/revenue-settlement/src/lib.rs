@@ -252,20 +252,24 @@ impl RevenueSettlementContract {
             panic!("no balance to claim");
         }
 
-        let token_addr: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::TokenAddress)
-            .unwrap();
-        let token_client = token::Client::new(&env, &token_addr);
-        token_client.transfer(&env.current_contract_address(), &publisher, &balance);
-
+        // CEI: zero the publisher's balance before transferring so a reentrant
+        // call cannot read the same balance again.
         env.storage().persistent().set(&pub_key, &0i128);
         env.storage().persistent().extend_ttl(
             &pub_key,
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
         );
+
+        let token_addr: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::TokenAddress)
+            .unwrap();
+        let token_client = token::Client::new(&env, &token_addr);
+
+        // External interaction LAST
+        token_client.transfer(&env.current_contract_address(), &publisher, &balance);
 
         env.events().publish(
             (symbol_short!("revenue"), symbol_short!("claimed")),

@@ -31,7 +31,9 @@ export async function getAccountDetails(address: string) {
 }
 
 /**
- * Get recent transactions for an account
+ * Get recent transactions for an account.
+ * Returns null when the account does not exist on the network (Horizon 404),
+ * matching the behaviour of {@link getAccountDetails}.
  */
 export async function getAccountTransactions(
   address: string,
@@ -50,7 +52,14 @@ export async function getAccountTransactions(
     callBuilder = callBuilder.cursor(cursor);
   }
 
-  return callBuilder.call();
+  try {
+    return await callBuilder.call();
+  } catch (err: any) {
+    if (err.response?.status === 404) {
+      return null;
+    }
+    throw err;
+  }
 }
 
 /**

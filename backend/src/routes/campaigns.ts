@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import * as campaignsRepo from '../db/repositories/campaigns';
 import { callReadOnly } from '../services/soroban-client';
 import { CONTRACT_IDS } from '../config/stellar';
-import { requireAuth, rateLimitWrite, getAuthedAddress } from '../middleware/auth';
+import { requireAuth, rateLimitAccount, rateLimitWrite, getAuthedAddress } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import pool from '../config/database';
 
@@ -63,7 +63,7 @@ router.get('/stats', async (_req: Request, res: Response) => {
   }
 });
 
-router.post('/', requireAuth, rateLimitWrite(), validate({
+router.post('/', requireAuth, rateLimitAccount(), rateLimitWrite(), validate({
   body: {
     title: { type: 'string', required: true, minLength: 1, maxLength: 200 },
     contentId: { type: 'string', required: true, minLength: 1 },
@@ -76,6 +76,11 @@ router.post('/', requireAuth, rateLimitWrite(), validate({
     if (!address) return; // Response already sent with 401
 
     const { title, contentId, budgetStroops, dailyBudgetStroops } = req.body;
+    if (dailyBudgetStroops > budgetStroops) {
+      return res.status(400).json({
+        error: 'dailyBudgetStroops must not exceed budgetStroops',
+      });
+    }
 
     const campaign = await campaignsRepo.create({
       advertiser: address,

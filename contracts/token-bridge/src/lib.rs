@@ -264,6 +264,24 @@ impl TokenBridgeContract {
 
         let total_refund = deposit.amount + deposit.bridge_fee;
 
+        // Back the refunded amount out of the daily volume counter
+        let deposit_day = deposit.created_at / 86_400;
+        let daily_volume_key = DataKey::DailyVolume(deposit.recipient_chain.clone(), deposit_day);
+        let current_daily_volume: i128 = env
+            .storage()
+            .persistent()
+            .get(&daily_volume_key)
+            .unwrap_or(0);
+        let new_daily_volume = current_daily_volume.saturating_sub(total_refund);
+        env.storage()
+            .persistent()
+            .set(&daily_volume_key, &new_daily_volume);
+        env.storage().persistent().extend_ttl(
+            &daily_volume_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+
         // Update deposit status and persist BEFORE token transfer (CEI pattern)
         deposit.status = BridgeStatus::Refunded;
         let _ttl_key = DataKey::Deposit(deposit_id);

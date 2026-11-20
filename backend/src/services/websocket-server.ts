@@ -110,7 +110,11 @@ export function setupWebSocketServer(server: Server): WebSocketServer {
         logger.warn(`[WS] Auth timeout for IP ${ip}`);
         ws.close(4001, "Authentication timeout");
         const remaining = (connectionsPerIp.get(ip) ?? 1) - 1;
-        remaining > 0 ? connectionsPerIp.set(ip, remaining) : connectionsPerIp.delete(ip);
+        if (remaining > 0) {
+          connectionsPerIp.set(ip, remaining);
+        } else {
+          connectionsPerIp.delete(ip);
+        }
       }
     }, AUTH_TIMEOUT_MS);
 
@@ -118,7 +122,11 @@ export function setupWebSocketServer(server: Server): WebSocketServer {
       clearTimeout(authTimer);
       clients.delete(ws);
       const remaining = (connectionsPerIp.get(ip) ?? 1) - 1;
-      remaining > 0 ? connectionsPerIp.set(ip, remaining) : connectionsPerIp.delete(ip);
+      if (remaining > 0) {
+        connectionsPerIp.set(ip, remaining);
+      } else {
+        connectionsPerIp.delete(ip);
+      }
       logger.info(`[WS] Client disconnected. Total: ${clients.size}`);
     });
 
@@ -127,7 +135,11 @@ export function setupWebSocketServer(server: Server): WebSocketServer {
       logger.error(err, "[WS] Client error");
       clients.delete(ws);
       const remaining = (connectionsPerIp.get(ip) ?? 1) - 1;
-      remaining > 0 ? connectionsPerIp.set(ip, remaining) : connectionsPerIp.delete(ip);
+      if (remaining > 0) {
+        connectionsPerIp.set(ip, remaining);
+      } else {
+        connectionsPerIp.delete(ip);
+      }
     });
 
     ws.on("message", (data) => {
@@ -155,7 +167,11 @@ export function setupWebSocketServer(server: Server): WebSocketServer {
             logger.warn(`[WS] Auth failed from ${ip}: ${(err as Error).message}`);
             ws.close(4001, "Unauthorized");
             const remaining = (connectionsPerIp.get(ip) ?? 1) - 1;
-            remaining > 0 ? connectionsPerIp.set(ip, remaining) : connectionsPerIp.delete(ip);
+            if (remaining > 0) {
+              connectionsPerIp.set(ip, remaining);
+            } else {
+              connectionsPerIp.delete(ip);
+            }
             return;
           }
 

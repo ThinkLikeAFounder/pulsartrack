@@ -250,3 +250,29 @@ fn test_verify_kyc_expiry_overflow() {
     });
     c.verify_kyc(&provider, &account, &Some(u64::MAX));
 }
+
+
+#[test]
+#[should_panic(expected = "provider mismatch")]
+fn test_same_name_provider_cannot_verify_another_providers_record() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin) = setup(&env);
+    let original_provider = Address::generate(&env);
+    let impostor_provider = Address::generate(&env);
+    let account = Address::generate(&env);
+    let duplicate_name = s(&env, "VerifyInc");
+
+    c.register_provider(&admin, &original_provider, &duplicate_name);
+    c.register_provider(&admin, &impostor_provider, &duplicate_name);
+    c.submit_kyc(
+        &account,
+        &original_provider,
+        &KycLevel::Standard,
+        &s(&env, "DocHash"),
+        &s(&env, "US"),
+    );
+
+    // Matching display names must not grant authority over another address's record.
+    c.verify_kyc(&impostor_provider, &account, &None);
+}

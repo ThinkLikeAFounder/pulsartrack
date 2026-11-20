@@ -14,10 +14,12 @@ function makeSubscription(expiresOffsetMs: number): Subscription {
     is_annual: false,
     amount_paid: 50_000_000n, // 5 XLM in stroops
     started_at: BigInt(NOW_S - 2_592_000), // 30 days ago
+    period_start: BigInt(NOW_S - 2_592_000),
     expires_at: expiresS,
     auto_renew: true,
     campaigns_used: 2,
     impressions_used: 10_000n,
+    impressions_period_start: BigInt(NOW_S - 2_592_000),
   };
 }
 

@@ -254,6 +254,104 @@ fn test_set_minting_paused_by_stranger_fails() {
 }
 
 #[test]
+fn test_set_wrapped_token_active_deactivate_blocks_mint() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin, _) = setup(&env);
+    let stellar_token = deploy_stellar_token(&env, &c.address);
+
+    c.register_wrapped_token(
+        &admin,
+        &RegisterTokenParams {
+            symbol: s(&env, "wETH"),
+            name: s(&env, "Wrapped Ether"),
+            decimals: 8u32,
+            underlying_chain: s(&env, "ethereum"),
+            underlying_address: s(&env, "0xAddr"),
+            stellar_token: stellar_token.clone(),
+        },
+    );
+
+    c.set_wrapped_token_active(&admin, &s(&env, "wETH"), &false);
+    let token = c.get_wrapped_token(&s(&env, "wETH")).unwrap();
+    assert!(!token.is_active);
+}
+
+#[test]
+#[should_panic(expected = "token not active")]
+fn test_mint_wrapped_inactive_token_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin, relayer) = setup(&env);
+    let user = Address::generate(&env);
+    let stellar_token = deploy_stellar_token(&env, &c.address);
+
+    c.register_wrapped_token(
+        &admin,
+        &RegisterTokenParams {
+            symbol: s(&env, "wETH"),
+            name: s(&env, "Wrapped Ether"),
+            decimals: 8u32,
+            underlying_chain: s(&env, "ethereum"),
+            underlying_address: s(&env, "0xAddr"),
+            stellar_token: stellar_token.clone(),
+        },
+    );
+
+    c.set_wrapped_token_active(&admin, &s(&env, "wETH"), &false);
+    c.mint_wrapped(
+        &relayer,
+        &s(&env, "wETH"),
+        &user,
+        &1_000_000i128,
+        &s(&env, "0xDeactivatedTx"),
+    );
+}
+
+#[test]
+fn test_reactivate_wrapped_token_allows_mint() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin, relayer) = setup(&env);
+    let user = Address::generate(&env);
+    let stellar_token = deploy_stellar_token(&env, &c.address);
+
+    c.register_wrapped_token(
+        &admin,
+        &RegisterTokenParams {
+            symbol: s(&env, "wETH"),
+            name: s(&env, "Wrapped Ether"),
+            decimals: 8u32,
+            underlying_chain: s(&env, "ethereum"),
+            underlying_address: s(&env, "0xAddr"),
+            stellar_token: stellar_token.clone(),
+        },
+    );
+
+    c.set_wrapped_token_active(&admin, &s(&env, "wETH"), &false);
+    c.set_wrapped_token_active(&admin, &s(&env, "wETH"), &true);
+    c.mint_wrapped(
+        &relayer,
+        &s(&env, "wETH"),
+        &user,
+        &1_000_000i128,
+        &s(&env, "0xReactivatedTx"),
+    );
+    assert_eq!(c.get_user_balance(&s(&env, "wETH"), &user), 1_000_000);
+}
+
+#[test]
+#[should_panic(expected = "unauthorized")]
+fn test_set_wrapped_token_active_by_stranger_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _, _) = setup(&env);
+    let stranger = Address::generate(&env);
+
+    c.set_wrapped_token_active(&stranger, &s(&env, "wETH"), &false);
+}
+
+#[test]
 fn test_mint_wrapped_after_unpause_succeeds() {
     let env = Env::default();
     env.mock_all_auths();

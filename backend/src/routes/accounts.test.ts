@@ -54,4 +54,70 @@ describe('GET /api/account/:address', () => {
         expect(response.body).toHaveProperty('error', 'Failed to fetch account details');
         expect(response.body).not.toHaveProperty('details');
     });
+
+    it.each(['0', '-5'])('clamps limit=%s to one transaction', async (limit) => {
+        (horizon.getAccountTransactions as any).mockResolvedValue({ records: [] });
+
+        const response = await request(app)
+            .get(`/api/account/${mockAddress}/transactions?limit=${limit}`);
+
+        expect(response.status).toBe(200);
+        expect(horizon.getAccountTransactions).toHaveBeenCalledWith(mockAddress, 1, undefined, 'desc');
+    });
+
+    it('should return 400 for malformed address when requesting account details', async () => {
+        const response = await request(app).get('/api/account/not-a-valid-stellar-address');
+
+        expect(response.status).toBe(400);
+        expect(response.body).toHaveProperty('error', 'Validation failed');
+        expect(response.body.details).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    field: 'address',
+                    message: 'address must be a valid Stellar public key',
+                }),
+            ]),
+        );
+        expect(horizon.getAccountDetails).not.toHaveBeenCalled();
+    });
+
+    it('should return 400 for malformed address when requesting transactions', async () => {
+        const response = await request(app).get('/api/account/not-a-valid-stellar-address/transactions');
+
+        expect(response.status).toBe(400);
+        expect(response.body).toHaveProperty('error', 'Validation failed');
+        expect(response.body.details).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    field: 'address',
+                    message: 'address must be a valid Stellar public key',
+                }),
+            ]),
+        );
+        expect(horizon.getAccountTransactions).not.toHaveBeenCalled();
+    });
+
+    it('should return 200 and paginated transactions for valid address', async () => {
+        const mockTxs = [
+            { id: 'tx1', paging_token: '1000' },
+            { id: 'tx2', paging_token: '2000' },
+        ];
+        (horizon.getAccountTransactions as any).mockResolvedValue({ records: mockTxs });
+
+        const response = await request(app)
+            .get(`/api/account/${mockAddress}/transactions?limit=2&order=asc&cursor=500`);
+
+        expect(response.status).toBe(200);
+        expect(horizon.getAccountTransactions).toHaveBeenCalledWith(mockAddress, 2, '500', 'asc');
+        expect(response.body).toEqual({
+            transactions: mockTxs,
+            count: 2,
+            cursor: {
+                current: '500',
+                next: '2000',
+            },
+            order: 'asc',
+        });
+    });
 });
+

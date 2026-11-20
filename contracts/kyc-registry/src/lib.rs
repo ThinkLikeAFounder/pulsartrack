@@ -18,7 +18,7 @@ pub enum KycLevel {
 pub struct KycRecord {
     pub account: Address,
     pub level: KycLevel,
-    pub provider: String,
+    pub provider: Address,
     pub document_hash: String, // Hash of KYC documents
     pub jurisdiction: String,
     pub verified: bool,
@@ -105,6 +105,35 @@ impl KycRegistryContract {
         );
     }
 
+    /// Admin-only: activate or deactivate a registered KYC provider (#1120).
+    /// A deactivated provider is immediately blocked from `submit_kyc` and
+    /// `verify_kyc`. Pass `is_active = true` to reinstate a provider.
+    pub fn set_provider_status(env: Env, admin: Address, provider: Address, is_active: bool) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+
+        let key = DataKey::Provider(provider.clone());
+        let mut kyc_provider: KycProvider = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or_else(|| panic!("provider not found"));
+
+        kyc_provider.is_active = is_active;
+        env.storage().persistent().set(&key, &kyc_provider);
+        env.storage().persistent().extend_ttl(
+            &key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+    }
+
     pub fn submit_kyc(
         env: Env,
         account: Address,
@@ -146,7 +175,7 @@ impl KycRegistryContract {
         let record = KycRecord {
             account: account.clone(),
             level: level.clone(),
-            provider: kyc_provider.name,
+            provider: provider.clone(),
             document_hash,
             jurisdiction,
             verified: false,
@@ -192,7 +221,7 @@ impl KycRegistryContract {
             .get(&DataKey::KycRecord(account.clone()))
             .expect("kyc not submitted");
 
-        if record.provider != provider_data.name {
+        if record.provider != provider {
             panic!("provider mismatch");
         }
 

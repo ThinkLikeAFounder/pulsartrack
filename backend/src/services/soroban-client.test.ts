@@ -9,7 +9,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // undefined and every assertion is vacuous.
 vi.unmock('./soroban-client');
 
-import { callReadOnly, toAddressScVal, toU64ScVal, getServer } from './soroban-client';
+import { callReadOnly, toAddressScVal, toU64ScVal } from './soroban-client';
 
 // A real, well-formed ed25519 public key. Note this is deliberately NOT the
 // SIMULATION_ACCOUNT default used elsewhere in the codebase: that string is 55
@@ -156,7 +156,7 @@ describe('soroban-client', () => {
     });
 
     it('accepts a bigint and preserves large values beyond Number.MAX_SAFE_INTEGER', async () => {
-      const { xdr, scValToNative } = await realSdk();
+      const { scValToNative } = await realSdk();
       const big = BigInt('18446744073709551615'); // u64 max
       const result = toU64ScVal(big);
 

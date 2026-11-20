@@ -83,10 +83,12 @@ export interface Subscription {
   is_annual: boolean;
   amount_paid: bigint;
   started_at: bigint;
+  period_start: bigint;
   expires_at: bigint;
   auto_renew: boolean;
   campaigns_used: number;
   impressions_used: bigint;
+  impressions_period_start: bigint;
 }
 
 export interface SubscriptionPlan {

@@ -295,6 +295,108 @@ fn test_claim_zero_balance() {
     client.claim_publisher_balance(&publisher);
 }
 
+#[contracttype]
+#[derive(Clone)]
+enum ReentrantTokenKey {
+    RevenueContract,
+    Publisher,
+    Armed,
+}
+
+#[contract]
+pub struct ReentrantToken;
+
+#[contractimpl]
+impl ReentrantToken {
+    pub fn configure(env: Env, revenue: Address, publisher: Address) {
+        env.storage()
+            .instance()
+            .set(&ReentrantTokenKey::RevenueContract, &revenue);
+        env.storage()
+            .instance()
+            .set(&ReentrantTokenKey::Publisher, &publisher);
+        env.storage()
+            .instance()
+            .set(&ReentrantTokenKey::Armed, &true);
+    }
+
+    pub fn transfer(env: Env, _from: Address, _to: Address, _amount: i128) {
+        let armed: bool = env
+            .storage()
+            .instance()
+            .get(&ReentrantTokenKey::Armed)
+            .unwrap_or(false);
+        if !armed {
+            return;
+        }
+        env.storage()
+            .instance()
+            .set(&ReentrantTokenKey::Armed, &false);
+
+        let revenue: Address = env
+            .storage()
+            .instance()
+            .get(&ReentrantTokenKey::RevenueContract)
+            .unwrap();
+        let publisher: Address = env
+            .storage()
+            .instance()
+            .get(&ReentrantTokenKey::Publisher)
+            .unwrap();
+        RevenueSettlementContractClient::new(&env, &revenue).claim_publisher_balance(&publisher);
+    }
+}
+
+// The Soroban host forbids contract re-entry (including a token callback back
+// into this contract mid-transfer), so a malicious token cannot re-trigger the
+// claim while the balance is being paid out. This asserts the attempt aborts.
+#[test]
+#[should_panic]
+fn test_claim_reentrancy_cannot_double_spend() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let token_id = env.register(ReentrantToken, ());
+    let treasury = Address::generate(&env);
+    let platform = Address::generate(&env);
+
+    let contract_id = env.register(RevenueSettlementContract, ());
+    let client = RevenueSettlementContractClient::new(&env, &contract_id);
+    client.initialize(&admin, &token_id, &treasury, &platform);
+
+    let publisher = Address::generate(&env);
+    client.record_revenue(&admin, &1u64, &100_000i128, &publisher);
+
+    ReentrantTokenClient::new(&env, &token_id).configure(&contract_id, &publisher);
+
+    client.claim_publisher_balance(&publisher);
+}
+
+#[test]
+#[should_panic(expected = "no balance to claim")]
+fn test_claim_same_balance_twice_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_addr = deploy_token(&env, &token_admin);
+    let treasury = Address::generate(&env);
+    let platform = Address::generate(&env);
+
+    let contract_id = env.register(RevenueSettlementContract, ());
+    let client = RevenueSettlementContractClient::new(&env, &contract_id);
+    client.initialize(&admin, &token_addr, &treasury, &platform);
+    mint(&env, &token_addr, &contract_id, 10_000_000);
+
+    let publisher = Address::generate(&env);
+    client.record_revenue(&admin, &1u64, &100_000i128, &publisher);
+
+    client.claim_publisher_balance(&publisher);
+    client.claim_publisher_balance(&publisher);
+}
+
 // ─── read-only ───────────────────────────────────────────────────────────────
 
 #[test]

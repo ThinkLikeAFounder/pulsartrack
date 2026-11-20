@@ -35,16 +35,22 @@ cd pulsartrack
 cargo build --workspace
 ```
 
+**Install Dependencies:**
+```bash
+# From the repository root — this links shared workspace packages
+npm install
+```
+
 **Backend:**
 ```bash
 cd backend
-npm install
+# Dependencies already installed via root workspace install above
 ```
 
 **Frontend:**
 ```bash
 cd frontend
-npm install
+# Dependencies already installed via root workspace install above
 cp .env.example .env.local
 ```
 

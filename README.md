@@ -153,11 +153,22 @@ cargo test                     # all contract unit + integration tests
 
 ## Running the Apps
 
+> **Note:** This project uses npm workspaces for shared packages. Install dependencies from the repository root first before running individual apps.
+
+### Install Dependencies
+
+From the repository root:
+
+```bash
+npm install
+```
+
+This installs all dependencies for frontend, backend, and shared packages (like `@pulsartrack/sentry-scrubber`) using npm workspaces.
+
 ### Frontend
 
 ```bash
 cd frontend
-npm install
 
 # Copy example environment file for frontend (lists all required NEXT_PUBLIC_* vars and testnet defaults)
 cp .env.example .env.local
@@ -171,7 +182,6 @@ Frontend runs on **http://localhost:3000**.
 
 ```bash
 cd backend
-npm install
 cp .env.example .env           # configure DB, Redis, Stellar network & contract IDs
 npm run dev
 ```

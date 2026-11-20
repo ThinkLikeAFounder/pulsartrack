@@ -78,9 +78,6 @@ async function fetchFromBackend(
   }
 
   const days = timeframeToDays(timeframe);
-  const since = new Date();
-  since.setUTCDate(since.getUTCDate() - days);
-  const sinceIso = since.toISOString();
 
   // Aggregate per-day counts indexed by date string.
   const dayMap = new Map<string, { impressions: number; clicks: number }>();

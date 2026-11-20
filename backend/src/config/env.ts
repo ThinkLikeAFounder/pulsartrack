@@ -335,12 +335,26 @@ export function validateEnv(
     values[name] = rule.type === "int" ? Number.parseInt(raw, 10) : raw;
   }
 
-  // Contract IDs: format-checked whenever set, and required in production.
+  // Contract IDs: format-checked whenever set; only the core contracts are
+  // required in production. The full CONTRACT_ENV_VARS list is validated for
+  // format when present so a typo is caught early, but optional contracts
+  // (analytics, governance, etc.) need not be deployed on every environment.
   const skipContracts = source.SKIP_CONTRACT_VALIDATION === "true";
+  const REQUIRED_CONTRACT_ENV_VARS = new Set([
+    "CONTRACT_AD_REGISTRY",
+    "CONTRACT_CAMPAIGN_ORCHESTRATOR",
+    "CONTRACT_ESCROW_VAULT",
+    "CONTRACT_FRAUD_PREVENTION",
+    "CONTRACT_PAYMENT_PROCESSOR",
+    "CONTRACT_AUCTION_ENGINE",
+    "CONTRACT_REVENUE_SETTLEMENT",
+    "CONTRACT_PUBLISHER_VERIFICATION",
+    "CONTRACT_ANALYTICS_AGGREGATOR",
+  ]);
   for (const name of CONTRACT_ENV_VARS) {
     const raw = source[name]?.trim();
     if (!raw) {
-      if (mode === "production" && !skipContracts) {
+      if (mode === "production" && !skipContracts && REQUIRED_CONTRACT_ENV_VARS.has(name)) {
         issues.push({
           variable: name,
           message:

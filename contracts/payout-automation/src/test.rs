@@ -167,6 +167,7 @@ fn test_execute_payout() {
     mint(&env, &token_addr, &contract_id, 10_000_000);
 
     let recipient = Address::generate(&env);
+    client.add_publisher_earnings(&admin, &recipient, &1_000_000i128);
     let payout_id = client.schedule_payout(&admin, &recipient, &1_000_000i128, &100u64, &None);
 
     // advance past execute_after
@@ -231,6 +232,7 @@ fn test_execute_payout_twice() {
     mint(&env, &token_addr, &contract_id, 10_000_000);
 
     let recipient = Address::generate(&env);
+    client.add_publisher_earnings(&admin, &recipient, &1_000_000i128);
     let payout_id = client.schedule_payout(&admin, &recipient, &1_000_000i128, &0u64, &None);
 
     client.execute_payout(&admin, &payout_id);
@@ -332,9 +334,36 @@ fn test_publisher_earnings_updated_after_payout() {
 
     let earnings = client.get_publisher_earnings(&publisher).unwrap();
     assert_eq!(earnings.total_paid, 1_000_000);
-    // pending_amount uses saturating_sub: 1_500_000 - 1_000_000 = 500_000
+    // 1_500_000 - 1_000_000 = 500_000
     assert_eq!(earnings.pending_amount, 500_000);
     assert_eq!(earnings.last_payout, 1_000);
+}
+
+#[test]
+#[should_panic(expected = "amount exceeds maximum pending cap")]
+fn test_schedule_payout_exceeding_cap_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, _, _) = setup(&env);
+    let recipient = Address::generate(&env);
+
+    client.set_max_pending_amount(&admin, &2_000_000i128);
+    client.schedule_payout(&admin, &recipient, &2_000_001i128, &0u64, &None);
+}
+
+#[test]
+#[should_panic(expected = "payout exceeds pending earnings")]
+fn test_execute_payout_exceeding_pending_earnings_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, _, token_addr) = setup(&env);
+    mint(&env, &token_addr, &client.address, 10_000_000);
+
+    let publisher = Address::generate(&env);
+    client.add_publisher_earnings(&admin, &publisher, &1_000_000i128);
+    let payout_id = client.schedule_payout(&admin, &publisher, &1_500_000i128, &0u64, &None);
+
+    client.execute_payout(&admin, &payout_id);
 }
 
 // ─── get_payout ────────────────────────────────────────────────────────────────

@@ -317,6 +317,62 @@ fn test_upgrade_stores_full_price_for_future_proration() {
 // ============================================================
 
 #[test]
+fn test_renew_then_upgrade_credits_full_paid_window() {
+    // Issue #1160 scenario: Growth monthly at t0, renew at t0+2_000_000,
+    // upgrade at t0+3_000_000. 598M paid for 5_184_000s; credit covers the rest.
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _, _, token, treasury, ..) = setup(&env);
+    let subscriber = Address::generate(&env);
+    fund_subscriber(&env, &token, &subscriber);
+
+    let t0 = env.ledger().timestamp();
+    c.subscribe(&subscriber, &SubscriptionTier::Growth, &false, &true);
+
+    env.ledger().set_timestamp(t0 + 2_000_000);
+    c.renew(&subscriber, &false, &true);
+    let sub = c.get_subscription(&subscriber).unwrap();
+    assert_eq!(sub.amount_paid, 2 * GROWTH_MONTHLY);
+    assert_eq!(sub.expires_at, t0 + 2 * MONTHLY_SECS);
+
+    env.ledger().set_timestamp(t0 + 3_000_000);
+    let treasury_before = balance(&env, &token, &treasury);
+    c.change_tier(&subscriber, &SubscriptionTier::Business, &false, &true);
+    let net_charged = balance(&env, &token, &treasury) - treasury_before;
+
+    let fair_credit =
+        (2 * GROWTH_MONTHLY * (2 * MONTHLY_SECS - 3_000_000) as i128) / (2 * MONTHLY_SECS) as i128;
+    assert_eq!(fair_credit, 251_935_185);
+    assert_eq!(net_charged, BUSINESS_MONTHLY - fair_credit);
+
+    let sub = c.get_subscription(&subscriber).unwrap();
+    assert_eq!(sub.started_at, t0);
+    assert_eq!(sub.period_start, t0 + 3_000_000);
+}
+
+#[test]
+fn test_renew_after_lapse_restarts_paid_window() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _, _, token, ..) = setup(&env);
+    let subscriber = Address::generate(&env);
+    fund_subscriber(&env, &token, &subscriber);
+
+    let t0 = env.ledger().timestamp();
+    c.subscribe(&subscriber, &SubscriptionTier::Growth, &false, &true);
+
+    let lapsed = t0 + MONTHLY_SECS + 1_000;
+    env.ledger().set_timestamp(lapsed);
+    c.renew(&subscriber, &false, &true);
+
+    let sub = c.get_subscription(&subscriber).unwrap();
+    assert_eq!(sub.amount_paid, GROWTH_MONTHLY);
+    assert_eq!(sub.started_at, t0);
+    assert_eq!(sub.period_start, lapsed);
+    assert_eq!(sub.expires_at, lapsed + MONTHLY_SECS);
+}
+
+#[test]
 #[should_panic(expected = "no active subscription")]
 fn test_change_tier_panics_with_no_subscription() {
     let env = Env::default();
@@ -506,6 +562,60 @@ fn test_record_impression_accumulates() {
     assert_eq!(
         c.get_subscription(&subscriber).unwrap().impressions_used,
         15_000
+    );
+}
+
+#[test]
+#[should_panic(expected = "campaign quota exceeded")]
+fn test_record_campaign_used_rejects_over_plan_limit() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _, _, token, _, orchestrator, ..) = setup(&env);
+    let subscriber = Address::generate(&env);
+    mint(&env, &token, &subscriber, STARTER_MONTHLY);
+
+    c.subscribe(&subscriber, &SubscriptionTier::Starter, &false, &true);
+    // Starter allows 5 campaigns; the 6th must be rejected.
+    for _ in 0..5 {
+        record_campaign_from_orchestrator(&env, &orchestrator, &c, &subscriber);
+    }
+    assert_eq!(c.get_subscription(&subscriber).unwrap().campaigns_used, 5);
+    record_campaign_from_orchestrator(&env, &orchestrator, &c, &subscriber);
+}
+
+#[test]
+#[should_panic(expected = "impression quota exceeded")]
+fn test_record_impression_rejects_over_monthly_limit() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _, _, token, _, orchestrator, ..) = setup(&env);
+    let subscriber = Address::generate(&env);
+    mint(&env, &token, &subscriber, STARTER_MONTHLY);
+
+    c.subscribe(&subscriber, &SubscriptionTier::Starter, &false, &true);
+    // Starter allows 100_000 impressions per month.
+    record_impression_from_orchestrator(&env, &orchestrator, &c, &subscriber, 100_000);
+    record_impression_from_orchestrator(&env, &orchestrator, &c, &subscriber, 1);
+}
+
+#[test]
+fn test_record_impression_quota_resets_each_month() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _, _, token, _, orchestrator, ..) = setup(&env);
+    let subscriber = Address::generate(&env);
+    fund_subscriber(&env, &token, &subscriber);
+
+    c.subscribe(&subscriber, &SubscriptionTier::Starter, &true, &true);
+    record_impression_from_orchestrator(&env, &orchestrator, &c, &subscriber, 100_000);
+
+    env.ledger()
+        .set_timestamp(env.ledger().timestamp() + MONTHLY_SECS);
+    record_impression_from_orchestrator(&env, &orchestrator, &c, &subscriber, 40_000);
+
+    assert_eq!(
+        c.get_subscription(&subscriber).unwrap().impressions_used,
+        40_000
     );
 }
 

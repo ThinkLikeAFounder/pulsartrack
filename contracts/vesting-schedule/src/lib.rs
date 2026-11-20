@@ -88,6 +88,9 @@ impl VestingScheduleContract {
             .get::<DataKey, VestingSchedule>(&key)
             .map(|schedule| schedule.claimed_amount)
             .unwrap_or(0);
+        if total_amount < existing_claimed {
+            panic!("total_amount below claimed amount");
+        }
         let schedule = VestingSchedule {
             beneficiary,
             token,

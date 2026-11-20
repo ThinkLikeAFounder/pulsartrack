@@ -143,6 +143,33 @@ fn test_deposit_for_bridge_normal() {
 }
 
 #[test]
+fn test_refund_deposit_restores_daily_volume() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin) = setup(&env);
+
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin);
+    let token_id = token_contract.address();
+
+    let chain = s(&env, "ethereum");
+    c.add_supported_chain(&admin, &chain, &100i128);
+
+    let sender = Address::generate(&env);
+    let token_stellar_client = token::StellarAssetClient::new(&env, &token_id);
+    token_stellar_client.mint(&sender, &200i128);
+
+    // First deposit uses 80 (within limit of 100)
+    let deposit_id = c.deposit_for_bridge(&sender, &token_id, &80i128, &chain, &s(&env, "0x1"));
+
+    // Refund the deposit — should free up the daily volume
+    c.refund_deposit(&admin, &deposit_id);
+
+    // A second deposit of 80 should now succeed because the daily volume was restored
+    c.deposit_for_bridge(&sender, &token_id, &80i128, &chain, &s(&env, "0x2"));
+}
+
+#[test]
 #[should_panic(expected = "daily transfer limit exceeded for chain")]
 fn test_daily_limit_enforced() {
     let env = Env::default();

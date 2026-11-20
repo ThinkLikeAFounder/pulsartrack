@@ -46,10 +46,11 @@ describe('Auction Routes', () => {
          *
          *   1. BEGIN
          *   2. SELECT ... FROM auctions ... FOR UPDATE   <- queryResults[0]
-         *   3. SELECT advertiser FROM campaigns          <- queryResults[1]
-         *   4. INSERT INTO bids ... RETURNING *          <- queryResults[2]
-         *   5. UPDATE auctions SET bid_count = ...       <- queryResults[3]
-         *   6. COMMIT
+         *   3. SELECT COALESCE(MAX(amount_stroops), -1) FROM bids ... FOR UPDATE   <- queryResults[1]
+         *   4. SELECT advertiser FROM campaigns          <- queryResults[2]
+         *   5. INSERT INTO bids ... RETURNING *          <- queryResults[3]
+         *   6. UPDATE auctions SET bid_count = ...       <- queryResults[4]
+         *   7. COMMIT
          *
          * Callers pass only the data queries; BEGIN is queued here and
          * COMMIT/ROLLBACK fall through to the default empty result.
@@ -82,6 +83,8 @@ describe('Auction Routes', () => {
             const client = setupClientMock(
                 // Auction lookup (SELECT ... FOR UPDATE)
                 { rows: [{ publisher: otherAddress, floor_price_stroops: '100', status: 'Open' }] },
+                // Current highest bid check (SELECT MAX ... FOR UPDATE)
+                { rows: [{ highest_bid: '-1' }] },
                 // Campaign ownership check
                 { rows: [{ advertiser: mockAddress }] },
                 // Insert bid
@@ -98,14 +101,17 @@ describe('Auction Routes', () => {
             expect(response.status).toBe(201);
             expect(response.body.auction_id).toBe(1);
             expect(response.body.amount_stroops).toBe(150);
-            // BEGIN, auction lock, campaign check, insert, bid_count update, COMMIT
-            expect(client.query).toHaveBeenCalledTimes(6);
+            // BEGIN, auction lock, highest-bid check, campaign check, insert, bid_count update, COMMIT
+            expect(client.query).toHaveBeenCalledTimes(7);
             const calls = client.query.mock.calls.map((c: any[]) => c[0]);
             expect(calls[0]).toBe('BEGIN');
             expect(calls[1]).toContain('FOR UPDATE');
             expect(calls[1]).toContain('FROM auctions');
-            expect(calls[2]).toContain('FROM campaigns');
-            expect(calls[5]).toBe('COMMIT');
+            expect(calls[2]).toContain('MAX(amount_stroops)');
+            expect(calls[2]).toContain('FROM bids');
+            expect(calls[2]).toContain('FOR UPDATE');
+            expect(calls[3]).toContain('FROM campaigns');
+            expect(calls[6]).toBe('COMMIT');
             expect(client.release).toHaveBeenCalled();
         });
 
@@ -173,9 +179,43 @@ describe('Auction Routes', () => {
             expect(response.body.error).toBe('Bid below floor price');
         });
 
+        it('should return 400 when bid does not exceed current highest bid (below)', async () => {
+            setupClientMock(
+                { rows: [{ publisher: otherAddress, floor_price_stroops: '100', status: 'Open' }] },
+                // Existing highest bid for this auction is 150
+                { rows: [{ highest_bid: '150' }] },
+            );
+
+            const response = await request(app)
+                .post('/api/auctions/1/bid')
+                .set('Authorization', `Bearer ${token}`)
+                .send({ campaignId: 1, amountStroops: 100 });
+
+            expect(response.status).toBe(400);
+            expect(response.body.error).toBe('Bid too low');
+        });
+
+        it('should return 400 when bid equals current highest bid', async () => {
+            setupClientMock(
+                { rows: [{ publisher: otherAddress, floor_price_stroops: '100', status: 'Open' }] },
+                // Existing highest bid for this auction is 150
+                { rows: [{ highest_bid: '150' }] },
+            );
+
+            const response = await request(app)
+                .post('/api/auctions/1/bid')
+                .set('Authorization', `Bearer ${token}`)
+                .send({ campaignId: 1, amountStroops: 150 });
+
+            expect(response.status).toBe(400);
+            expect(response.body.error).toBe('Bid too low');
+        });
+
         it('should return 404 when campaign does not exist', async () => {
             setupClientMock(
                 { rows: [{ publisher: otherAddress, floor_price_stroops: '100', status: 'Open' }] },
+                // Current highest bid check
+                { rows: [{ highest_bid: '-1' }] },
                 { rows: [] },
             );
 
@@ -191,6 +231,8 @@ describe('Auction Routes', () => {
         it('should return 403 when campaign belongs to another user', async () => {
             setupClientMock(
                 { rows: [{ publisher: otherAddress, floor_price_stroops: '100', status: 'Open' }] },
+                // Current highest bid check
+                { rows: [{ highest_bid: '-1' }] },
                 { rows: [{ advertiser: otherAddress }] },
             );
 
@@ -205,33 +247,35 @@ describe('Auction Routes', () => {
 
         describe('TOCTOU: concurrent auction close vs. bid (#794)', () => {
             it('locks the auction row inside the transaction before reading its status', async () => {
-                const client = setupClientMock(
-                    { rows: [{ publisher: otherAddress, floor_price_stroops: '100', status: 'Open' }] },
-                    { rows: [{ advertiser: mockAddress }] },
-                    { rows: [{ id: 'bid-uuid', auction_id: 1, bidder: mockAddress, campaign_id: 1, amount_stroops: 150 }] },
-                    { rows: [] },
-                );
+            const client = setupClientMock(
+                { rows: [{ publisher: otherAddress, floor_price_stroops: '100', status: 'Open' }] },
+                // Current highest bid check
+                { rows: [{ highest_bid: '-1' }] },
+                { rows: [{ advertiser: mockAddress }] },
+                { rows: [{ id: 'bid-uuid', auction_id: 1, bidder: mockAddress, campaign_id: 1, amount_stroops: 150 }] },
+                { rows: [] },
+            );
 
-                const response = await request(app)
-                    .post('/api/auctions/1/bid')
-                    .set('Authorization', `Bearer ${token}`)
-                    .send({ campaignId: 1, amountStroops: 150 });
+            const response = await request(app)
+                .post('/api/auctions/1/bid')
+                .set('Authorization', `Bearer ${token}`)
+                .send({ campaignId: 1, amountStroops: 150 });
 
-                expect(response.status).toBe(201);
+            expect(response.status).toBe(201);
 
-                const calls = client.query.mock.calls.map((c: any[]) => c[0]);
-                const beginIndex = calls.indexOf('BEGIN');
-                const lockIndex = calls.findIndex(
-                    (sql: string) => typeof sql === 'string' && sql.includes('FROM auctions') && sql.includes('FOR UPDATE'),
-                );
-                const commitIndex = calls.indexOf('COMMIT');
+            const calls = client.query.mock.calls.map((c: any[]) => c[0]);
+            const beginIndex = calls.indexOf('BEGIN');
+            const lockIndex = calls.findIndex(
+                (sql: string) => typeof sql === 'string' && sql.includes('FROM auctions') && sql.includes('FOR UPDATE'),
+            );
+            const commitIndex = calls.indexOf('COMMIT');
 
-                // The auction must be read under a row lock, and that lock must be
-                // acquired after BEGIN and released only at COMMIT — otherwise a
-                // concurrent close could land between the status read and the insert.
-                expect(beginIndex).toBe(0);
-                expect(lockIndex).toBeGreaterThan(beginIndex);
-                expect(commitIndex).toBeGreaterThan(lockIndex);
+            // The auction must be read under a row lock, and that lock must be
+            // acquired after BEGIN and released only at COMMIT — otherwise a
+            // concurrent close could land between the status read and the insert.
+            expect(beginIndex).toBe(0);
+            expect(lockIndex).toBeGreaterThan(beginIndex);
+            expect(commitIndex).toBeGreaterThan(lockIndex);
             });
 
             it('rejects a bid when the concurrent close won the race and the locked row reads Closed', async () => {
