@@ -14,7 +14,7 @@ function generateNonce(): string {
 }
 
 /**
- * Middleware runs on every request and sets the Content-Security-Policy header
+ * Proxy runs on every request and sets the Content-Security-Policy header
  * with a per-request nonce. This replaces the build-time CSP from
  * next.config.ts, which could not use nonces (evaluated once at build)
  * and defaulted to report-only with no reporting endpoint (#918).
@@ -33,7 +33,7 @@ function generateNonce(): string {
  * (e.g. `export const dynamic = 'force-dynamic'`) before switching
  * CSP_MODE to "enforce".
  */
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const nonce = generateNonce();
   const isDev = process.env.NODE_ENV !== "production";
   const enforceCsp = process.env.CSP_MODE === "enforce";
