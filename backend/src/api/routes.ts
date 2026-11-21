@@ -60,6 +60,23 @@ router.get("/network", async (_req: Request, res: Response) => {
   }
 });
 
+// Stellar fee rates
+router.get("/rates", async (_req: Request, res: Response) => {
+  try {
+    const fees = await getFeeStats();
+    res.setHeader("Cache-Control", "public, max-age=60");
+    res.json({ rates: fees });
+  } catch (err: any) {
+    res.setHeader("Cache-Control", "no-store");
+    res.status(500).json({
+      error: "Failed to fetch rates",
+      ...(process.env.NODE_ENV === "development" && err?.message
+        ? { details: err.message }
+        : {}),
+    });
+  }
+});
+
 // List deployed contract IDs (auth required)
 router.get("/contracts", requireAuth, rateLimitAccount(), (_req: Request, res: Response) => {
   res.json({ contracts: CONTRACT_IDS });
