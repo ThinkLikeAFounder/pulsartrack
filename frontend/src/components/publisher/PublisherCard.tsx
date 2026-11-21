@@ -17,7 +17,7 @@ function StatusDot({ status }: { status: string }) {
       <span
         className={clsx(
           'w-2 h-2 rounded-full',
-          status === 'Active' ? 'bg-green-400' : 'bg-gray-500'
+          status === 'Active' || status === 'Verified' ? 'bg-green-400' : 'bg-gray-500'
         )}
       />
       <span className="text-xs text-gray-400">{status}</span>

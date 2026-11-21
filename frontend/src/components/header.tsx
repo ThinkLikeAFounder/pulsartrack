@@ -3,20 +3,21 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 // Issue #368 — _hydrated replaces the local `mounted` pattern
-import { Menu, X, Zap, History, AlertTriangle, Moon, Sun, Monitor } from "lucide-react";
+import { Menu, X, Zap, History, Moon, Sun, Monitor } from "lucide-react";
 import { useWalletStore } from "../store/wallet-store";
 import { useTransactionStore } from "../store/tx-store";
 import { WalletConnectButton } from "./wallet/WalletModal";
+import NetworkMismatchBanner from "./wallet/NetworkMismatchBanner";
 import { AccountSwitcher } from "./wallet/AccountSwitcher";
 import { WalletBalance } from "./wallet/WalletBalance";
 import { TxHistory } from "./wallet/TxHistory";
 import { checkPendingTransactions } from "../lib/tx-recovery";
 import { useTxNotifications } from "../hooks/useTxNotifications";
 import { useThemeStore, ThemeMode } from "../store/theme-store";
-import { CURRENT_NETWORK, isDemoMode } from "../lib/stellar-config";
+import { isDemoMode } from "../lib/stellar-config";
 
 export function Header() {
-  const { address, isConnected, networkMismatch, _hydrated } = useWalletStore();
+  const { address, isConnected, _hydrated } = useWalletStore();
   const { getPendingTransactions } = useTransactionStore();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [txHistoryOpen, setTxHistoryOpen] = useState(false);
@@ -60,15 +61,7 @@ export function Header() {
           Demo mode — contracts and backend aren&apos;t deployed yet, so all data here is simulated locally in your browser.
         </div>
       )}
-      {isConnected && networkMismatch && (
-        <div className="bg-amber-500 text-white px-4 py-2 text-sm font-medium text-center flex items-center justify-center gap-2">
-          <AlertTriangle className="w-4 h-4" />
-          <span>
-            Please switch your Freighter wallet to{" "}
-            {CURRENT_NETWORK}
-          </span>
-        </div>
-      )}
+      <NetworkMismatchBanner />
       <header className="border-b border-gray-200 dark:border-gray-800 bg-white sticky top-0 z-40 backdrop-blur-sm bg-white/80 dark:bg-gray-950/80">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex h-16 items-center justify-between">
