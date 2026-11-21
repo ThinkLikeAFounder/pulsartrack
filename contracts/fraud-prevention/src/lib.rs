@@ -318,9 +318,17 @@ impl FraudPreventionContract {
         if admin != stored_admin {
             panic!("unauthorized");
         }
-        env.storage()
-            .persistent()
-            .remove(&DataKey::SuspiciousActivity(publisher));
+        let key = DataKey::SuspiciousActivity(publisher.clone());
+        let activity: Option<SuspiciousActivity> = env.storage().persistent().get(&key);
+
+        // Lift the real suspension in publisher-network first, so the local
+        // record is never cleared while the publisher is still locked out there.
+        if let Some(activity) = activity {
+            if activity.suspended {
+                Self::_reactivate_in_publisher_network(&env, &publisher);
+            }
+        }
+        env.storage().persistent().remove(&key);
     }
 
     pub fn suspend_publisher(env: Env, admin: Address, publisher: Address) {
@@ -470,6 +478,16 @@ impl FraudPreventionContract {
         network_client.suspend_publisher(&env.current_contract_address(), publisher);
     }
 
+    fn _reactivate_in_publisher_network(env: &Env, publisher: &Address) {
+        let network_addr: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::PublisherNetwork)
+            .expect("publisher network contract not configured");
+        let network_client = PublisherNetworkContractClient::new(env, &network_addr);
+        network_client.reactivate_publisher(&env.current_contract_address(), publisher);
+    }
+
     fn _calculate_score(
         env: &Env,
         campaign_id: u64,
@@ -522,6 +540,7 @@ pub trait CampaignLifecycleContract {
 #[contractclient(name = "PublisherNetworkContractClient")]
 pub trait PublisherNetworkContract {
     fn suspend_publisher(fraud_contract: Address, publisher: Address);
+    fn reactivate_publisher(fraud_contract: Address, publisher: Address);
 }
 
 #[cfg(test)]
@@ -547,7 +566,18 @@ pub(crate) mod mocks {
     pub struct PublisherNetworkContract;
     #[contractimpl]
     impl PublisherNetworkContract {
-        pub fn suspend_publisher(_env: Env, _fraud_contract: Address, _publisher: Address) {}
+        pub fn suspend_publisher(env: Env, _fraud_contract: Address, publisher: Address) {
+            env.storage().instance().set(&publisher, &true);
+        }
+
+        pub fn reactivate_publisher(env: Env, _fraud_contract: Address, publisher: Address) {
+            env.storage().instance().set(&publisher, &false);
+        }
+
+        /// True while the publisher is suspended in the (mock) network.
+        pub fn is_suspended(env: Env, publisher: Address) -> bool {
+            env.storage().instance().get(&publisher).unwrap_or(false)
+        }
     }
 
     #[contract]

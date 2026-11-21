@@ -321,6 +321,30 @@ fn test_clear_flag() {
 }
 
 #[test]
+fn test_clear_flag_reactivates_publisher_in_network() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin) = setup(&env);
+
+    let lifecycle = Address::generate(&env);
+    let network = env.register(mocks::PublisherNetworkContract, ());
+    let vault = Address::generate(&env);
+    let publisher = Address::generate(&env);
+    client.set_dependent_contracts(&admin, &lifecycle, &network, &vault);
+    let network_client = mocks::PublisherNetworkContractClient::new(&env, &network);
+
+    client.suspend_publisher(&admin, &publisher);
+    assert!(client.is_publisher_suspended(&publisher));
+    assert!(network_client.is_suspended(&publisher));
+
+    client.clear_flag(&admin, &publisher);
+
+    // Both the local flag and the real publisher-network state are lifted.
+    assert!(!client.is_publisher_suspended(&publisher));
+    assert!(!network_client.is_suspended(&publisher));
+}
+
+#[test]
 #[should_panic(expected = "unauthorized")]
 fn test_clear_flag_unauthorized() {
     let env = Env::default();
