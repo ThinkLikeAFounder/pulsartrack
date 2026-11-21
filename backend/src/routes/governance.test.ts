@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import request from 'supertest';
 import app from '../app';
 import pool from '../config/database';
@@ -11,7 +11,7 @@ describe('Governance Routes', () => {
 
     describe('GET /api/governance/proposals', () => {
         it('returns proposals from storage instead of an empty placeholder array', async () => {
-            (pool.query as any).mockResolvedValue({
+            (pool.query as Mock).mockResolvedValue({
                 rows: [
                     {
                         proposal_id: 7,
@@ -28,7 +28,7 @@ describe('Governance Routes', () => {
                     },
                 ],
             });
-            (callReadOnly as any).mockResolvedValue(14);
+            (callReadOnly as Mock).mockResolvedValue(14);
 
             const response = await request(app).get('/api/governance/proposals');
 
@@ -46,8 +46,8 @@ describe('Governance Routes', () => {
         });
 
         it('applies status and limit filters when provided', async () => {
-            (pool.query as any).mockResolvedValue({ rows: [] });
-            (callReadOnly as any).mockResolvedValue(0);
+            (pool.query as Mock).mockResolvedValue({ rows: [] });
+            (callReadOnly as Mock).mockResolvedValue(0);
 
             const response = await request(app).get(
                 '/api/governance/proposals?status=Active&limit=10',
@@ -56,14 +56,14 @@ describe('Governance Routes', () => {
             expect(response.status).toBe(200);
             expect(pool.query).toHaveBeenCalledTimes(1);
 
-            const [sql, params] = (pool.query as any).mock.calls[0];
+            const [sql, params] = (pool.query as Mock).mock.calls[0];
             expect(sql).toContain('WHERE status = $1');
             expect(sql).toContain('LIMIT $2');
             expect(params).toEqual(['Active', 10]);
         });
 
         it('returns 500 when the proposals query fails', async () => {
-            (pool.query as any).mockRejectedValue(new Error('db unavailable'));
+            (pool.query as Mock).mockRejectedValue(new Error('db unavailable'));
 
             const response = await request(app).get('/api/governance/proposals');
 

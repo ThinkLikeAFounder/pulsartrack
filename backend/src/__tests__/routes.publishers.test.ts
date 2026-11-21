@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
+import type { Express, Request, Response } from "express";
+import type supertest from "supertest";
 import { createJwt } from "../lib/jwt";
 
 // Mock logger to suppress output
@@ -45,8 +47,8 @@ vi.mock("../services/soroban-client", () => ({
 }));
 
 describe("POST /api/publishers/register (stellarAddress validation)", () => {
-  let app: any;
-  let request: any;
+  let app: Express;
+  let request: typeof supertest;
 
   beforeAll(async () => {
     const appModule = await import("../app");
@@ -85,8 +87,8 @@ describe("POST /api/publishers/register (stellarAddress validation)", () => {
     // This test verifies the getAuthedAddress helper's defensive check
     // In practice, requireAuth should set stellarAddress, but the helper provides type safety
     const { getAuthedAddress } = await import("../middleware/auth");
-    const mockReq = { stellarAddress: undefined } as any;
-    const mockRes = { status: vi.fn().mockReturnThis(), json: vi.fn() } as any;
+    const mockReq = { stellarAddress: undefined } as unknown as Request;
+    const mockRes = { status: vi.fn().mockReturnThis(), json: vi.fn() } as unknown as Response;
 
     const address = getAuthedAddress(mockReq, mockRes);
 

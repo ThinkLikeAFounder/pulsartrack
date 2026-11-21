@@ -33,6 +33,7 @@ describe('event-indexer', () => {
 
   afterEach(() => {
     stopEventIndexer();
+    vi.useRealTimers();
   });
 
   describe('event_index extraction from event.id', () => {
@@ -94,6 +95,7 @@ describe('event-indexer', () => {
       // First poll writes both events
       mockCreate.mockResolvedValue({ id: '1' });
 
+      vi.useFakeTimers();
       startEventIndexer();
 
       // Wait for first poll to complete

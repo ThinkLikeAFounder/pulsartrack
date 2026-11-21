@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import request from 'supertest';
 import app from '../app';
 import prisma from '../db/prisma';
@@ -16,7 +16,7 @@ describe('Publisher Routes', () => {
 
     describe('GET /api/publishers/leaderboard', () => {
         it('should return publisher leaderboard', async () => {
-            (prisma.publisher.findMany as any).mockResolvedValue([
+            (prisma.publisher.findMany as Mock).mockResolvedValue([
                 {
                     id: 'pub-uuid',
                     address: mockAddress,
@@ -43,7 +43,7 @@ describe('Publisher Routes', () => {
         it('refreshes the on-chain reputation score for every publisher', async () => {
             const secondAddress = 'GA4LYCAMDLLOJPGXHQCHHPXBISH5RAWSS7ZTCSQAPKASBXG4NTB5MJ6N';
             CONTRACT_IDS.PUBLISHER_REPUTATION = 'CREPUTATION';
-            (prisma.publisher.findMany as any).mockResolvedValue([
+            (prisma.publisher.findMany as Mock).mockResolvedValue([
                 {
                     id: 'pub-uuid-1', address: mockAddress, displayName: 'Top Pub', tier: 'Gold',
                     reputationScore: 900, impressionsServed: BigInt(10000), earningsStroops: BigInt(500000000),
@@ -55,7 +55,7 @@ describe('Publisher Routes', () => {
                     lastActivity: new Date(), website: null, status: 'Verified', createdAt: new Date(), updatedAt: new Date(),
                 },
             ]);
-            (callReadOnly as any).mockResolvedValueOnce(950).mockResolvedValueOnce(850);
+            (callReadOnly as Mock).mockResolvedValueOnce(950).mockResolvedValueOnce(850);
 
             const response = await request(app).get('/api/publishers/leaderboard');
 
@@ -75,10 +75,10 @@ describe('Publisher Routes', () => {
             };
 
             // Mock findByAddress to return null (publisher doesn't exist)
-            (prisma.publisher.findUnique as any).mockResolvedValue(null);
+            (prisma.publisher.findUnique as Mock).mockResolvedValue(null);
 
             // Mock create to return new publisher
-            (prisma.publisher.create as any).mockResolvedValue({
+            (prisma.publisher.create as Mock).mockResolvedValue({
                 id: 'pub-uuid',
                 address: mockAddress,
                 displayName: pubData.displayName,
@@ -112,7 +112,7 @@ describe('Publisher Routes', () => {
 
         it('should return 409 when publisher already registered', async () => {
             // Mock findByAddress to return an existing publisher
-            (prisma.publisher.findUnique as any).mockResolvedValue({
+            (prisma.publisher.findUnique as Mock).mockResolvedValue({
                 id: 'existing-pub-uuid',
                 address: mockAddress,
                 displayName: 'Existing Publisher',

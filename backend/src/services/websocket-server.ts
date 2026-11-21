@@ -2,12 +2,12 @@ import { WebSocketServer, WebSocket } from "ws";
 import { IncomingMessage, Server } from "http";
 import { streamLedgers } from "./horizon";
 import { logger } from "../lib/logger";
-import { decodeJwt } from "../lib/jwt";
+import { decodeJwt, JwtPayload } from "../lib/jwt";
 import { resolveClientIp } from "../lib/client-ip";
 
 interface PulsarEvent {
   type: string;
-  payload: any;
+  payload: unknown;
   timestamp: number;
   txHash?: string;
   targetAccounts?: string[];
@@ -59,12 +59,13 @@ function startLedgerStream(): void {
         payload: {
           sequence: ledger.sequence,
           closed_at: ledger.closed_at,
-          transactionCount: ledger.transaction_count,
+          transactionCount:
+            ledger.successful_transaction_count + ledger.failed_transaction_count,
         },
         timestamp: Date.now(),
       });
     },
-    (err: any) => {
+    (err: unknown) => {
       logger.error(err, "[WS] Ledger stream error notified");
       broadcastToChannel("ledger", {
         type: "reconnecting",
@@ -155,7 +156,7 @@ export function setupWebSocketServer(server: Server): WebSocketServer {
 
       if (!authenticated) {
         if (msg.type === "auth") {
-          let payload: Record<string, any>;
+          let payload: JwtPayload;
           try {
             if (!msg.token) throw new Error("Missing token in auth message");
             payload = decodeJwt(msg.token);
@@ -299,14 +300,14 @@ export function broadcast(event: PulsarEvent): void {
 
 export function broadcastCampaignEvent(
   type: "campaign_created" | "view_recorded" | "payment_processed",
-  data: Record<string, any>,
+  data: Record<string, unknown>,
 ): void {
   broadcastToChannel("campaigns", { type, payload: data, timestamp: Date.now() });
 }
 
 export function broadcastAuctionEvent(
   type: "bid_placed" | "auction_created" | "auction_settled",
-  data: Record<string, any>,
+  data: Record<string, unknown>,
 ): void {
   broadcastToChannel("auctions", { type, payload: data, timestamp: Date.now() });
 }

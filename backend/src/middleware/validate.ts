@@ -24,7 +24,7 @@ interface ValidationError {
   message: string;
 }
 
-function validateField(value: any, field: string, rule: FieldRule): ValidationError | null {
+function validateField(value: unknown, field: string, rule: FieldRule): ValidationError | null {
   if (value === undefined || value === null || value === '') {
     if (rule.required) {
       return { field, message: `${field} is required` };
@@ -83,7 +83,8 @@ export function validate(schema: ValidationSchema) {
     const errors: ValidationError[] = [];
 
     for (const [source, rules] of Object.entries(schema)) {
-      const data = (req as any)[source] || {};
+      const data =
+        (req as unknown as Record<string, Record<string, unknown> | undefined>)[source] ?? {};
       for (const [field, rule] of Object.entries(rules as Record<string, FieldRule>)) {
         const error = validateField(data[field], field, rule);
         if (error) errors.push(error);

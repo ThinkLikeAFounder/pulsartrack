@@ -3,9 +3,9 @@ import { validate } from "./validate";
 import { Request, Response } from "express";
 
 describe("validate middleware", () => {
-  const mockReq = (data: any = {}) =>
+  const mockReq = (data: { params?: object; query?: object; body?: object } = {}) =>
     ({
-      params: data.params || {},
+      params: data.params ?? {},
       query: data.query || {},
       body: data.body || {},
     }) as unknown as Request;

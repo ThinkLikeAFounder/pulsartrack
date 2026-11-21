@@ -17,7 +17,7 @@ vi.mock('../config/stellar', () => ({
     httpClient: { defaults: { timeout: 0 }, get: vi.fn() },
     ledgers: vi.fn().mockReturnValue({
       cursor: vi.fn().mockReturnThis(),
-      stream: vi.fn().mockReturnValue({ close: vi.fn() }),
+      stream: vi.fn().mockReturnValue(vi.fn()),
     }),
     feeStats: vi.fn().mockResolvedValue({}),
     operations: vi.fn().mockReturnValue({

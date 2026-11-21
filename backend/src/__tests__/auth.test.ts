@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
+import type { Express, Request, Response } from 'express';
+import type { RateLimiterRes } from 'rate-limiter-flexible';
+import type supertest from 'supertest';
 import { createHmac } from 'crypto';
 import { createJwt, decodeJwt, InvalidTokenError, TOKEN_EXPIRY } from '../lib/jwt';
 
@@ -35,7 +38,7 @@ describe('JWT (jwt.ts)', () => {
     const decoded = decodeJwt(token);
     expect(decoded.sub).toBe('GABC123');
     expect(decoded.iat).toBeDefined();
-    expect(decoded.exp).toBe(decoded.iat + TOKEN_EXPIRY);
+    expect(decoded.exp).toBe((decoded.iat ?? 0) + TOKEN_EXPIRY);
   });
 
   it('should reject a tampered token (invalid signature)', () => {
@@ -97,8 +100,8 @@ describe('JWT (jwt.ts)', () => {
 });
 
 describe('requireAuth middleware', () => {
-  let app: any;
-  let request: any;
+  let app: Express;
+  let request: typeof supertest;
 
   // Import app once before all tests (not in each test)
   beforeAll(async () => {
@@ -177,7 +180,7 @@ describe('requireAuth middleware', () => {
       if (callCount > 50) {
         throw new Error('Rate limit exceeded');
       }
-      return {} as any;
+      return {} as RateLimiterRes;
     });
 
     try {
@@ -205,8 +208,8 @@ describe('requireAuth middleware', () => {
 describe('rateLimitAccount middleware', () => {
   it('should call next() if req.stellarAddress is not set', async () => {
     const { rateLimitAccount } = await import('../middleware/auth');
-    const mockReq = {} as any;
-    const mockRes = { status: vi.fn().mockReturnThis(), json: vi.fn() } as any;
+    const mockReq = {} as unknown as Request;
+    const mockRes = { status: vi.fn().mockReturnThis(), json: vi.fn() } as unknown as Response;
     const next = vi.fn();
 
     const middleware = rateLimitAccount();
@@ -218,10 +221,10 @@ describe('rateLimitAccount middleware', () => {
 
   it('should consume account rate limit points when req.stellarAddress is present', async () => {
     const { rateLimitAccount, accountLimiter } = await import('../middleware/auth');
-    const consumeSpy = vi.spyOn(accountLimiter, 'consume').mockResolvedValueOnce({} as any);
+    const consumeSpy = vi.spyOn(accountLimiter, 'consume').mockResolvedValueOnce({} as RateLimiterRes);
     try {
-      const mockReq = { stellarAddress: 'GA4LYCAMDLLOJPGXHQCHHPXBISH5RAWSS7ZTCSQAPKASBXG4NTB5MJ6N' } as any;
-      const mockRes = { status: vi.fn().mockReturnThis(), json: vi.fn() } as any;
+      const mockReq = { stellarAddress: 'GA4LYCAMDLLOJPGXHQCHHPXBISH5RAWSS7ZTCSQAPKASBXG4NTB5MJ6N' } as unknown as Request;
+      const mockRes = { status: vi.fn().mockReturnThis(), json: vi.fn() } as unknown as Response;
       const next = vi.fn();
 
       const middleware = rateLimitAccount();
@@ -238,8 +241,8 @@ describe('rateLimitAccount middleware', () => {
     const { rateLimitAccount, accountLimiter } = await import('../middleware/auth');
     const consumeSpy = vi.spyOn(accountLimiter, 'consume').mockRejectedValueOnce(new Error('Rate limit exceeded'));
     try {
-      const mockReq = { stellarAddress: 'GA4LYCAMDLLOJPGXHQCHHPXBISH5RAWSS7ZTCSQAPKASBXG4NTB5MJ6N' } as any;
-      const mockRes = { status: vi.fn().mockReturnThis(), json: vi.fn() } as any;
+      const mockReq = { stellarAddress: 'GA4LYCAMDLLOJPGXHQCHHPXBISH5RAWSS7ZTCSQAPKASBXG4NTB5MJ6N' } as unknown as Request;
+      const mockRes = { status: vi.fn().mockReturnThis(), json: vi.fn() } as unknown as Response;
       const next = vi.fn();
 
       const middleware = rateLimitAccount();
@@ -257,8 +260,8 @@ describe('rateLimitAccount middleware', () => {
 describe('getAuthedAddress helper', () => {
   it('should return address when req.stellarAddress is set', async () => {
     const { getAuthedAddress } = await import('../middleware/auth');
-    const mockReq = { stellarAddress: 'GA4LYCAMDLLOJPGXHQCHHPXBISH5RAWSS7ZTCSQAPKASBXG4NTB5MJ6N' } as any;
-    const mockRes = { status: vi.fn().mockReturnThis(), json: vi.fn() } as any;
+    const mockReq = { stellarAddress: 'GA4LYCAMDLLOJPGXHQCHHPXBISH5RAWSS7ZTCSQAPKASBXG4NTB5MJ6N' } as unknown as Request;
+    const mockRes = { status: vi.fn().mockReturnThis(), json: vi.fn() } as unknown as Response;
     
     const address = getAuthedAddress(mockReq, mockRes);
     
@@ -269,8 +272,8 @@ describe('getAuthedAddress helper', () => {
 
   it('should return null and send 401 when req.stellarAddress is missing', async () => {
     const { getAuthedAddress } = await import('../middleware/auth');
-    const mockReq = {} as any;
-    const mockRes = { status: vi.fn().mockReturnThis(), json: vi.fn() } as any;
+    const mockReq = {} as unknown as Request;
+    const mockRes = { status: vi.fn().mockReturnThis(), json: vi.fn() } as unknown as Response;
     
     const address = getAuthedAddress(mockReq, mockRes);
     
@@ -281,8 +284,8 @@ describe('getAuthedAddress helper', () => {
 
   it('should return null and send 401 when req.stellarAddress is undefined', async () => {
     const { getAuthedAddress } = await import('../middleware/auth');
-    const mockReq = { stellarAddress: undefined } as any;
-    const mockRes = { status: vi.fn().mockReturnThis(), json: vi.fn() } as any;
+    const mockReq = { stellarAddress: undefined } as unknown as Request;
+    const mockRes = { status: vi.fn().mockReturnThis(), json: vi.fn() } as unknown as Response;
     
     const address = getAuthedAddress(mockReq, mockRes);
     
@@ -293,8 +296,8 @@ describe('getAuthedAddress helper', () => {
 });
 
 describe('Live auth routes (/api/auth)', () => {
-  let app: any;
-  let request: any;
+  let app: Express;
+  let request: typeof supertest;
   let redisStore: Map<string, string>;
 
   beforeAll(async () => {
@@ -308,16 +311,16 @@ describe('Live auth routes (/api/auth)', () => {
     redisStore = new Map();
     const redisModule = await import('../config/redis');
     const redisClient = redisModule.default;
-    vi.spyOn(redisClient, 'set').mockImplementation(async (key: any, val: any) => {
+    vi.spyOn(redisClient, 'set').mockImplementation(async (key, val) => {
       redisStore.set(String(key), String(val));
-      return 'OK' as any;
+      return 'OK';
     });
-    vi.spyOn(redisClient, 'get').mockImplementation(async (key: any) => {
-      return (redisStore.get(String(key)) ?? null) as any;
+    vi.spyOn(redisClient, 'get').mockImplementation(async (key) => {
+      return redisStore.get(String(key)) ?? null;
     });
-    vi.spyOn(redisClient, 'del').mockImplementation(async (key: any) => {
+    vi.spyOn(redisClient, 'del').mockImplementation(async (key) => {
       redisStore.delete(String(key));
-      return 1 as any;
+      return 1;
     });
   });
 

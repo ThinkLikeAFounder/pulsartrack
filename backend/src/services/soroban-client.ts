@@ -42,11 +42,11 @@ export function getServer(): rpc.Server {
 /**
  * Execute a read-only Soroban contract call via simulation
  */
-export async function callReadOnly(
+export async function callReadOnly<T = unknown>(
   contractId: string,
   method: string,
   args: xdr.ScVal[] = [],
-): Promise<any> {
+): Promise<T | null> {
   if (!contractId || contractId === 'PLACEHOLDER') {
     throw new Error(
       `callReadOnly("${method}"): contract ID is missing or a placeholder. ` +
@@ -69,7 +69,7 @@ export async function callReadOnly(
   const sim = await server.simulateTransaction(tx);
 
   if (rpc.Api.isSimulationError(sim)) {
-    throw new Error(`Simulation error: ${(sim as any).error}`);
+    throw new Error(`Simulation error: ${sim.error}`);
   }
 
   if (!rpc.Api.isSimulationSuccess(sim)) {
@@ -78,7 +78,7 @@ export async function callReadOnly(
 
   const retval = (sim as rpc.Api.SimulateTransactionSuccessResponse).result
     ?.retval;
-  return retval ? scValToNative(retval) : null;
+  return retval ? (scValToNative(retval) as T) : null;
 }
 
 export function toAddressScVal(address: string): xdr.ScVal {

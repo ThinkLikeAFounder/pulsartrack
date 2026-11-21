@@ -38,7 +38,7 @@ describe('auctions repository', () => {
 
   it('create calls prisma.create', async () => {
     mockCreate.mockResolvedValue({ auctionId: 1n });
-    await auctions.create({ auctionId: 1n, status: 'Active' } as any);
+    await auctions.create({ auctionId: 1n, status: 'Active' } as unknown as Parameters<typeof auctions.create>[0]);
     expect(mockCreate).toHaveBeenCalled();
   });
 
