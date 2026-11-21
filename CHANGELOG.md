@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Deployment Initialization**: `scripts/initialize.sh` now initializes all 43 contracts deployed by `scripts/deploy.sh`, fails on real invocation errors, treats already-initialized contracts as idempotent, and accepts configurable admin/config arguments.
+- **Targeting Engine Tests**: updated `initialize` calls for the lifecycle contract argument and replaced the stale WASM cross-contract import with a local contract client interface so workspace builds and tests do not require prebuilt artifacts.
+- **Panic Tests**: added specific expected panic messages to all previously bare `#[should_panic]` attributes across the workspace.
+- **Initialize Test Coverage**: added stored-admin state assertions to every `test_initialize` that lacked one.
+- **CI/Test Stability**: fixed pre-existing clippy lint, expired-campaign ledger setup, fraud-prevention lifecycle mocks, and workspace formatting drift so CI passes.
+
 ---
 
 ## [0.1.0] - 2026-09-24

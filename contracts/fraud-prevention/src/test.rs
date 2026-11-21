@@ -30,6 +30,10 @@ fn test_initialize() {
     let admin = Address::generate(&env);
 
     client.initialize(&admin);
+    let stored_admin = env.as_contract(&client.address, || {
+        env.storage().instance().get(&DataKey::Admin)
+    });
+    assert_eq!(stored_admin, Some(admin));
 }
 
 #[test]
@@ -48,7 +52,7 @@ fn test_initialize_twice() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
 fn test_initialize_non_admin_fails() {
     let env = Env::default();
 
@@ -216,7 +220,7 @@ fn test_flag_suspicious_unauthorized_fails() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
 fn test_flag_suspicious_without_auth_fails() {
     let env = Env::default();
     // No mock_all_auths() here
@@ -362,7 +366,7 @@ fn test_verify_view_without_proof() {
     let publisher = Address::generate(&env);
     let viewer = Address::generate(&env);
 
-    let lifecycle = Address::generate(&env);
+    let lifecycle = env.register(mocks::CampaignLifecycleContract, ());
     let network = Address::generate(&env);
     let vault = Address::generate(&env);
     client.set_dependent_contracts(&admin, &lifecycle, &network, &vault);
@@ -477,7 +481,7 @@ fn test_duplicate_view_same_triplet_rejected() {
     let publisher = Address::generate(&env);
     let viewer = Address::generate(&env);
 
-    let lifecycle = Address::generate(&env);
+    let lifecycle = env.register(mocks::CampaignLifecycleContract, ());
     let network = Address::generate(&env);
     let vault = Address::generate(&env);
     client.set_dependent_contracts(&admin, &lifecycle, &network, &vault);
@@ -490,7 +494,6 @@ fn test_duplicate_view_same_triplet_rejected() {
     });
     client.verify_view(&1u64, &publisher, &viewer, &None);
 }
-
 
 #[test]
 #[should_panic(expected = "duplicate view")]

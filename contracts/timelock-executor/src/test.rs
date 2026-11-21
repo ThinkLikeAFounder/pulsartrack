@@ -48,6 +48,10 @@ fn test_initialize() {
     let contract_id = env.register(TimelockExecutorContract, ());
     let client = TimelockExecutorContractClient::new(&env, &contract_id);
     client.initialize(&admin, &executor, &3600u64, &86_400u64);
+    let stored_admin = env.as_contract(&client.address, || {
+        env.storage().instance().get(&DataKey::Admin)
+    });
+    assert_eq!(stored_admin, Some(admin));
 }
 
 #[test]
@@ -65,7 +69,7 @@ fn test_initialize_twice() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
 fn test_initialize_non_admin_fails() {
     let env = Env::default();
     let admin = Address::generate(&env);

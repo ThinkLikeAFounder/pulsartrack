@@ -497,7 +497,7 @@ fn test_renew_preserves_original_started_at() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "no subscription found")]
 fn test_renew_panics_with_no_subscription() {
     let env = Env::default();
     env.mock_all_auths();
