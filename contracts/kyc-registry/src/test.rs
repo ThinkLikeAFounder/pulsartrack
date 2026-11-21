@@ -22,7 +22,11 @@ fn test_initialize() {
     env.mock_all_auths();
     let id = env.register(KycRegistryContract, ());
     let c = KycRegistryContractClient::new(&env, &id);
-    c.initialize(&Address::generate(&env));
+    let admin = Address::generate(&env);
+    c.initialize(&admin);
+    let stored_admin =
+        env.as_contract(&c.address, || env.storage().instance().get(&DataKey::Admin));
+    assert_eq!(stored_admin, Some(admin));
 }
 
 #[test]
@@ -38,7 +42,7 @@ fn test_initialize_twice() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
 fn test_initialize_non_admin_fails() {
     let env = Env::default();
     let id = env.register(KycRegistryContract, ());
@@ -250,7 +254,6 @@ fn test_verify_kyc_expiry_overflow() {
     });
     c.verify_kyc(&provider, &account, &Some(u64::MAX));
 }
-
 
 #[test]
 #[should_panic(expected = "provider mismatch")]

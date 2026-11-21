@@ -60,6 +60,10 @@ fn test_initialize() {
     let filing_fee = 1000i128;
 
     client.initialize(&admin, &token, &filing_fee);
+    let stored_admin = env.as_contract(&client.address, || {
+        env.storage().instance().get(&DataKey::Admin)
+    });
+    assert_eq!(stored_admin, Some(admin));
 }
 
 #[test]
@@ -80,7 +84,7 @@ fn test_initialize_twice() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
 fn test_initialize_non_admin_fails() {
     let env = Env::default();
 

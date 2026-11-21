@@ -18,7 +18,10 @@ fn s(env: &Env, v: &str) -> String {
 fn test_initialize() {
     let env = Env::default();
     env.mock_all_auths();
-    setup(&env);
+    let (c, admin, ..) = setup(&env);
+    let stored_admin =
+        env.as_contract(&c.address, || env.storage().instance().get(&DataKey::Admin));
+    assert_eq!(stored_admin, Some(admin));
 }
 
 #[test]
@@ -35,7 +38,7 @@ fn test_initialize_twice() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
 fn test_initialize_non_admin_fails() {
     let env = Env::default();
     let id = env.register(TokenBridgeContract, ());
@@ -219,12 +222,21 @@ fn test_pending_failed_refund_lifecycle() {
         &s(&env, "0xfailed"),
     );
 
-    assert_eq!(c.get_deposit(&deposit_id).unwrap().status, BridgeStatus::Pending);
+    assert_eq!(
+        c.get_deposit(&deposit_id).unwrap().status,
+        BridgeStatus::Pending
+    );
     c.mark_failed(&relayer, &deposit_id);
-    assert_eq!(c.get_deposit(&deposit_id).unwrap().status, BridgeStatus::Failed);
+    assert_eq!(
+        c.get_deposit(&deposit_id).unwrap().status,
+        BridgeStatus::Failed
+    );
 
     c.refund_deposit(&admin, &deposit_id);
-    assert_eq!(c.get_deposit(&deposit_id).unwrap().status, BridgeStatus::Refunded);
+    assert_eq!(
+        c.get_deposit(&deposit_id).unwrap().status,
+        BridgeStatus::Refunded
+    );
 }
 
 #[test]

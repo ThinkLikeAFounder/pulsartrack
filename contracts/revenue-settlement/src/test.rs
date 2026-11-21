@@ -86,7 +86,7 @@ fn test_initialize_twice() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
 fn test_initialize_non_admin_fails() {
     let env = Env::default();
 
@@ -351,7 +351,7 @@ impl ReentrantToken {
 // into this contract mid-transfer), so a malicious token cannot re-trigger the
 // claim while the balance is being paid out. This asserts the attempt aborts.
 #[test]
-#[should_panic]
+#[should_panic(expected = "HostError: Error(Context, InvalidAction)")]
 fn test_claim_reentrancy_cannot_double_spend() {
     let env = Env::default();
     env.mock_all_auths();

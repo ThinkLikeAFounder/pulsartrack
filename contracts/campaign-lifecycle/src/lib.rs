@@ -403,7 +403,12 @@ impl CampaignLifecycleContract {
             .unwrap_or(0)
     }
 
-    fn _validate_transition(from: &LifecycleState, to: &LifecycleState, env: &Env, campaign_id: u64) {
+    fn _validate_transition(
+        from: &LifecycleState,
+        to: &LifecycleState,
+        env: &Env,
+        campaign_id: u64,
+    ) {
         let valid = match from {
             LifecycleState::Draft => matches!(
                 to,
