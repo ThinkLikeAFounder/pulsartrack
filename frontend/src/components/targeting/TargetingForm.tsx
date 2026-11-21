@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { SegmentGroup } from './AudienceSegmentTag';
 import { targetingSchema, TargetingFormData } from '@/lib/validation/schemas';
@@ -55,9 +55,10 @@ export function TargetingForm({ initial, onSave, isSaving }: TargetingFormProps)
   const submitLockedRef = useRef(false);
 
   const {
+    control,
     register,
     handleSubmit,
-    watch,
+    getValues,
     setValue,
     formState: { errors, isValid },
   } = useForm<TargetingFormData>({
@@ -66,22 +67,22 @@ export function TargetingForm({ initial, onSave, isSaving }: TargetingFormProps)
     defaultValues: { ...DEFAULT_CONFIG, ...initial },
   });
 
-  const regions = watch('regions');
-  const interests = watch('interests');
-  const excludedSegments = watch('excludedSegments');
-  const devices = watch('devices');
-  const languages = watch('languages');
+  const regions = useWatch({ control, name: 'regions' });
+  const interests = useWatch({ control, name: 'interests' });
+  const excludedSegments = useWatch({ control, name: 'excludedSegments' });
+  const devices = useWatch({ control, name: 'devices' });
+  const languages = useWatch({ control, name: 'languages' });
   const isSubmitting = Boolean(isSaving) || isPending;
 
   const addTo = (field: 'regions' | 'interests' | 'excludedSegments' | 'devices' | 'languages') =>
     (val: string) => {
-      const current = watch(field);
+      const current = getValues(field);
       setValue(field, [...current, val], { shouldValidate: true });
     };
 
   const removeFrom = (field: 'regions' | 'interests' | 'excludedSegments' | 'devices' | 'languages') =>
     (val: string) => {
-      const current = watch(field);
+      const current = getValues(field);
       setValue(field, current.filter((v) => v !== val), { shouldValidate: true });
     };
 
