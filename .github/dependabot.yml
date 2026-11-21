@@ -75,7 +75,7 @@ updates:
       actions-minor-patch:
         update-types: ["minor", "patch"]
 
-  - package-ecosystem: "docker"
+  - package-ecosystem: "docker-compose"
     directory: "/"
     schedule:
       interval: "weekly"
