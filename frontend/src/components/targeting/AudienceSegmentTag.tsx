@@ -26,6 +26,7 @@ export function AudienceSegmentTag({ segment, onRemove, variant = 'active' }: Au
       {segment}
       {onRemove && (
         <button
+          type="button"
           onClick={() => onRemove(segment)}
           className="opacity-60 hover:opacity-100 transition-opacity ml-0.5"
           aria-label={`Remove ${segment}`}
