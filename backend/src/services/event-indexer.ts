@@ -11,7 +11,10 @@ import { errorMessage } from "../lib/errors";
  * restart without re-indexing the entire chain.
  */
 
-const POLL_INTERVAL_MS = parseInt(process.env.EVENT_POLL_INTERVAL_MS || '5000', 10);
+// Both values are validated (integer >= 1, with defaults) by loadEnv() in
+// config/env.ts before the indexer starts, so a malformed value fails startup
+// instead of silently becoming NaN here.
+const POLL_INTERVAL_MS =parseInt(process.env.EVENT_POLL_INTERVAL_MS || '5000', 10);
 const MAX_EVENTS_PER_POLL = parseInt(process.env.EVENT_MAX_PER_POLL || '200', 10);
 
 let running = false;
