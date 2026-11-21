@@ -92,6 +92,7 @@ impl PayoutAutomationContract {
         execute_after: u64,
         campaign_id: Option<u64>,
     ) -> u64 {
+        Self::require_not_paused(&env);
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -265,6 +266,7 @@ impl PayoutAutomationContract {
     }
 
     pub fn add_publisher_earnings(env: Env, admin: Address, publisher: Address, amount: i128) {
+        Self::require_not_paused(&env);
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);

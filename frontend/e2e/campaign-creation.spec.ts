@@ -85,13 +85,11 @@ test.describe('campaign creation flow', () => {
     // empty "My Campaigns" tab also shows its own "Create Campaign" CTA.
     await main.getByRole('button', { name: 'Create Campaign' }).first().click();
 
-    await page.getByLabel('Campaign Title').fill('E2E Test Campaign');
+    await page.getByLabel(/Campaign Title/).fill('E2E Test Campaign');
     await page
-      .getByLabel('Content ID (IPFS Hash)')
+      .getByLabel(/Content ID/)
       .fill('QmE2ETestContentHashXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX');
-    await page.getByLabel('Total Budget (XLM)').fill('1000');
-    await page.getByLabel('Daily Budget (XLM)').fill('50');
-    await page.getByLabel('Duration (days)').fill('30');
+    await page.getByLabel(/Total Budget \(XLM\)/).fill('1000');
 
     const submit = page.locator('form button[type="submit"]');
     await expect(submit).toHaveText('Create Campaign');

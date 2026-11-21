@@ -19,10 +19,13 @@ import {
   useAuctionCount,
   usePublisherAuctions,
   useCreateAuction,
+  useSubscription,
   useSubscribe,
 } from '@/hooks/useContract';
 import { formatAddress } from '@/lib/display-utils';
 import { formatXlm } from '@/lib/display-utils';
+import { SubscriptionStatus } from '@/components/subscription/SubscriptionStatus';
+import type { Subscription } from '@/types/contracts';
 
 type PublisherTab = 'overview' | 'auctions' | 'earnings' | 'subscription';
 
@@ -119,6 +122,10 @@ export default function PublisherPage() {
     auctionCount,
     isConnected,
   );
+  const { data: subscriptionData } = useSubscription(
+    address || '',
+    isConnected,
+  ) as { data: Subscription | null | undefined };
   const { subscribe, isPending: subscribeLoading } = useSubscribe();
   const { createAuction, isPending: creatingAuction } = useCreateAuction();
   const [showCreateAuction, setShowCreateAuction] = useState(false);
@@ -577,11 +584,33 @@ export default function PublisherPage() {
           )}
 
           {activeTab === 'subscription' && (
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900 mb-6">
-                Subscription Plans
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="space-y-6">
+              <div className="max-w-md">
+                <h2 className="text-lg font-semibold text-gray-900 mb-3">
+                  Current Subscription
+                </h2>
+                <SubscriptionStatus
+                  subscription={subscriptionData ?? null}
+                  onRenew={() => {
+                    if (!subscriptionData) return;
+                    const plan = SUBSCRIPTION_PLANS.find(
+                      (p) => p.name === subscriptionData.tier,
+                    );
+                    const monthlyPrice = plan
+                      ? parseInt(plan.priceMonthly.split(' ')[0])
+                      : 99;
+                    subscribe({
+                      planName: subscriptionData.tier,
+                      amountXlm: monthlyPrice,
+                    });
+                  }}
+                />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 mb-6">
+                  Subscription Plans
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 {SUBSCRIPTION_PLANS.map((plan) => {
                   const monthlyPrice = parseInt(
                     plan.priceMonthly.split(' ')[0],
@@ -636,6 +665,7 @@ export default function PublisherPage() {
                     </div>
                   );
                 })}
+              </div>
               </div>
             </div>
           )}
