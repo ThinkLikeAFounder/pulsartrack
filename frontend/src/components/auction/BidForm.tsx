@@ -49,11 +49,16 @@ export function BidForm({ auction, campaignId, onSuccess, onCancel }: BidFormPro
   const onSubmit = async (data: BidFormData) => {
     setSubmitError(null);
     try {
-      await placeBid({
+      const result = await placeBid({
         auctionId: Number(auction.auction_id),
         campaignId: parseInt(data.campaignId),
         amountStroops: xlmToStroops(data.bidAmountXlm),
       });
+      // callContract reports contract/simulation failures by resolving with
+      // `success: false` rather than throwing, so check it like CampaignForm.
+      if (result && !result.success) {
+        throw new Error(result.error || 'Failed to place bid');
+      }
       onSuccess?.();
     } catch (err: unknown) {
       setSubmitError(err instanceof Error ? err.message : 'Failed to place bid');

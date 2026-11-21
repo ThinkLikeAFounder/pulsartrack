@@ -363,9 +363,7 @@ impl PrivacyLayerContract {
             .instance()
             .get(&DataKey::RequestCounter)
             .unwrap_or(0);
-        let request_id = counter
-            .checked_add(1)
-            .expect("request counter overflow");
+        let request_id = counter.checked_add(1).expect("request counter overflow");
 
         env.storage()
             .instance()
@@ -468,11 +466,7 @@ impl PrivacyLayerContract {
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
 
         let key = DataKey::DataRequest(request_id);
-        if let Some(req) = env
-            .storage()
-            .persistent()
-            .get::<DataKey, DataRequest>(&key)
-        {
+        if let Some(req) = env.storage().persistent().get::<DataKey, DataRequest>(&key) {
             env.storage().persistent().extend_ttl(
                 &key,
                 PERSISTENT_LIFETIME_THRESHOLD,

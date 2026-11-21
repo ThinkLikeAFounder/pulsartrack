@@ -27,7 +27,10 @@ fn s(env: &Env, v: &str) -> String {
 fn test_initialize() {
     let env = Env::default();
     env.mock_all_auths();
-    setup(&env);
+    let (c, admin, ..) = setup(&env);
+    let stored_admin =
+        env.as_contract(&c.address, || env.storage().instance().get(&DataKey::Admin));
+    assert_eq!(stored_admin, Some(admin));
 }
 
 #[test]
@@ -44,7 +47,7 @@ fn test_initialize_twice() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
 fn test_initialize_non_admin_fails() {
     let env = Env::default();
     let id = env.register(WrappedTokenContract, ());

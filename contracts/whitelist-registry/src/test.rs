@@ -17,7 +17,10 @@ fn setup(env: &Env) -> (WhitelistRegistryContractClient<'_>, Address) {
 fn test_initialize() {
     let env = Env::default();
     env.mock_all_auths();
-    setup(&env);
+    let (c, admin, ..) = setup(&env);
+    let stored_admin =
+        env.as_contract(&c.address, || env.storage().instance().get(&DataKey::Admin));
+    assert_eq!(stored_admin, Some(admin));
 }
 
 #[test]

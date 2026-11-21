@@ -53,6 +53,10 @@ fn test_initialize() {
     let contract_id = env.register(EscrowVaultContract, ());
     let client = EscrowVaultContractClient::new(&env, &contract_id);
     client.initialize(&admin, &token, &oracle);
+    let stored_admin = env.as_contract(&client.address, || {
+        env.storage().instance().get(&DataKey::Admin)
+    });
+    assert_eq!(stored_admin, Some(admin));
 }
 
 #[test]
@@ -71,7 +75,7 @@ fn test_initialize_twice() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
 fn test_initialize_non_admin_fails() {
     let env = Env::default();
     // deliberately no mock_all_auths so require_auth panics
@@ -1035,7 +1039,7 @@ fn test_admin_transfer_flow() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "unauthorized")]
 fn test_propose_admin_unauthorized() {
     let env = Env::default();
     env.mock_all_auths();
@@ -1047,7 +1051,7 @@ fn test_propose_admin_unauthorized() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "not pending admin")]
 fn test_accept_admin_unauthorized() {
     let env = Env::default();
     env.mock_all_auths();
@@ -1086,7 +1090,7 @@ fn test_set_dispute_contract_unauthorized() {
 // ─── upgrade ─────────────────────────────────────────────────────────────────
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
 fn test_upgrade_requires_admin_auth() {
     let env = Env::default();
     let (c, _admin, _, _) = setup(&env);
