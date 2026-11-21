@@ -1,6 +1,7 @@
 import { getServer } from './soroban-client';
 import * as ledgerEventsRepo from '../db/repositories/ledgerEvents';
 import { logger } from '../lib/logger';
+import { errorMessage } from "../lib/errors";
 
 /**
  * Background event indexer that reads Soroban contract events from the RPC
@@ -69,7 +70,7 @@ async function poll() {
         // 10-character zero-padded number representing the event's position
         // within its transaction. This is stable across polls for the same
         // event, unlike the loop counter i which resets each poll (#1094).
-        const eventId = (event as any).id || '';
+        const eventId = event.id || '';
         const eventIndexStr = eventId.split('-')[1] || '0';
         const eventIndex = parseInt(eventIndexStr, 10) || 0;
 
@@ -86,10 +87,10 @@ async function poll() {
       }
       logger.info(`[EventIndexer] Indexed ${written}/${events.length} events from ledger ${events[0]?.ledger ?? '?'}`);
     }
-  } catch (err: any) {
+  } catch (err) {
     // Transient RPC errors are expected during network issues — log and
     // continue polling rather than crashing the server.
-    logger.warn({ err: err.message }, '[EventIndexer] Poll error, will retry');
+    logger.warn({ err: errorMessage(err) }, '[EventIndexer] Poll error, will retry');
   }
 
   if (running) {

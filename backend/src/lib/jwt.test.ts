@@ -11,7 +11,7 @@ function sign(header: string, body: string, secret = JWT_SECRET): string {
     .digest("base64url");
 }
 
-function encode(obj: Record<string, any>): string {
+function encode(obj: Record<string, unknown>): string {
   return Buffer.from(JSON.stringify(obj)).toString("base64url");
 }
 
@@ -21,7 +21,7 @@ describe("jwt", () => {
   it("round-trips a valid token", () => {
     const payload = decodeJwt(createJwt({ sub: address }));
     expect(payload.sub).toBe(address);
-    expect(payload.exp - payload.iat).toBe(TOKEN_EXPIRY);
+    expect(payload.exp - (payload.iat ?? 0)).toBe(TOKEN_EXPIRY);
   });
 
   it("rejects a token whose payload was tampered with", () => {

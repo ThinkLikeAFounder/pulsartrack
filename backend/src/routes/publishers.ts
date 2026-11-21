@@ -4,6 +4,7 @@ import { callReadOnly, toAddressScVal } from "../services/soroban-client";
 import { CONTRACT_IDS } from "../config/stellar";
 import { requireAuth, rateLimitAccount, rateLimitWrite, getAuthedAddress } from "../middleware/auth";
 import { validate } from "../middleware/validate";
+import { errorCode, errorMessage } from "../lib/errors";
 
 const router = Router();
 
@@ -37,7 +38,7 @@ router.get(
       if (CONTRACT_IDS.PUBLISHER_REPUTATION) {
         await Promise.all(result.map(async (publisher) => {
           try {
-            const onChainScore = await callReadOnly(
+            const onChainScore = await callReadOnly<number>(
               CONTRACT_IDS.PUBLISHER_REPUTATION,
               "get_reputation",
               [toAddressScVal(publisher.address)],
@@ -52,10 +53,10 @@ router.get(
       }
 
       res.json({ publishers: result });
-    } catch (err: any) {
+    } catch (err) {
       req.log?.error({ err }, "Failed to fetch publisher leaderboard");
       const details =
-        process.env.NODE_ENV === "development" ? err.message : undefined;
+        process.env.NODE_ENV === "development" ? errorMessage(err) : undefined;
       res
         .status(500)
         .json({
@@ -101,16 +102,16 @@ router.post(
       });
 
       res.status(201).json(publisher);
-    } catch (err: any) {
+    } catch (err) {
       // #1100 — handle unique-constraint race: two concurrent registrations
       // for the same address both pass findByAddress, then one insert fails
       // with Prisma P2002. Return 409 instead of generic 500.
-      if (err?.code === "P2002") {
+      if (errorCode(err) === "P2002") {
         return res.status(409).json({ error: "Publisher already registered" });
       }
       req.log?.error({ err }, "Failed to register publisher");
       const details =
-        process.env.NODE_ENV === "development" ? err.message : undefined;
+        process.env.NODE_ENV === "development" ? errorMessage(err) : undefined;
       res
         .status(500)
         .json({

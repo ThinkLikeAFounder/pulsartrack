@@ -4,6 +4,7 @@ import { callReadOnly } from "../services/soroban-client";
 import { CONTRACT_IDS } from "../config/stellar";
 import { requireAuth, rateLimitAccount, rateLimitWrite } from "../middleware/auth";
 import { validate } from "../middleware/validate";
+import { errorMessage } from "../lib/errors";
 
 const router = Router();
 
@@ -26,7 +27,7 @@ router.get(
              winning_bid_stroops, winner, bid_count, status, start_time, end_time
       FROM auctions
     `;
-      const params: any[] = [];
+      const params: unknown[] = [];
 
       if (status) {
         params.push(status);
@@ -56,7 +57,7 @@ router.get(
       let onChainTotal: number | null = null;
       if (CONTRACT_IDS.AUCTION_ENGINE) {
         try {
-          onChainTotal = await callReadOnly(
+          onChainTotal = await callReadOnly<number>(
             CONTRACT_IDS.AUCTION_ENGINE,
             "get_auction_count",
           );
@@ -69,10 +70,10 @@ router.get(
         auctions,
         total: onChainTotal ?? auctions.length,
       });
-    } catch (err: any) {
+    } catch (err) {
       req.log?.error({ err }, "Failed to fetch auctions");
       const details =
-        process.env.NODE_ENV === "development" ? err.message : undefined;
+        process.env.NODE_ENV === "development" ? errorMessage(err) : undefined;
       res.status(500).json({
         error: "Failed to fetch auctions",
         ...(details && { details }),
@@ -177,15 +178,15 @@ router.post(
       await client.query("COMMIT");
 
       res.status(201).json(rows[0]);
-    } catch (err: any) {
+    } catch (err) {
       try {
         await client.query("ROLLBACK");
-      } catch (rollbackErr: any) {
+      } catch (rollbackErr) {
         req.log?.error({ rollbackErr }, "ROLLBACK failed");
       }
       req.log?.error({ err }, "Failed to submit bid");
       const details =
-        process.env.NODE_ENV === "development" ? err.message : undefined;
+        process.env.NODE_ENV === "development" ? errorMessage(err) : undefined;
       res
         .status(500)
         .json({ error: "Failed to submit bid", ...(details && { details }) });

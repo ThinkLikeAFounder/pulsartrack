@@ -54,8 +54,8 @@ vi.mock('@stellar/stellar-sdk', async () => {
         };
       }),
       Api: {
-        isSimulationError: (sim: any) => sim?.error !== undefined && !sim?.result,
-        isSimulationSuccess: (sim: any) => sim?.result !== undefined,
+        isSimulationError: (sim?: { error?: unknown; result?: unknown }) => sim?.error !== undefined && !sim?.result,
+        isSimulationSuccess: (sim?: { error?: unknown; result?: unknown }) => sim?.result !== undefined,
       },
     },
     Contract: vi.fn().mockImplementation(function () {

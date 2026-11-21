@@ -5,7 +5,7 @@ import path from "path";
 import type { Pool, PoolClient, QueryResult, QueryResultRow } from "pg";
 
 // Helper to create mock query results
-const mockQueryResult = <T extends QueryResultRow = any>(rows: T[] = [], rowCount: number = 0): QueryResult<T> => ({
+const mockQueryResult = <T extends QueryResultRow = QueryResultRow>(rows: T[] = [], rowCount: number = 0): QueryResult<T> => ({
   rows,
   rowCount,
   command: "",
@@ -32,7 +32,7 @@ const mockPool = {
 // Mock the pg module
 vi.mock("pg", () => {
   return {
-    Pool: vi.fn(function (this: any) {
+    Pool: vi.fn(function (this: unknown) {
       return mockPool;
     }),
   };

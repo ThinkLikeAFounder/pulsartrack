@@ -11,6 +11,7 @@ import accountRoutes from "../routes/accounts";
 const router = Router();
 
 import { runAllChecks } from "../services/health";
+import { errorMessage } from "../lib/errors";
 
 // Health check
 router.get("/health", async (_req: Request, res: Response) => {
@@ -49,10 +50,10 @@ router.get("/network", async (_req: Request, res: Response) => {
       sorobanRpcUrl: stellarConfig.sorobanRpcUrl,
       feeStats: fees,
     });
-  } catch (err: any) {
+  } catch (err) {
     _req.log?.error({ err }, "Failed to fetch network info");
     const details =
-      process.env.NODE_ENV === "development" ? err.message : undefined;
+      process.env.NODE_ENV === "development" ? errorMessage(err) : undefined;
     res.status(500).json({
       error: "Failed to fetch network info",
       ...(details && { details }),
@@ -66,12 +67,12 @@ router.get("/rates", async (_req: Request, res: Response) => {
     const fees = await getFeeStats();
     res.setHeader("Cache-Control", "public, max-age=60");
     res.json({ rates: fees });
-  } catch (err: any) {
+  } catch (err) {
     res.setHeader("Cache-Control", "no-store");
     res.status(500).json({
       error: "Failed to fetch rates",
-      ...(process.env.NODE_ENV === "development" && err?.message
-        ? { details: err.message }
+      ...(process.env.NODE_ENV === "development" && errorMessage(err)
+        ? { details: errorMessage(err) }
         : {}),
     });
   }

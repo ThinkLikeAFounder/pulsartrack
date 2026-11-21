@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import request from 'supertest';
 import app from '../app';
 import pool from '../config/database';
@@ -15,7 +15,7 @@ describe('Auction Routes', () => {
 
     describe('GET /api/auctions', () => {
         it('should return a list of auctions', async () => {
-            (pool.query as any).mockResolvedValue({
+            (pool.query as Mock).mockResolvedValue({
                 rows: [
                     {
                         auction_id: 1,
@@ -55,7 +55,7 @@ describe('Auction Routes', () => {
          * Callers pass only the data queries; BEGIN is queued here and
          * COMMIT/ROLLBACK fall through to the default empty result.
          */
-        function setupClientMock(...queryResults: any[]) {
+        function setupClientMock(...queryResults: unknown[]) {
             const mockClient = {
                 query: vi.fn(),
                 release: vi.fn(),
@@ -70,7 +70,7 @@ describe('Auction Routes', () => {
             }
             // Default fallback for COMMIT/ROLLBACK
             mockClient.query.mockResolvedValue(EMPTY);
-            (pool.connect as any).mockResolvedValue(mockClient);
+            (pool.connect as Mock).mockResolvedValue(mockClient);
             return mockClient;
         }
 
@@ -103,7 +103,7 @@ describe('Auction Routes', () => {
             expect(response.body.amount_stroops).toBe(150);
             // BEGIN, auction lock, highest-bid check, campaign check, insert, bid_count update, COMMIT
             expect(client.query).toHaveBeenCalledTimes(7);
-            const calls = client.query.mock.calls.map((c: any[]) => c[0]);
+            const calls = client.query.mock.calls.map((c: unknown[]) => c[0] as string);
             expect(calls[0]).toBe('BEGIN');
             expect(calls[1]).toContain('FOR UPDATE');
             expect(calls[1]).toContain('FROM auctions');
@@ -263,7 +263,7 @@ describe('Auction Routes', () => {
 
             expect(response.status).toBe(201);
 
-            const calls = client.query.mock.calls.map((c: any[]) => c[0]);
+            const calls = client.query.mock.calls.map((c: unknown[]) => c[0] as string);
             const beginIndex = calls.indexOf('BEGIN');
             const lockIndex = calls.findIndex(
                 (sql: string) => typeof sql === 'string' && sql.includes('FROM auctions') && sql.includes('FOR UPDATE'),
@@ -293,7 +293,7 @@ describe('Auction Routes', () => {
                 expect(response.status).toBe(400);
                 expect(response.body.error).toBe('Auction is not open for bidding');
 
-                const calls = client.query.mock.calls.map((c: any[]) => c[0]);
+                const calls = client.query.mock.calls.map((c: unknown[]) => c[0] as string);
                 expect(calls[0]).toBe('BEGIN');
                 expect(calls[calls.length - 1]).toBe('ROLLBACK');
                 // No bid may be inserted once the locked read shows a closed auction.

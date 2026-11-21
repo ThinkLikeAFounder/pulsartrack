@@ -11,7 +11,7 @@ vi.mock('./horizon', () => ({
 
 describe('WebSocket Server Security & Rate Limiting', () => {
   let server: http.Server;
-  let wss: any;
+  let wss: ReturnType<typeof setupWebSocketServer>;
   let port: number;
 
   beforeEach(async () => {

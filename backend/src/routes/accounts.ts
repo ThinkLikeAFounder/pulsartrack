@@ -4,6 +4,7 @@ import {
   getAccountTransactions,
 } from '../services/horizon';
 import { validate } from '../middleware/validate';
+import { errorMessage } from "../lib/errors";
 
 const router = Router();
 
@@ -22,12 +23,12 @@ router.get('/:address', addressParamValidation, async (req: Request, res: Respon
       return res.status(404).json({ error: 'Account not found or not funded' });
     }
     res.json(account);
-  } catch (err: any) {
+  } catch (err) {
     const response: Record<string, string> = {
       error: 'Failed to fetch account details',
     };
     if (process.env.NODE_ENV === 'development') {
-      response.details = err.message;
+      response.details = errorMessage(err);
     }
     res.status(500).json(response);
   }
@@ -61,12 +62,12 @@ router.get('/:address/transactions', addressParamValidation, async (req: Request
       },
       order,
     });
-  } catch (err: any) {
+  } catch (err) {
     const response: Record<string, string> = {
       error: 'Failed to fetch transactions',
     };
     if (process.env.NODE_ENV === 'development') {
-      response.details = err.message;
+      response.details = errorMessage(err);
     }
     res.status(500).json(response);
   }

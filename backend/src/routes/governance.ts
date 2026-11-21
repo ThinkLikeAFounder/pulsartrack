@@ -3,6 +3,7 @@ import pool from "../config/database";
 import { callReadOnly } from "../services/soroban-client";
 import { CONTRACT_IDS } from "../config/stellar";
 import { validate } from "../middleware/validate";
+import { errorMessage } from "../lib/errors";
 
 const router = Router();
 
@@ -26,7 +27,7 @@ router.get(
              created_at, voting_ends_at, executed_at
       FROM governance_proposals
     `;
-      const params: any[] = [];
+      const params: unknown[] = [];
 
       if (status) {
         params.push(status);
@@ -55,7 +56,7 @@ router.get(
       let proposalCount: number | null = null;
       if (CONTRACT_IDS.GOVERNANCE_DAO) {
         try {
-          proposalCount = await callReadOnly(
+          proposalCount = await callReadOnly<number>(
             CONTRACT_IDS.GOVERNANCE_DAO,
             "get_proposal_count",
           );
@@ -68,10 +69,10 @@ router.get(
         proposals,
         totalOnChain: proposalCount,
       });
-    } catch (err: any) {
+    } catch (err) {
       req.log?.error({ err }, "Failed to fetch governance proposals");
       const details =
-        process.env.NODE_ENV === "development" ? err.message : undefined;
+        process.env.NODE_ENV === "development" ? errorMessage(err) : undefined;
       res
         .status(500)
         .json({

@@ -5,6 +5,7 @@ import { RateLimiterRedis } from "rate-limiter-flexible";
 import type Redis from "ioredis";
 import redisClient from "../config/redis";
 import { createJwt, decodeJwt, TOKEN_EXPIRY } from "../lib/jwt";
+import { errorMessage } from "../lib/errors";
 const NONCE_TTL_SECONDS = 300; // 5 minutes
 const NONCE_KEY_PREFIX = "nonce:";
 
@@ -84,8 +85,8 @@ export function requireAuth(
     const payload = decodeJwt(authHeader.slice(7));
     req.stellarAddress = payload.sub;
     next();
-  } catch (err: any) {
-    res.status(401).json({ error: err.message });
+  } catch (err) {
+    res.status(401).json({ error: errorMessage(err) });
   }
 }
 
@@ -227,7 +228,7 @@ export function errorHandler(
   req.log?.error(err, "Internal server error");
   const response: Record<string, string> = { error: "Internal server error" };
   if (process.env.NODE_ENV === "development") {
-    response.message = err.message;
+    response.message = errorMessage(err);
   }
   res.status(500).json(response);
 }

@@ -5,6 +5,7 @@ import { CONTRACT_IDS } from '../config/stellar';
 import { requireAuth, rateLimitAccount, rateLimitWrite, getAuthedAddress } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import pool from '../config/database';
+import { errorMessage } from "../lib/errors";
 
 const router = Router();
 
@@ -39,7 +40,7 @@ router.get('/stats', async (_req: Request, res: Response) => {
     let onChainTotal: number | null = null;
     if (CONTRACT_IDS.CAMPAIGN_ORCHESTRATOR) {
       try {
-        onChainTotal = await callReadOnly(
+        onChainTotal = await callReadOnly<number>(
           CONTRACT_IDS.CAMPAIGN_ORCHESTRATOR,
           'get_campaign_count'
         );
@@ -56,9 +57,9 @@ router.get('/stats', async (_req: Request, res: Response) => {
       total_spent_xlm: (stats.totalSpentStroops ?? 0) / 1e7,
       ...(stats._partial && { _partial: stats._partial }),
     });
-  } catch (err: any) {
+  } catch (err) {
     _req.log?.error({ err }, 'Failed to fetch campaign stats');
-    const details = process.env.NODE_ENV === 'development' ? err.message : undefined;
+    const details = process.env.NODE_ENV === 'development' ? errorMessage(err) : undefined;
     res.status(500).json({ error: 'Failed to fetch campaign stats', ...(details && { details }) });
   }
 });
@@ -91,9 +92,9 @@ router.post('/', requireAuth, rateLimitAccount(), rateLimitWrite(), validate({
     });
 
     res.status(201).json(campaign);
-  } catch (err: any) {
+  } catch (err) {
     req.log?.error({ err }, 'Failed to create campaign');
-    const details = process.env.NODE_ENV === 'development' ? err.message : undefined;
+    const details = process.env.NODE_ENV === 'development' ? errorMessage(err) : undefined;
     res.status(500).json({ error: 'Failed to create campaign', ...(details && { details }) });
   }
 });
