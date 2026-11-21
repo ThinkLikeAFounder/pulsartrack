@@ -132,6 +132,24 @@ const SCHEMA: Record<string, Rule> = {
     default: "30000",
     description: "Express response timeout",
   },
+  EVENT_POLL_INTERVAL_MS: {
+    type: "int",
+    min: 1,
+    default: "5000",
+    description: "Event indexer polling interval in milliseconds",
+  },
+  EVENT_MAX_PER_POLL: {
+    type: "int",
+    min: 1,
+    default: "200",
+    description: "Maximum events the event indexer fetches per poll",
+  },
+  SENTRY_DSN: {
+    type: "url",
+    protocols: ["http:", "https:"],
+    requiredIn: [],
+    description: "Sentry DSN; error reporting is disabled when unset",
+  },
   CORS_ORIGIN: {
     type: "string",
     minLength: 1,
@@ -217,6 +235,9 @@ export interface ValidatedEnv {
   SIMULATION_ACCOUNT?: string;
   STELLAR_REQUEST_TIMEOUT_MS: number;
   EXPRESS_RESPONSE_TIMEOUT_MS: number;
+  EVENT_POLL_INTERVAL_MS: number;
+  EVENT_MAX_PER_POLL: number;
+  SENTRY_DSN?: string;
   CORS_ORIGIN?: string;
   LOG_LEVEL: string;
   [key: string]: string | number | undefined;

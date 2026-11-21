@@ -170,6 +170,59 @@ fn test_suspend_publisher() {
 }
 
 #[test]
+fn test_reactivate_publisher_restores_node_and_stats() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin) = setup(&env);
+    let fraud = Address::generate(&env);
+    c.set_fraud_contract(&admin, &fraud);
+    let pub1 = Address::generate(&env);
+    let cats = vec![&env, s(&env, "tech")];
+    c.join_network(
+        &pub1,
+        &NodeType::Standard,
+        &10_000u64,
+        &100i128,
+        &s(&env, "US"),
+        &cats,
+    );
+    c.suspend_publisher(&fraud, &pub1);
+    assert_eq!(c.get_network_stats().active_nodes, 0);
+
+    c.reactivate_publisher(&fraud, &pub1);
+    assert!(c.get_node(&pub1).unwrap().is_active);
+    let stats = c.get_network_stats();
+    assert_eq!(stats.active_nodes, 1);
+    assert_eq!(stats.total_nodes, 1);
+    assert_eq!(stats.total_capacity, 10_000);
+    assert_eq!(c.get_node_count(), 1);
+    // Publisher can serve impressions again
+    c.record_impression(&pub1);
+}
+
+#[test]
+#[should_panic(expected = "unauthorized fraud contract")]
+fn test_reactivate_publisher_wrong_fraud() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin) = setup(&env);
+    let fraud = Address::generate(&env);
+    c.set_fraud_contract(&admin, &fraud);
+    let pub1 = Address::generate(&env);
+    let cats = vec![&env, s(&env, "tech")];
+    c.join_network(
+        &pub1,
+        &NodeType::Standard,
+        &10_000u64,
+        &100i128,
+        &s(&env, "US"),
+        &cats,
+    );
+    c.suspend_publisher(&fraud, &pub1);
+    c.reactivate_publisher(&Address::generate(&env), &pub1);
+}
+
+#[test]
 #[should_panic(expected = "unauthorized fraud contract")]
 fn test_suspend_publisher_wrong_fraud() {
     let env = Env::default();

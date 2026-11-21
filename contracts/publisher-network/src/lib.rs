@@ -216,6 +216,66 @@ impl PublisherNetworkContract {
         Self::_deactivate_node(&env, publisher);
     }
 
+    /// Reverses `suspend_publisher`. Only the configured fraud contract may call it.
+    pub fn reactivate_publisher(env: Env, fraud_contract: Address, publisher: Address) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        fraud_contract.require_auth();
+
+        let stored_fraud: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::FraudContract)
+            .expect("fraud contract not set");
+        if fraud_contract != stored_fraud {
+            panic!("unauthorized fraud contract");
+        }
+
+        let mut node: NetworkNode = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Node(publisher.clone()))
+            .expect("not in network");
+
+        if node.is_active {
+            return;
+        }
+
+        node.is_active = true;
+        let _ttl_key = DataKey::Node(publisher.clone());
+        env.storage().persistent().set(&_ttl_key, &node);
+        env.storage().persistent().extend_ttl(
+            &_ttl_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+
+        let mut stats: NetworkStats = env
+            .storage()
+            .instance()
+            .get(&DataKey::NetworkStats)
+            .unwrap();
+        stats.active_nodes += 1;
+        stats.total_nodes += 1;
+        stats.total_capacity += node.capacity;
+        env.storage().instance().set(&DataKey::NetworkStats, &stats);
+
+        let count: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::NodeCount)
+            .unwrap_or(0);
+        env.storage()
+            .instance()
+            .set(&DataKey::NodeCount, &(count + 1));
+
+        env.events().publish(
+            (symbol_short!("network"), symbol_short!("reactive")),
+            publisher,
+        );
+    }
+
     fn _deactivate_node(env: &Env, publisher: Address) {
         let mut node: NetworkNode = env
             .storage()
