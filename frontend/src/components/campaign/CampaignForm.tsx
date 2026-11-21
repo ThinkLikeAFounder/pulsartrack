@@ -1,6 +1,6 @@
 "use client";
 
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useCreateCampaign } from "@/hooks/useContract";
 import { campaignSchema, CampaignFormData } from "@/lib/validation/schemas";
@@ -63,10 +63,10 @@ export function CampaignForm({ onSuccess, onCancel }: CampaignFormProps) {
   const { createCampaign, isPending } = useCreateCampaign();
 
   const {
+    control,
     register,
     handleSubmit,
     reset,
-    watch,
     formState: { errors },
   } = useForm<CampaignFormData>({
     resolver: zodResolver(campaignSchema),
@@ -84,8 +84,8 @@ export function CampaignForm({ onSuccess, onCancel }: CampaignFormProps) {
     },
   });
 
-  const budgetXlm = watch("budgetXlm");
-  const costPerViewXlm = watch("costPerViewXlm");
+  const budgetXlm = useWatch({ control, name: "budgetXlm" });
+  const costPerViewXlm = useWatch({ control, name: "costPerViewXlm" });
 
   // Calculate suggested target views based on budget and cost per view
   const suggestedTargetViews =
