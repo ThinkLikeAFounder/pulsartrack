@@ -1,31 +1,27 @@
 "use client";
 
-import React from "react";
+import { AlertTriangle } from "lucide-react";
 import { useWalletStore } from "../../store/wallet-store";
 
 /**
- * Persistent banner shown when Freighter network doesn't match app network.
+ * Shown under the header while the connected Freighter wallet is on a
+ * different network from the one this app is configured for.
  */
 export default function NetworkMismatchBanner() {
-  const { networkMismatch, freighterNetwork, network } = useWalletStore();
+  const { isConnected, networkMismatch, freighterNetwork, network } = useWalletStore();
 
-  if (!networkMismatch) return null;
+  if (!isConnected || !networkMismatch) return null;
 
   return (
-    <div style={{
-      position: "fixed",
-      top: 0,
-      left: 0,
-      right: 0,
-      background: "#ffecec",
-      color: "#611a15",
-      padding: "12px 16px",
-      zIndex: 9999,
-      borderBottom: "1px solid #f5c6cb",
-      textAlign: "center",
-    }}>
-      <strong>Network mismatch:</strong>{" "}
-      Your Freighter wallet is set to <em>{freighterNetwork || "unknown"}</em>. This app requires <em>{network}</em>. Please switch networks in the Freighter extension.
+    <div
+      role="alert"
+      className="bg-amber-500 text-white px-4 py-2 text-sm font-medium text-center flex items-center justify-center gap-2"
+    >
+      <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden="true" />
+      <span>
+        Network mismatch: your Freighter wallet is on {freighterNetwork || "an unknown network"}, but this app
+        uses {network}. Switch networks in Freighter.
+      </span>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { PlusCircle, BarChart3, DollarSign, TrendingUp, Eye, MousePointer, Gavel, Target } from 'lucide-react';
 import { useWalletStore } from '@/store/wallet-store';
 import { WalletConnectButton } from '@/components/wallet/WalletModal';
@@ -12,9 +12,13 @@ import {
   useOpenAuctions,
   AdvertiserCampaign,
 } from '@/hooks/useContract';
-import { formatXlm, formatNumber } from '@/lib/display-utils';
+import { formatXlm } from '@/lib/display-utils';
 import { AuctionList } from '@/components/auction/AuctionList';
 import { CampaignForm } from '@/components/campaign/CampaignForm';
+import { CampaignCard } from '@/components/campaign/CampaignCard';
+import { CampaignStats } from '@/components/campaign/CampaignStats';
+import { AnalyticsDashboard } from '@/components/analytics/AnalyticsDashboard';
+import { toCampaign } from '@/lib/contract-adapters';
 import { TargetingForm, type TargetingConfig } from '@/components/targeting/TargetingForm';
 import type { Auction } from '@/types/contracts';
 
@@ -43,6 +47,11 @@ export default function AdvertiserPage() {
     useOpenAuctions(auctionCount);
 
   const [activeTab, setActiveTab] = useState<AdvertiserTab>('campaigns');
+  const [timeframe, setTimeframe] = useState<'7d' | '30d' | '90d'>('30d');
+  const campaignViews = useMemo(
+    () => ((campaigns ?? []) as AdvertiserCampaign[]).map(toCampaign),
+    [campaigns],
+  );
   const [createdCampaignId, setCreatedCampaignId] = useState<number | null>(null);
   const [targetingConfig, setTargetingConfig] = useState<Partial<TargetingConfig>>({});
 
@@ -186,41 +195,14 @@ export default function AdvertiserPage() {
                     <div className="h-4 bg-gray-200 rounded w-1/2"></div>
                   </div>
                 </div>
-              ) : campaigns && campaigns.length > 0 ? (
-                <div className="space-y-4">
-                  {campaigns.map((camp: AdvertiserCampaign) => (
-                    <div
-                      key={camp.id}
-                      className="p-4 border border-gray-200 rounded-lg flex justify-between items-center"
-                    >
-                      <div>
-                        <h3 className="font-semibold">Campaign #{camp.id}</h3>
-                        <p className="text-sm text-gray-500">
-                          Status:{" "}
-                          {typeof camp.status === "string"
-                            ? camp.status
-                            : Object.keys(camp.status || {})[0] || "Unknown"}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-medium">
-                          {camp.budget !== undefined
-                            ? formatXlm(camp.budget)
-                            : "—"}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          {camp.current_views !== undefined
-                            ? formatNumber(camp.current_views)
-                            : 0}{" "}
-                          /{" "}
-                          {camp.target_views !== undefined
-                            ? formatNumber(camp.target_views)
-                            : 0}{" "}
-                          Views
-                        </p>
-                      </div>
-                    </div>
-                  ))}
+              ) : campaignViews.length > 0 ? (
+                <div className="space-y-4 bg-gray-900 rounded-xl p-4">
+                  <CampaignStats campaigns={campaignViews} />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {campaignViews.map((campaign) => (
+                      <CampaignCard key={campaign.campaign_id.toString()} campaign={campaign} />
+                    ))}
+                  </div>
                 </div>
               ) : (
                 <div className="text-center py-12 text-gray-500">
@@ -296,10 +278,20 @@ export default function AdvertiserPage() {
               <h2 className="text-lg font-semibold text-gray-900 mb-4">
                 Campaign Analytics
               </h2>
-              <div className="text-center py-12 text-gray-500">
-                <TrendingUp className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                <p>Analytics data will appear once campaigns are running.</p>
-              </div>
+              {campaignViews.length > 0 ? (
+                <div className="bg-gray-900 rounded-xl p-4">
+                  <AnalyticsDashboard
+                    campaigns={campaignViews}
+                    timeframe={timeframe}
+                    onTimeframeChange={setTimeframe}
+                  />
+                </div>
+              ) : (
+                <div className="text-center py-12 text-gray-500">
+                  <TrendingUp className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                  <p>Analytics data will appear once campaigns are running.</p>
+                </div>
+              )}
             </div>
           )}
         </div>
