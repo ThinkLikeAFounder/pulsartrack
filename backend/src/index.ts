@@ -116,7 +116,7 @@ async function start() {
   try {
     await prisma.$connect();
     logger.info("[DB] Prisma client connected");
-  } catch (_err) {
+  } catch (err) {
     if (process.env.NODE_ENV === "production") {
       logger.fatal("[DB] Prisma connection failed — aborting in production");
       throw err;
