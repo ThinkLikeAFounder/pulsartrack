@@ -60,6 +60,8 @@ updates:
     ignore:
       - dependency-name: "soroban-sdk"
         update-types: ["version-update:semver-major"]
+      - dependency-name: "ed25519-dalek"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"

@@ -401,3 +401,27 @@ fn test_set_max_pending_amount() {
 
     assert_eq!(client.get_max_pending_amount(), 2_000_000);
 }
+
+#[test]
+#[should_panic(expected = "contract is paused")]
+fn test_schedule_payout_panics_when_paused() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, _, _) = setup(&env);
+    let recipient = Address::generate(&env);
+
+    client.set_paused(&admin, &true);
+    client.schedule_payout(&admin, &recipient, &1_000_000i128, &3600u64, &None);
+}
+
+#[test]
+#[should_panic(expected = "contract is paused")]
+fn test_add_publisher_earnings_panics_when_paused() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, _, _) = setup(&env);
+    let publisher = Address::generate(&env);
+
+    client.set_paused(&admin, &true);
+    client.add_publisher_earnings(&admin, &publisher, &500_000i128);
+}

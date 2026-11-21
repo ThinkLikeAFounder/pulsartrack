@@ -1,11 +1,10 @@
 "use client";
 
 import { useState } from 'react';
-import { PlusCircle, BarChart3, DollarSign, TrendingUp, Eye, MousePointer, Gavel } from 'lucide-react';
+import { PlusCircle, BarChart3, DollarSign, TrendingUp, Eye, MousePointer, Gavel, Target } from 'lucide-react';
 import { useWalletStore } from '@/store/wallet-store';
 import { WalletConnectButton } from '@/components/wallet/WalletModal';
 import {
-  useCreateCampaign,
   useCampaignCount,
   useAdvertiserCampaigns,
   useAdvertiserStats,
@@ -15,25 +14,11 @@ import {
 } from '@/hooks/useContract';
 import { formatXlm, formatNumber } from '@/lib/display-utils';
 import { AuctionList } from '@/components/auction/AuctionList';
+import { CampaignForm } from '@/components/campaign/CampaignForm';
+import { TargetingForm, type TargetingConfig } from '@/components/targeting/TargetingForm';
 import type { Auction } from '@/types/contracts';
 
-type AdvertiserTab = 'campaigns' | 'create' | 'auctions' | 'analytics';
-
-interface CampaignForm {
-  title: string;
-  budgetXlm: string;
-  dailyBudgetXlm: string;
-  durationDays: string;
-  contentId: string;
-}
-
-const EMPTY_FORM: CampaignForm = {
-  title: "",
-  budgetXlm: "",
-  dailyBudgetXlm: "",
-  durationDays: "30",
-  contentId: "",
-};
+type AdvertiserTab = 'campaigns' | 'create' | 'targeting' | 'auctions' | 'analytics';
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
@@ -46,7 +31,6 @@ const COLOR_MAP = {
 
 export default function AdvertiserPage() {
   const { address, isConnected } = useWalletStore();
-  const { createCampaign, isPending, isSuccess, isError } = useCreateCampaign();
 
   const { data: stats, isLoading: isStatsLoading } = useAdvertiserStats(
     address as string,
@@ -58,9 +42,9 @@ export default function AdvertiserPage() {
   const { data: openAuctions, isLoading: isAuctionsLoading, refetch: refetchAuctions } =
     useOpenAuctions(auctionCount);
 
-  const [form, setForm] = useState<CampaignForm>(EMPTY_FORM);
   const [activeTab, setActiveTab] = useState<AdvertiserTab>('campaigns');
-  const errors: Record<string, string[]> = {};
+  const [createdCampaignId, setCreatedCampaignId] = useState<number | null>(null);
+  const [targetingConfig, setTargetingConfig] = useState<Partial<TargetingConfig>>({});
 
   if (!isConnected) {
     return (
@@ -81,21 +65,6 @@ export default function AdvertiserPage() {
       </div>
     );
   }
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    createCampaign({
-      title: form.title,
-      contentId: form.contentId,
-      campaignType: 0,
-      budgetXlm: parseFloat(form.budgetXlm) || 0,
-      costPerViewXlm: parseFloat(form.dailyBudgetXlm) || 0,
-      durationDays: parseInt(form.durationDays) || 30,
-      targetViews: 0,
-      dailyViewLimit: 0,
-      refundable: false,
-    });
-  };
 
   return (
     <ErrorBoundary name="AdvertiserPage" resetKeys={[activeTab]}>
@@ -184,6 +153,7 @@ export default function AdvertiserPage() {
             {([
               { id: "campaigns", label: "My Campaigns", icon: BarChart3 },
               { id: "create", label: "Create Campaign", icon: PlusCircle },
+              { id: "targeting", label: "Targeting", icon: Target },
               { id: "auctions", label: "RTB Auctions", icon: Gavel },
               { id: "analytics", label: "Analytics", icon: TrendingUp },
             ] as Array<{ id: AdvertiserTab; label: string; icon: typeof BarChart3 }>).map(({ id, label, icon: Icon }) => (
@@ -270,135 +240,38 @@ export default function AdvertiserPage() {
           )}
 
           {activeTab === "create" && (
-            <div className="bg-white rounded-xl border border-gray-200 p-6 max-w-2xl">
-              <h2 className="text-lg font-semibold text-gray-900 mb-6">
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-6 max-w-2xl">
+              <h2 className="text-lg font-semibold text-white mb-6">
                 Create New Campaign
               </h2>
 
-              {isSuccess && (
-                <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">
-                  Campaign created successfully on Stellar!
-                </div>
-              )}
-              {isError && (
-                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-                  Error creating campaign. Check your XLM balance and try again.
+              {createdCampaignId !== null && (
+                <div className="mb-4 p-3 bg-green-900/30 border border-green-700 rounded-lg text-green-300 text-sm">
+                  Campaign #{createdCampaignId} created successfully on Stellar!
                 </div>
               )}
 
-              <form onSubmit={handleSubmit} className="space-y-4">
-                {/* Show validation errors */}
-                {Object.keys(errors).length > 0 && (
-                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-                    {Object.entries(errors).map(([field, msgs]) =>
-                      msgs?.map((msg, i) => <div key={field + i}>{msg}</div>)
-                    )}
-                  </div>
-                )}
-                <div>
-                  <label htmlFor="campaign-title" className="block text-sm font-medium text-gray-700 mb-1">
-                    Campaign Title
-                  </label>
-                  <input
-                    id="campaign-title"
-                    type="text"
-                    value={form.title}
-                    onChange={(e) =>
-                      setForm({ ...form, title: e.target.value })
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    placeholder="My Awesome Campaign"
-                    required
-                  />
-                </div>
+              <CampaignForm
+                onSuccess={(campaignId) => setCreatedCampaignId(campaignId)}
+                onCancel={() => setActiveTab("campaigns")}
+              />
+            </div>
+          )}
 
-                <div>
-                  <label htmlFor="campaign-content-id" className="block text-sm font-medium text-gray-700 mb-1">
-                    Content ID (IPFS Hash)
-                  </label>
-                  <input
-                    id="campaign-content-id"
-                    type="text"
-                    value={form.contentId}
-                    onChange={(e) =>
-                      setForm({ ...form, contentId: e.target.value })
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-mono text-sm"
-                    placeholder="QmXxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                    required
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="campaign-budget" className="block text-sm font-medium text-gray-700 mb-1">
-                      Total Budget (XLM)
-                    </label>
-                    <input
-                      id="campaign-budget"
-                      type="number"
-                      value={form.budgetXlm}
-                      onChange={(e) =>
-                        setForm({ ...form, budgetXlm: e.target.value })
-                      }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                      placeholder="1000"
-                      min="1"
-                      step="0.01"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="campaign-daily-budget" className="block text-sm font-medium text-gray-700 mb-1">
-                      Daily Budget (XLM)
-                    </label>
-                    <input
-                      id="campaign-daily-budget"
-                      type="number"
-                      value={form.dailyBudgetXlm}
-                      onChange={(e) =>
-                        setForm({ ...form, dailyBudgetXlm: e.target.value })
-                      }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                      placeholder="50"
-                      min="0.01"
-                      step="0.01"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label htmlFor="campaign-duration" className="block text-sm font-medium text-gray-700 mb-1">
-                    Duration (days)
-                  </label>
-                  <input
-                    id="campaign-duration"
-                    type="number"
-                    value={form.durationDays}
-                    onChange={(e) =>
-                      setForm({ ...form, durationDays: e.target.value })
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    min="1"
-                    max="365"
-                    required
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isPending}
-                  className="w-full py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isPending ? "Creating on Stellar..." : "Create Campaign"}
-                </button>
-
-                <p className="text-xs text-gray-500 text-center">
-                  This will submit a Soroban transaction. You will be prompted
-                  to sign with Freighter.
-                </p>
-              </form>
+          {activeTab === "targeting" && (
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-6 max-w-2xl">
+              <h2 className="text-lg font-semibold text-white mb-1">
+                Audience Targeting
+              </h2>
+              <p className="text-sm text-gray-400 mb-6">
+                Configure geographic, interest, device, and quality targeting rules for your campaigns.
+              </p>
+              <TargetingForm
+                initial={targetingConfig}
+                onSave={async (config) => {
+                  setTargetingConfig(config);
+                }}
+              />
             </div>
           )}
 
