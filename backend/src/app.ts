@@ -8,15 +8,14 @@ import apiRoutes from './api/routes';
 import redisClient from './config/redis';
 import { errorHandler, rateLimit, configureRateLimiters } from './middleware/auth';
 import { getTrustedProxyHops } from './lib/client-ip';
+import { loadEnv } from './config/env';
 
 const app = express();
+const env = loadEnv();
 // Honor X-Forwarded-For only from the configured number of trusted proxies
 // (TRUST_PROXY_HOPS); 0 means req.ip is always the socket address.
 app.set('trust proxy', getTrustedProxyHops());
-const RESPONSE_TIMEOUT_MS = Number.parseInt(
-    process.env.EXPRESS_RESPONSE_TIMEOUT_MS || '30000',
-    10,
-);
+const RESPONSE_TIMEOUT_MS = env.EXPRESS_RESPONSE_TIMEOUT_MS;
 
 configureRateLimiters(redisClient);
 
