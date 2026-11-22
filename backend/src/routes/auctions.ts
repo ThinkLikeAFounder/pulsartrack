@@ -5,6 +5,7 @@ import { CONTRACT_IDS } from "../config/stellar";
 import { requireAuth, rateLimitAccount, rateLimitWrite } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { errorMessage } from "../lib/errors";
+import { stroopsToXlm } from "../lib/bigint";
 
 const router = Router();
 
@@ -43,9 +44,9 @@ router.get(
         auctionId: r.auction_id,
         publisher: r.publisher,
         impressionSlot: r.impression_slot,
-        floorPriceXlm: Number(r.floor_price_stroops) / 1e7,
+        floorPriceXlm: stroopsToXlm(r.floor_price_stroops),
         winningBidXlm: r.winning_bid_stroops
-          ? Number(r.winning_bid_stroops) / 1e7
+          ? stroopsToXlm(r.winning_bid_stroops)
           : null,
         winner: r.winner,
         bidCount: r.bid_count,

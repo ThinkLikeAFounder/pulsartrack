@@ -5,6 +5,7 @@ import { CONTRACT_IDS } from "../config/stellar";
 import { requireAuth, rateLimitAccount, rateLimitWrite, getAuthedAddress } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { errorCode, errorMessage } from "../lib/errors";
+import { stroopsToXlm } from "../lib/bigint";
 
 const router = Router();
 
@@ -31,7 +32,7 @@ router.get(
         tier: r.tier,
         reputationScore: r.reputationScore,
         impressionsServed: Number(r.impressionsServed),
-        earningsXlm: Number(r.earningsStroops) / 1e7,
+        earningsXlm: stroopsToXlm(r.earningsStroops),
         lastActivity: r.lastActivity,
       }));
 

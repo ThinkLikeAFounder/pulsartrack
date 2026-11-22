@@ -37,9 +37,9 @@ describe('Governance Routes', () => {
             expect(response.body.proposals[0]).toMatchObject({
                 proposalId: 7,
                 status: 'Active',
-                votesFor: 42,
-                votesAgainst: 3,
-                votesAbstain: 1,
+                votesFor: '42',
+                votesAgainst: '3',
+                votesAbstain: '1',
             });
             expect(response.body.totalOnChain).toBeNull();
             expect(callReadOnly).not.toHaveBeenCalled();
