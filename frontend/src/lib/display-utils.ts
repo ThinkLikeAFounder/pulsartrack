@@ -69,6 +69,14 @@ export function formatDuration(seconds: number | bigint): string {
 }
 
 /**
+ * Format a basis-point value (1 bp = 0.01%) as a percentage, e.g. 9000 -> "90%",
+ * 250 -> "2.5%".
+ */
+export function formatBps(bps: number | bigint): string {
+  return `${Number((Number(bps) / 100).toFixed(2))}%`;
+}
+
+/**
  * Format PULSAR token amount (7 decimal places)
  */
 export function formatPulsar(amount: bigint | number, decimals = 2): string {

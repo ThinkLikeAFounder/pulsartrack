@@ -6,6 +6,7 @@ import { requireAuth, rateLimitAccount, rateLimitWrite, getAuthedAddress } from 
 import { validate } from '../middleware/validate';
 import pool from '../config/database';
 import { errorMessage } from "../lib/errors";
+import { stroopsToXlm } from '../lib/bigint';
 
 const router = Router();
 
@@ -54,7 +55,7 @@ router.get('/stats', async (_req: Request, res: Response) => {
       active_campaigns: stats.activeCampaigns ?? 0,
       total_impressions: stats.totalImpressions ?? 0,
       total_clicks: stats.totalClicks ?? 0,
-      total_spent_xlm: (stats.totalSpentStroops ?? 0) / 1e7,
+      total_spent_xlm: stroopsToXlm(stats.totalSpentStroops),
       ...(stats._partial && { _partial: stats._partial }),
     });
   } catch (err) {

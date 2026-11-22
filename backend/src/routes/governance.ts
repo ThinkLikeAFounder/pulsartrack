@@ -4,6 +4,7 @@ import { callReadOnly } from "../services/soroban-client";
 import { CONTRACT_IDS } from "../config/stellar";
 import { validate } from "../middleware/validate";
 import { errorMessage } from "../lib/errors";
+import { bigintToString } from "../lib/bigint";
 
 const router = Router();
 
@@ -45,9 +46,11 @@ router.get(
         title: r.title,
         description: r.description,
         status: r.status,
-        votesFor: Number(r.votes_for),
-        votesAgainst: Number(r.votes_against),
-        votesAbstain: Number(r.votes_abstain),
+        // BIGINT columns are serialised as decimal strings to avoid precision
+        // loss above Number.MAX_SAFE_INTEGER.
+        votesFor: bigintToString(r.votes_for),
+        votesAgainst: bigintToString(r.votes_against),
+        votesAbstain: bigintToString(r.votes_abstain),
         createdAt: r.created_at,
         votingEndsAt: r.voting_ends_at,
         executedAt: r.executed_at,

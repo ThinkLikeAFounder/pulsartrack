@@ -16,6 +16,7 @@ import {
   usePublisherData,
   usePublisherKyc,
   usePublisherEarnings,
+  useRevenuePool,
   useAuctionCount,
   usePublisherAuctions,
   useCreateAuction,
@@ -136,6 +137,7 @@ export default function PublisherPage() {
     address || '',
     isConnected,
   );
+  const { data: revenuePool, isLoading: revenuePoolLoading } = useRevenuePool(isConnected);
   const { data: auctionCount } = useAuctionCount(isConnected);
   const { data: auctions, isLoading: auctionsLoading } = usePublisherAuctions(
     address || '',
@@ -595,6 +597,17 @@ export default function PublisherPage() {
                         : earnings || 0n
                     }
                     pendingPayout={earnings || 0n}
+                    isSplitLoading={revenuePoolLoading}
+                    revenueSplit={
+                      revenuePool
+                        ? {
+                            publisherPct: revenuePool.publisher_pct,
+                            treasuryPct: revenuePool.treasury_pct,
+                            platformPct: revenuePool.platform_pct,
+                            burnPct: revenuePool.burn_pct,
+                          }
+                        : undefined
+                    }
                   />
                 </div>
               ) : (
