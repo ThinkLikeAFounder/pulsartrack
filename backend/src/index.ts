@@ -8,6 +8,7 @@ import prisma from "./db/prisma";
 import redisClient from "./config/redis";
 import { validateSimulationAccount } from "./services/soroban-client";
 import { startEventIndexer, stopEventIndexer } from "./services/event-indexer";
+import { startAuctionSettler, stopAuctionSettler } from "./services/auction-settler";
 import { EnvValidationError, loadEnv } from "./config/env";
 import { logger } from "./lib/logger";
 import { runMigrations } from "./db/migrate";
@@ -20,6 +21,7 @@ setupWebSocketServer(server);
 
 async function closeResources() {
   stopEventIndexer();
+  stopAuctionSettler();
 
   try {
     await prisma.$disconnect();
@@ -133,6 +135,8 @@ async function start() {
     // Start the background event indexer after the server is listening,
     // so it does not block startup and has access to the DB.
     startEventIndexer();
+    // Settle ended auctions (winner / winning bid) in the background.
+    startAuctionSettler();
   });
 }
 

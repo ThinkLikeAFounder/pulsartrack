@@ -108,7 +108,7 @@ router.post(
 
       // Lock the auction row and verify it exists and is open
       const auctionResult = await client.query(
-        `SELECT publisher, floor_price_stroops, status FROM auctions WHERE auction_id = $1 FOR UPDATE`,
+        `SELECT publisher, floor_price_stroops, status, end_time FROM auctions WHERE auction_id = $1 FOR UPDATE`,
         [auctionId],
       );
       if (auctionResult.rows.length === 0) {
@@ -121,6 +121,12 @@ router.post(
         return res
           .status(400)
           .json({ error: "Auction is not open for bidding" });
+      }
+
+      // Ended auctions are awaiting settlement — no new bids (#1251)
+      if (auction.end_time && new Date(auction.end_time).getTime() <= Date.now()) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "Auction has ended" });
       }
 
       // Prevent self-bidding
