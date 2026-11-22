@@ -585,6 +585,32 @@ export function usePublisherEarnings(publisherAddress: string, enabled = true) {
 }
 
 /**
+ * On-chain revenue pool. The *_pct fields are the configured revenue split in
+ * basis points (10_000 = 100%) — they are contract state, not constants.
+ */
+export interface RevenuePoolData {
+  platform_pct: number | bigint;
+  publisher_pct: number | bigint;
+  treasury_pct: number | bigint;
+  burn_pct: number | bigint;
+  [key: string]: unknown;
+}
+
+/**
+ * Hook to get the revenue-settlement pool (includes the configured split)
+ */
+export function useRevenuePool(enabled = true) {
+  return useContractRead<RevenuePoolData>(
+    {
+      contractId: CONTRACT_IDS.REVENUE_SETTLEMENT,
+      method: "get_revenue_pool",
+      args: [],
+    },
+    enabled,
+  );
+}
+
+/**
  * Hook to get active auctions count
  */
 export function useAuctionCount(enabled = true) {

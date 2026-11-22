@@ -1,11 +1,19 @@
 'use client';
 
-import { formatXlm, formatNumber } from '@/lib/display-utils';
+import { formatXlm, formatNumber, formatBps } from '@/lib/display-utils';
 
 interface EarningPeriod {
   label: string;
   amount: bigint;
   impressions: number;
+}
+
+/** Revenue split as configured on-chain, in basis points (10_000 = 100%). */
+export interface RevenueSplit {
+  publisherPct: number | bigint;
+  treasuryPct: number | bigint;
+  platformPct: number | bigint;
+  burnPct: number | bigint;
 }
 
 interface EarningsDisplayProps {
@@ -14,6 +22,9 @@ interface EarningsDisplayProps {
   pendingPayout?: bigint;
   onWithdraw?: () => void;
   isWithdrawing?: boolean;
+  /** Split read from the revenue-settlement contract; omit while unavailable. */
+  revenueSplit?: RevenueSplit;
+  isSplitLoading?: boolean;
 }
 
 export function EarningsDisplay({
@@ -22,7 +33,18 @@ export function EarningsDisplay({
   pendingPayout = BigInt(0),
   onWithdraw,
   isWithdrawing,
+  revenueSplit,
+  isSplitLoading,
 }: EarningsDisplayProps) {
+  const splitRows = revenueSplit
+    ? [
+        { label: 'Publisher (you)', bps: revenueSplit.publisherPct, color: 'bg-green-500' },
+        { label: 'Treasury', bps: revenueSplit.treasuryPct, color: 'bg-blue-500' },
+        { label: 'Platform fee', bps: revenueSplit.platformPct, color: 'bg-purple-500' },
+        { label: 'PULSAR burn', bps: revenueSplit.burnPct, color: 'bg-red-500' },
+      ]
+    : [];
+
   const maxAmount = periods.reduce(
     (max, p) => (p.amount > max ? p.amount : max),
     BigInt(1)
@@ -91,20 +113,26 @@ export function EarningsDisplay({
       {/* Revenue split info */}
       <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
         <h4 className="text-sm font-medium text-gray-300 mb-2">Revenue Split</h4>
-        <div className="space-y-1.5 text-xs">
-          {[
-            { label: 'Publisher (you)', pct: '90%', color: 'bg-green-500' },
-            { label: 'Treasury', pct: '5%', color: 'bg-blue-500' },
-            { label: 'Platform fee', pct: '2.5%', color: 'bg-purple-500' },
-            { label: 'PULSAR burn', pct: '2.5%', color: 'bg-red-500' },
-          ].map(({ label, pct, color }) => (
-            <div key={label} className="flex items-center gap-2">
-              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${color}`} />
-              <span className="text-gray-400 flex-1">{label}</span>
-              <span className="text-gray-200 font-medium">{pct}</span>
-            </div>
-          ))}
-        </div>
+        {splitRows.length > 0 ? (
+          <div className="space-y-1.5 text-xs">
+            {splitRows.map(({ label, bps, color }) => (
+              <div key={label} className="flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${color}`} />
+                <span className="text-gray-400 flex-1">{label}</span>
+                <span className="text-gray-200 font-medium">{formatBps(bps)}</span>
+              </div>
+            ))}
+            <p className="text-gray-500 pt-1">
+              Configured on-chain by the revenue-settlement contract; may change.
+            </p>
+          </div>
+        ) : (
+          <p className="text-xs text-gray-500">
+            {isSplitLoading
+              ? 'Loading revenue split...'
+              : 'Revenue split unavailable — could not be read from the revenue-settlement contract.'}
+          </p>
+        )}
       </div>
     </div>
   );

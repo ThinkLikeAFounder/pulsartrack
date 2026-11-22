@@ -132,6 +132,15 @@ export function demoReadOnly<T = unknown>(options: ReadOnlyOptions): T {
       return (world.publishers[address]?.earnings ?? 0n) as unknown as T;
     }
 
+    case 'get_revenue_pool':
+      // Mirrors the contract's default split, in basis points.
+      return {
+        platform_pct: 250,
+        publisher_pct: 9_000,
+        treasury_pct: 500,
+        burn_pct: 250,
+      } as unknown as T;
+
     case 'get_subscription': {
       if (!world.subscription) return null as T;
       return { tier: world.subscription.planName } as unknown as T;
