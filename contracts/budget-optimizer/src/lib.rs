@@ -92,6 +92,17 @@ pub struct SetBudgetArgs {
     pub target_ctr: u32,
 }
 
+fn within_budget(allocation: &BudgetAllocation, amount: i128, current_day: u64) -> bool {
+    let effective_spent_today = if current_day > allocation.last_reset_day {
+        0
+    } else {
+        allocation.spent_today
+    };
+
+    effective_spent_today + amount <= allocation.daily_budget
+        && allocation.spent_total + amount <= allocation.total_budget
+}
+
 #[contract]
 pub struct BudgetOptimizerContract;
 
@@ -266,6 +277,12 @@ impl BudgetOptimizerContract {
             allocation.last_reset_day = current_day;
         }
 
+        // `can_spend` is otherwise advisory: enforce the same caps at the
+        // point where spend is actually recorded.
+        if !within_budget(&allocation, amount, current_day) {
+            panic!("budget exceeded");
+        }
+
         allocation.spent_today += amount;
         allocation.spent_total += amount;
         allocation.last_optimized = env.ledger().timestamp();
@@ -298,14 +315,7 @@ impl BudgetOptimizerContract {
             .get::<DataKey, BudgetAllocation>(&DataKey::Allocation(campaign_id))
         {
             let current_day = env.ledger().timestamp() / 86_400;
-            let effective_spent_today = if current_day > alloc.last_reset_day {
-                0
-            } else {
-                alloc.spent_today
-            };
-
-            effective_spent_today + amount <= alloc.daily_budget
-                && alloc.spent_total + amount <= alloc.total_budget
+            within_budget(&alloc, amount, current_day)
         } else {
             false
         }
