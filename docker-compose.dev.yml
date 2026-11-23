@@ -46,8 +46,8 @@ services:
   # Backend API with hot reload
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
       target: builder # Use builder stage for dev dependencies
     container_name: pulsartrack-backend-dev
     restart: unless-stopped
@@ -82,8 +82,8 @@ services:
   # Frontend Next.js with hot reload
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: frontend/Dockerfile
       target: builder # Use builder stage for dev dependencies
     container_name: pulsartrack-frontend-dev
     restart: unless-stopped

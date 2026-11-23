@@ -42,8 +42,8 @@ services:
   # Backend API
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: pulsartrack-backend
     restart: unless-stopped
     ports:
@@ -142,8 +142,8 @@ services:
   # Frontend Next.js App
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: frontend/Dockerfile
       target: runner
       # NEXT_PUBLIC_* vars must be present at image-build time so Next.js can
       # inline them into the client bundle during `next build`.  They are sourced
