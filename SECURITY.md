@@ -52,14 +52,14 @@ The following are explicitly **out of scope**:
 
 ## Accepted Dependency Advisories
 
-`npm audit fix` has been applied in `backend/`. The advisories below remain
-because no non-breaking fix exists. They are accepted until the listed
-follow-up lands. Recheck with `npm run audit` in `backend/`.
+`npm audit fix` has been applied to the workspace lockfile. The advisory below
+remains because no non-breaking fix exists. It is accepted until the listed
+follow-up lands. Recheck with `npm run audit` in `backend/` and
+`npm audit --audit-level=high` in `frontend/`.
 
 | Package | Severity | Path | Why accepted | Follow-up |
 |---|---|---|---|---|
-| `toml` <4.2.0 ([GHSA-82x6-q7mm-w9cf](https://github.com/advisories/GHSA-82x6-q7mm-w9cf), [GHSA-v5mp-jgw5-2x6j](https://github.com/advisories/GHSA-v5mp-jgw5-2x6j)) | High | `@stellar/stellar-sdk` 14 | Only reached through the SDK's `StellarToml` resolver, which parses remote `stellar.toml` files. The backend never calls it, so no untrusted TOML is parsed. | Upgrade `@stellar/stellar-sdk` to 17.x in its own PR, with manual checks of the Horizon and Soroban RPC calls in `src/services/` against testnet. |
-| `braces` <=3.0.3 ([GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm)) | High | `nodemon` > `chokidar` (dev only) | No patched `braces` release exists. Only used by the local `npm run dev` file watcher with patterns from this repo, never in production images. | Update `nodemon` once a fixed `chokidar`/`braces` is published. |
+| `crypto-bigint` <0.7.6 ([RUSTSEC-2026-0387](https://rustsec.org/advisories/RUSTSEC-2026-0387)) | High | `soroban-sdk` 22 -> `soroban-env-host` -> `k256` 0.13 -> `elliptic-curve` 0.13 | Every published Soroban SDK line still pins `elliptic-curve ^0.13`, and no `elliptic-curve` 0.13 release uses `crypto-bigint >=0.7.6`. `soroban-env-host` is declared only for `cfg(not(target_family = "wasm"))`, so the affected arithmetic is not present in the deployed contracts. Scoped exception lives in `.cargo/audit.toml`. | Remove `.cargo/audit.toml` once the Soroban dependency chain resolves `crypto-bigint >=0.7.6`, then rerun `cargo audit`. |
 
 ## Bug Bounty
 

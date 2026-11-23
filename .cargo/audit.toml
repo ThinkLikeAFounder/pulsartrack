@@ -1,0 +1,15 @@
+# cargo-audit configuration
+#
+# RUSTSEC-2026-0387 affects crypto-bigint < 0.7.6, which reaches us through
+# soroban-env-host -> k256 0.13 -> elliptic-curve 0.13. Every published
+# Soroban SDK line, including 29.x, still pins elliptic-curve ^0.13, so there
+# is no semver-compatible upstream upgrade available yet.
+#
+# soroban-env-host is a host-side dependency only (soroban-sdk declares it for
+# cfg(not(target_family = "wasm"))). The wasm32 contracts deployed by this
+# repository do not contain the affected arithmetic. The exception is tracked
+# in SECURITY.md and should be removed once the Soroban dependency chain
+# resolves crypto-bigint >= 0.7.6.
+
+[advisories]
+ignore = ["RUSTSEC-2026-0387"]
