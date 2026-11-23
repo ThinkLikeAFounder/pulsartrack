@@ -2,8 +2,10 @@ import { Router, Request, Response } from "express";
 import * as publishersRepo from "../db/repositories/publishers";
 import { callReadOnly, toAddressScVal } from "../services/soroban-client";
 import { CONTRACT_IDS } from "../config/stellar";
-import { requireAuth, rateLimitWrite, getAuthedAddress } from "../middleware/auth";
+import { requireAuth, rateLimitAccount, rateLimitWrite, getAuthedAddress } from "../middleware/auth";
 import { validate } from "../middleware/validate";
+import { errorCode, errorMessage } from "../lib/errors";
+import { stroopsToXlm } from "../lib/bigint";
 
 const router = Router();
 
@@ -30,30 +32,32 @@ router.get(
         tier: r.tier,
         reputationScore: r.reputationScore,
         impressionsServed: Number(r.impressionsServed),
-        earningsXlm: Number(r.earningsStroops) / 1e7,
+        earningsXlm: stroopsToXlm(r.earningsStroops),
         lastActivity: r.lastActivity,
       }));
 
-      if (result.length > 0 && CONTRACT_IDS.PUBLISHER_REPUTATION) {
-        try {
-          const onChainScore = await callReadOnly(
-            CONTRACT_IDS.PUBLISHER_REPUTATION,
-            "get_reputation",
-            [toAddressScVal(result[0].address)],
-          );
-          if (onChainScore != null) {
-            result[0].reputationScore = onChainScore;
+      if (CONTRACT_IDS.PUBLISHER_REPUTATION) {
+        await Promise.all(result.map(async (publisher) => {
+          try {
+            const onChainScore = await callReadOnly<number>(
+              CONTRACT_IDS.PUBLISHER_REPUTATION,
+              "get_reputation",
+              [toAddressScVal(publisher.address)],
+            );
+            if (onChainScore != null) {
+              publisher.reputationScore = onChainScore;
+            }
+          } catch {
+            // On-chain enrichment is best-effort per publisher.
           }
-        } catch {
-          // On-chain enrichment is best-effort
-        }
+        }));
       }
 
       res.json({ publishers: result });
-    } catch (err: any) {
+    } catch (err) {
       req.log?.error({ err }, "Failed to fetch publisher leaderboard");
       const details =
-        process.env.NODE_ENV === "development" ? err.message : undefined;
+        process.env.NODE_ENV === "development" ? errorMessage(err) : undefined;
       res
         .status(500)
         .json({
@@ -67,6 +71,7 @@ router.get(
 router.post(
   "/register",
   requireAuth,
+  rateLimitAccount(),
   rateLimitWrite(),
   validate({
     body: {
@@ -98,16 +103,16 @@ router.post(
       });
 
       res.status(201).json(publisher);
-    } catch (err: any) {
+    } catch (err) {
       // #1100 — handle unique-constraint race: two concurrent registrations
       // for the same address both pass findByAddress, then one insert fails
       // with Prisma P2002. Return 409 instead of generic 500.
-      if (err?.code === "P2002") {
+      if (errorCode(err) === "P2002") {
         return res.status(409).json({ error: "Publisher already registered" });
       }
       req.log?.error({ err }, "Failed to register publisher");
       const details =
-        process.env.NODE_ENV === "development" ? err.message : undefined;
+        process.env.NODE_ENV === "development" ? errorMessage(err) : undefined;
       res
         .status(500)
         .json({

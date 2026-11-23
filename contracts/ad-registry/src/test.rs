@@ -38,7 +38,11 @@ fn test_initialize() {
     env.mock_all_auths();
     let id = env.register(AdRegistryContract, ());
     let c = AdRegistryContractClient::new(&env, &id);
-    c.initialize(&Address::generate(&env));
+    let admin = Address::generate(&env);
+    c.initialize(&admin);
+    let stored_admin =
+        env.as_contract(&c.address, || env.storage().instance().get(&DataKey::Admin));
+    assert_eq!(stored_admin, Some(admin));
 }
 
 #[test]
@@ -54,7 +58,7 @@ fn test_initialize_twice() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
 fn test_initialize_non_admin_fails() {
     let env = Env::default();
     let id = env.register(AdRegistryContract, ());
@@ -217,6 +221,17 @@ fn test_track_click() {
 }
 
 #[test]
+#[should_panic(expected = "content not approved")]
+fn test_track_click_unapproved() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _) = setup(&env);
+    let viewer = Address::generate(&env);
+    let cid = register(&c, &env);
+    c.track_click(&cid, &viewer);
+}
+
+#[test]
 fn test_get_content_nonexistent() {
     let env = Env::default();
     env.mock_all_auths();
@@ -270,7 +285,7 @@ fn test_admin_transfer_flow() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "unauthorized")]
 fn test_propose_admin_unauthorized() {
     let env = Env::default();
     env.mock_all_auths();
@@ -282,7 +297,7 @@ fn test_propose_admin_unauthorized() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "not pending admin")]
 fn test_accept_admin_unauthorized() {
     let env = Env::default();
     env.mock_all_auths();

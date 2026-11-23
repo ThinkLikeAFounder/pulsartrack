@@ -8,13 +8,66 @@ import {
   getNetworkDetails,
   isConnected as freighterIsConnected,
 } from '@stellar/freighter-api';
-import { CURRENT_NETWORK, getNetworkPassphrase } from './stellar-config';
+import { CURRENT_NETWORK, getNetworkPassphrase, isDemoMode } from './stellar-config';
 
 export interface WalletData {
   address: string;
   isConnected: boolean;
   network: string;
 }
+
+/* ============================================================================
+   Demo wallet — used whenever isDemoMode() is on (no deployed contracts yet)
+   or Freighter isn't installed, so the UI's connect/sign flow always has a
+   complete, interactive demo path. Never a real keypair with real funds.
+   ========================================================================== */
+
+const DEMO_ADDRESS_KEY = 'pulsar-demo-wallet-address';
+const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+
+function generateDemoAddress(): string {
+  const bytes = new Uint8Array(55);
+  crypto.getRandomValues(bytes);
+  let body = '';
+  for (const b of bytes) body += BASE32_ALPHABET[b % BASE32_ALPHABET.length];
+  return `G${body}`.slice(0, 56);
+}
+
+function getOrCreateDemoAddress(): string {
+  if (typeof window === 'undefined') return generateDemoAddress();
+  try {
+    const existing = window.localStorage.getItem(DEMO_ADDRESS_KEY);
+    if (existing) return existing;
+    const fresh = generateDemoAddress();
+    window.localStorage.setItem(DEMO_ADDRESS_KEY, fresh);
+    return fresh;
+  } catch {
+    return generateDemoAddress();
+  }
+}
+
+function clearDemoAddress(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem(DEMO_ADDRESS_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+function hasDemoAddress(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(DEMO_ADDRESS_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+
+/** True once "Connect Wallet" has been used in demo mode this browser. */
+export const isDemoWalletConnected = (): boolean => isDemoMode() && hasDemoAddress();
+
+export const disconnectDemoWallet = (): void => clearDemoAddress();
 
 /**
  * Check if Freighter wallet extension is available
@@ -29,6 +82,7 @@ export const isFreighterAvailable = (): boolean => {
  */
 export const isWalletConnected = async (): Promise<boolean> => {
   if (typeof window === 'undefined') return false;
+  if (isDemoMode()) return hasDemoAddress();
   try {
     const connectionResult = await freighterIsConnected();
     if (!connectionResult.isConnected) return false;
@@ -40,9 +94,14 @@ export const isWalletConnected = async (): Promise<boolean> => {
 };
 
 /**
- * Connect wallet - requests access from Freighter
+ * Connect wallet - requests access from Freighter, or spins up a persisted
+ * demo address when running in demo mode (no deployed contracts yet).
  */
 export const connectWallet = async (): Promise<string> => {
+  if (isDemoMode()) {
+    return getOrCreateDemoAddress();
+  }
+
   const connectionResult = await freighterIsConnected();
   if (!connectionResult.isConnected) {
     throw new Error('Freighter wallet not found. Please install the Freighter extension.');
@@ -65,6 +124,7 @@ export const connectWallet = async (): Promise<string> => {
  * Get current wallet public key
  */
 export const getWalletAddress = async (): Promise<string | null> => {
+  if (isDemoMode()) return hasDemoAddress() ? getOrCreateDemoAddress() : null;
   try {
     const connected = await isWalletConnected();
     if (!connected) return null;
@@ -86,6 +146,7 @@ const PUBLIC_PASSPHRASE = 'Public Global Stellar Network ; September 2015';
  * Returns "testnet", "public" or "unknown" or null on failure.
  */
 export const getFreighterNetworkLabel = async (): Promise<string | null> => {
+  if (isDemoMode()) return CURRENT_NETWORK;
   try {
     const result = await getNetworkDetails();
     if (result.error || !result.networkPassphrase) return null;
@@ -102,6 +163,11 @@ export const getFreighterNetworkLabel = async (): Promise<string | null> => {
  * If Freighter network doesn't match the app network, refuse to sign.
  */
 export const signTx = async (txXdr: string): Promise<string> => {
+  // Demo mode never reaches here (callContract short-circuits into
+  // demoContractCall before any real transaction is built), but keep this
+  // safe just in case something calls signTx directly.
+  if (isDemoMode()) return txXdr;
+
   // Ensure network matches before attempting to sign
   const isCorrect = await verifyNetwork();
   if (!isCorrect) {
@@ -137,6 +203,7 @@ export const getWalletData = async (): Promise<WalletData> => {
  * Verify connected network matches expected network
  */
 export const verifyNetwork = async (): Promise<boolean> => {
+  if (isDemoMode()) return true;
   try {
     const result = await getNetworkDetails();
     if (result.error) return false;

@@ -81,7 +81,7 @@ fn test_initialize_twice() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
 fn test_initialize_non_admin_fails() {
     let env = Env::default();
     let admin = Address::generate(&env);
@@ -549,6 +549,53 @@ fn test_reject_twice_fails() {
     );
 
     client.reject_transaction(&signer2, &tx_id);
+    client.reject_transaction(&signer2, &tx_id);
+}
+
+// ─── pause ───────────────────────────────────────────────────────────────────
+
+#[test]
+#[should_panic(expected = "contract is paused")]
+fn test_propose_while_paused_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, signers, _, token_addr) = setup(&env);
+
+    let proposer = signers.get(0).unwrap();
+    let recipient = Address::generate(&env);
+
+    client.set_paused(&admin, &true);
+    client.propose_transaction(
+        &proposer,
+        &recipient,
+        &token_addr,
+        &10_000i128,
+        &make_desc(&env),
+        &86_400u64,
+    );
+}
+
+#[test]
+#[should_panic(expected = "contract is paused")]
+fn test_reject_while_paused_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, signers, _, token_addr) = setup(&env);
+
+    let proposer = signers.get(0).unwrap();
+    let signer2 = signers.get(1).unwrap();
+    let recipient = Address::generate(&env);
+
+    let tx_id = client.propose_transaction(
+        &proposer,
+        &recipient,
+        &token_addr,
+        &10_000i128,
+        &make_desc(&env),
+        &86_400u64,
+    );
+
+    client.set_paused(&admin, &true);
     client.reject_transaction(&signer2, &tx_id);
 }
 

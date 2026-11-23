@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import request from 'supertest';
 import app from '../app';
 import * as horizon from '../services/horizon';
@@ -24,7 +24,7 @@ describe('GET /api/account/:address', () => {
             xlmBalance: 100.0,
             balances: [{ asset_type: 'native', balance: '100.0' }],
         };
-        (horizon.getAccountDetails as any).mockResolvedValue(mockAccount);
+        (horizon.getAccountDetails as Mock).mockResolvedValue(mockAccount);
 
         const response = await request(app).get(`/api/account/${mockAddress}`);
 
@@ -33,7 +33,7 @@ describe('GET /api/account/:address', () => {
     });
 
     it('should return 404 for non-existent account', async () => {
-        (horizon.getAccountDetails as any).mockResolvedValue(null);
+        (horizon.getAccountDetails as Mock).mockResolvedValue(null);
 
         const response = await request(app).get(`/api/account/${mockAddress}`);
 
@@ -43,7 +43,7 @@ describe('GET /api/account/:address', () => {
 
     it('should return 500 if horizon service fails', async () => {
         const errorMsg = 'Horizon service unavailable';
-        (horizon.getAccountDetails as any).mockRejectedValue(new Error(errorMsg));
+        (horizon.getAccountDetails as Mock).mockRejectedValue(new Error(errorMsg));
 
         const response = await request(app).get(`/api/account/${mockAddress}`);
 
@@ -54,4 +54,70 @@ describe('GET /api/account/:address', () => {
         expect(response.body).toHaveProperty('error', 'Failed to fetch account details');
         expect(response.body).not.toHaveProperty('details');
     });
+
+    it.each(['0', '-5'])('clamps limit=%s to one transaction', async (limit) => {
+        (horizon.getAccountTransactions as Mock).mockResolvedValue({ records: [] });
+
+        const response = await request(app)
+            .get(`/api/account/${mockAddress}/transactions?limit=${limit}`);
+
+        expect(response.status).toBe(200);
+        expect(horizon.getAccountTransactions).toHaveBeenCalledWith(mockAddress, 1, undefined, 'desc');
+    });
+
+    it('should return 400 for malformed address when requesting account details', async () => {
+        const response = await request(app).get('/api/account/not-a-valid-stellar-address');
+
+        expect(response.status).toBe(400);
+        expect(response.body).toHaveProperty('error', 'Validation failed');
+        expect(response.body.details).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    field: 'address',
+                    message: 'address must be a valid Stellar public key',
+                }),
+            ]),
+        );
+        expect(horizon.getAccountDetails).not.toHaveBeenCalled();
+    });
+
+    it('should return 400 for malformed address when requesting transactions', async () => {
+        const response = await request(app).get('/api/account/not-a-valid-stellar-address/transactions');
+
+        expect(response.status).toBe(400);
+        expect(response.body).toHaveProperty('error', 'Validation failed');
+        expect(response.body.details).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    field: 'address',
+                    message: 'address must be a valid Stellar public key',
+                }),
+            ]),
+        );
+        expect(horizon.getAccountTransactions).not.toHaveBeenCalled();
+    });
+
+    it('should return 200 and paginated transactions for valid address', async () => {
+        const mockTxs = [
+            { id: 'tx1', paging_token: '1000' },
+            { id: 'tx2', paging_token: '2000' },
+        ];
+        (horizon.getAccountTransactions as Mock).mockResolvedValue({ records: mockTxs });
+
+        const response = await request(app)
+            .get(`/api/account/${mockAddress}/transactions?limit=2&order=asc&cursor=500`);
+
+        expect(response.status).toBe(200);
+        expect(horizon.getAccountTransactions).toHaveBeenCalledWith(mockAddress, 2, '500', 'asc');
+        expect(response.body).toEqual({
+            transactions: mockTxs,
+            count: 2,
+            cursor: {
+                current: '500',
+                next: '2000',
+            },
+            order: 'asc',
+        });
+    });
 });
+

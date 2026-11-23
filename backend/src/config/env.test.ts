@@ -124,6 +124,46 @@ describe("validateEnv", () => {
     expect(issueFor(productionEnv({ PORT: "70000" }), "PORT")).toBeDefined();
   });
 
+  it("defaults the event indexer settings when unset", () => {
+    const { issues, values } = validateEnv(productionEnv());
+
+    expect(issues).toEqual([]);
+    expect(values.EVENT_POLL_INTERVAL_MS).toBe(5000);
+    expect(values.EVENT_MAX_PER_POLL).toBe(200);
+  });
+
+  it("accepts valid event indexer settings", () => {
+    const { issues, values } = validateEnv(
+      productionEnv({ EVENT_POLL_INTERVAL_MS: "2500", EVENT_MAX_PER_POLL: "50" }),
+    );
+
+    expect(issues).toEqual([]);
+    expect(values.EVENT_POLL_INTERVAL_MS).toBe(2500);
+    expect(values.EVENT_MAX_PER_POLL).toBe(50);
+  });
+
+  it.each(["EVENT_POLL_INTERVAL_MS", "EVENT_MAX_PER_POLL"])(
+    "rejects a malformed %s, naming the variable",
+    (name) => {
+      for (const bad of ["abc", "12.5", "0", "-5"]) {
+        const issue = issueFor(productionEnv({ [name]: bad }), name);
+        expect(issue?.message).toContain("integer");
+      }
+      expect(() => loadEnv(productionEnv({ [name]: "abc" }))).toThrow(name);
+    },
+  );
+
+  it("rejects a SENTRY_DSN that is not a URL but allows it to be unset", () => {
+    expect(issueFor(productionEnv({ SENTRY_DSN: "not-a-url" }), "SENTRY_DSN")).toBeDefined();
+    expect(issueFor(productionEnv({ SENTRY_DSN: "" }), "SENTRY_DSN")).toBeUndefined();
+    expect(
+      issueFor(
+        productionEnv({ SENTRY_DSN: "https://key@o0.ingest.sentry.io/1" }),
+        "SENTRY_DSN",
+      ),
+    ).toBeUndefined();
+  });
+
   it("rejects a DATABASE_URL with the wrong protocol", () => {
     const issue = issueFor(
       productionEnv({ DATABASE_URL: "mysql://user:pass@db:3306/pulsartrack" }),

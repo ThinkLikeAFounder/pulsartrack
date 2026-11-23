@@ -7,7 +7,7 @@ use soroban_sdk::{
 };
 
 #[contracttype]
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum BridgeStatus {
     Pending,
     Processing,
@@ -264,6 +264,24 @@ impl TokenBridgeContract {
 
         let total_refund = deposit.amount + deposit.bridge_fee;
 
+        // Back the refunded amount out of the daily volume counter
+        let deposit_day = deposit.created_at / 86_400;
+        let daily_volume_key = DataKey::DailyVolume(deposit.recipient_chain.clone(), deposit_day);
+        let current_daily_volume: i128 = env
+            .storage()
+            .persistent()
+            .get(&daily_volume_key)
+            .unwrap_or(0);
+        let new_daily_volume = current_daily_volume.saturating_sub(total_refund);
+        env.storage()
+            .persistent()
+            .set(&daily_volume_key, &new_daily_volume);
+        env.storage().persistent().extend_ttl(
+            &daily_volume_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+
         // Update deposit status and persist BEFORE token transfer (CEI pattern)
         deposit.status = BridgeStatus::Refunded;
         let _ttl_key = DataKey::Deposit(deposit_id);
@@ -304,6 +322,45 @@ impl TokenBridgeContract {
 
     pub fn accept_admin(env: Env, new_admin: Address) {
         pulsar_common_admin::accept_admin(&env, &DataKey::Admin, &DataKey::PendingAdmin, new_admin);
+    }
+
+    pub fn mark_failed(env: Env, relayer: Address, deposit_id: u64) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        relayer.require_auth();
+        let stored_relayer: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::RelayerAddress)
+            .unwrap();
+        if relayer != stored_relayer {
+            panic!("unauthorized relayer");
+        }
+
+        let mut deposit: BridgeDeposit = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Deposit(deposit_id))
+            .expect("deposit not found");
+
+        if deposit.status != BridgeStatus::Pending {
+            panic!("not pending");
+        }
+
+        deposit.status = BridgeStatus::Failed;
+        let _ttl_key = DataKey::Deposit(deposit_id);
+        env.storage().persistent().set(&_ttl_key, &deposit);
+        env.storage().persistent().extend_ttl(
+            &_ttl_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+
+        env.events().publish(
+            (symbol_short!("bridge"), symbol_short!("failed")),
+            deposit_id,
+        );
     }
 }
 

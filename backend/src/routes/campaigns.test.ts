@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import request from 'supertest';
 import app from '../app';
 import prisma from '../db/prisma';
@@ -17,9 +17,9 @@ describe('Campaign Routes', () => {
         // and assertions verify both the numeric type and value after conversion.
         it('should return campaign statistics with correct numeric conversions', async () => {
             // Mock Prisma methods used by getStats()
-            (prisma.campaign.count as any).mockResolvedValueOnce(10);
-            (prisma.campaign.count as any).mockResolvedValueOnce(5);
-            (prisma.campaign.aggregate as any).mockResolvedValueOnce({
+            (prisma.campaign.count as Mock).mockResolvedValueOnce(10);
+            (prisma.campaign.count as Mock).mockResolvedValueOnce(5);
+            (prisma.campaign.aggregate as Mock).mockResolvedValueOnce({
                 _sum: {
                     impressions: BigInt(1000),
                     clicks: BigInt(50),
@@ -46,9 +46,9 @@ describe('Campaign Routes', () => {
         });
 
         it('should convert zero stroops to 0 XLM', async () => {
-            (prisma.campaign.count as any).mockResolvedValueOnce(0);
-            (prisma.campaign.count as any).mockResolvedValueOnce(0);
-            (prisma.campaign.aggregate as any).mockResolvedValueOnce({
+            (prisma.campaign.count as Mock).mockResolvedValueOnce(0);
+            (prisma.campaign.count as Mock).mockResolvedValueOnce(0);
+            (prisma.campaign.aggregate as Mock).mockResolvedValueOnce({
                 _sum: {
                     impressions: BigInt(0),
                     clicks: BigInt(0),
@@ -65,9 +65,9 @@ describe('Campaign Routes', () => {
 
         it('should handle large stroops values without precision loss', async () => {
             // 1 billion XLM in stroops — tests large integer handling
-            (prisma.campaign.count as any).mockResolvedValueOnce(1);
-            (prisma.campaign.count as any).mockResolvedValueOnce(1);
-            (prisma.campaign.aggregate as any).mockResolvedValueOnce({
+            (prisma.campaign.count as Mock).mockResolvedValueOnce(1);
+            (prisma.campaign.count as Mock).mockResolvedValueOnce(1);
+            (prisma.campaign.aggregate as Mock).mockResolvedValueOnce({
                 _sum: {
                     impressions: BigInt(999999),
                     clicks: BigInt(12345),
@@ -92,7 +92,7 @@ describe('Campaign Routes', () => {
                 dailyBudgetStroops: 5000000
             };
 
-            (prisma.campaign.create as any).mockResolvedValue({
+            (prisma.campaign.create as Mock).mockResolvedValue({
                 id: 'uuid-1',
                 campaignId: BigInt(1),
                 title: campaignData.title,
@@ -133,6 +133,22 @@ describe('Campaign Routes', () => {
                 .send({ title: '' }); // Missing fields and invalid title
 
             expect(response.status).toBe(400);
+        });
+
+        it('should reject a daily budget greater than the total budget', async () => {
+            const response = await request(app)
+                .post('/api/campaigns')
+                .set('Authorization', `Bearer ${token}`)
+                .send({
+                    title: 'Invalid budget pacing',
+                    contentId: 'cid-789',
+                    budgetStroops: 100,
+                    dailyBudgetStroops: 101,
+                });
+
+            expect(response.status).toBe(400);
+            expect(response.body.error).toBe('dailyBudgetStroops must not exceed budgetStroops');
+            expect(prisma.campaign.create).not.toHaveBeenCalled();
         });
     });
 });

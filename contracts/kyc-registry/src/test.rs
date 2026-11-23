@@ -22,7 +22,11 @@ fn test_initialize() {
     env.mock_all_auths();
     let id = env.register(KycRegistryContract, ());
     let c = KycRegistryContractClient::new(&env, &id);
-    c.initialize(&Address::generate(&env));
+    let admin = Address::generate(&env);
+    c.initialize(&admin);
+    let stored_admin =
+        env.as_contract(&c.address, || env.storage().instance().get(&DataKey::Admin));
+    assert_eq!(stored_admin, Some(admin));
 }
 
 #[test]
@@ -38,7 +42,7 @@ fn test_initialize_twice() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
 fn test_initialize_non_admin_fails() {
     let env = Env::default();
     let id = env.register(KycRegistryContract, ());
@@ -249,4 +253,29 @@ fn test_verify_kyc_expiry_overflow() {
         li.timestamp = 1_000;
     });
     c.verify_kyc(&provider, &account, &Some(u64::MAX));
+}
+
+#[test]
+#[should_panic(expected = "provider mismatch")]
+fn test_same_name_provider_cannot_verify_another_providers_record() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin) = setup(&env);
+    let original_provider = Address::generate(&env);
+    let impostor_provider = Address::generate(&env);
+    let account = Address::generate(&env);
+    let duplicate_name = s(&env, "VerifyInc");
+
+    c.register_provider(&admin, &original_provider, &duplicate_name);
+    c.register_provider(&admin, &impostor_provider, &duplicate_name);
+    c.submit_kyc(
+        &account,
+        &original_provider,
+        &KycLevel::Standard,
+        &s(&env, "DocHash"),
+        &s(&env, "US"),
+    );
+
+    // Matching display names must not grant authority over another address's record.
+    c.verify_kyc(&impostor_provider, &account, &None);
 }

@@ -2,13 +2,13 @@
 use super::*;
 use soroban_sdk::{testutils::Address as _, Address, Env, String};
 
-fn setup(env: &Env) -> (TokenBridgeContractClient<'_>, Address) {
+fn setup(env: &Env) -> (TokenBridgeContractClient<'_>, Address, Address) {
     let admin = Address::generate(env);
     let relayer = Address::generate(env);
     let id = env.register(TokenBridgeContract, ());
     let c = TokenBridgeContractClient::new(env, &id);
     c.initialize(&admin, &relayer);
-    (c, admin)
+    (c, admin, relayer)
 }
 fn s(env: &Env, v: &str) -> String {
     String::from_str(env, v)
@@ -18,7 +18,10 @@ fn s(env: &Env, v: &str) -> String {
 fn test_initialize() {
     let env = Env::default();
     env.mock_all_auths();
-    setup(&env);
+    let (c, admin, ..) = setup(&env);
+    let stored_admin =
+        env.as_contract(&c.address, || env.storage().instance().get(&DataKey::Admin));
+    assert_eq!(stored_admin, Some(admin));
 }
 
 #[test]
@@ -35,7 +38,7 @@ fn test_initialize_twice() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
 fn test_initialize_non_admin_fails() {
     let env = Env::default();
     let id = env.register(TokenBridgeContract, ());
@@ -47,7 +50,7 @@ fn test_initialize_non_admin_fails() {
 fn test_add_supported_chain() {
     let env = Env::default();
     env.mock_all_auths();
-    let (c, admin) = setup(&env);
+    let (c, admin, _) = setup(&env);
     c.add_supported_chain(&admin, &s(&env, "ethereum"), &1_000_000i128);
 }
 
@@ -56,7 +59,7 @@ fn test_add_supported_chain() {
 fn test_add_supported_chain_unauthorized() {
     let env = Env::default();
     env.mock_all_auths();
-    let (c, _) = setup(&env);
+    let (c, _, _) = setup(&env);
     c.add_supported_chain(
         &Address::generate(&env),
         &s(&env, "ethereum"),
@@ -69,7 +72,7 @@ fn test_add_supported_chain_unauthorized() {
 fn test_add_supported_chain_zero_limit() {
     let env = Env::default();
     env.mock_all_auths();
-    let (c, admin) = setup(&env);
+    let (c, admin, _) = setup(&env);
     c.add_supported_chain(&admin, &s(&env, "ethereum"), &0i128);
 }
 
@@ -78,7 +81,7 @@ fn test_add_supported_chain_zero_limit() {
 fn test_add_supported_chain_negative_limit() {
     let env = Env::default();
     env.mock_all_auths();
-    let (c, admin) = setup(&env);
+    let (c, admin, _) = setup(&env);
     c.add_supported_chain(&admin, &s(&env, "ethereum"), &-1i128);
 }
 
@@ -86,7 +89,7 @@ fn test_add_supported_chain_negative_limit() {
 fn test_get_deposit_nonexistent() {
     let env = Env::default();
     env.mock_all_auths();
-    let (c, _) = setup(&env);
+    let (c, _, _) = setup(&env);
     assert!(c.get_deposit(&999u64).is_none());
 }
 #[test]
@@ -94,7 +97,7 @@ fn test_get_deposit_nonexistent() {
 fn test_deposit_for_bridge_overflow() {
     let env = Env::default();
     env.mock_all_auths();
-    let (c, admin) = setup(&env);
+    let (c, admin, _) = setup(&env);
 
     let token_admin = Address::generate(&env);
     let token_contract = env.register_stellar_asset_contract_v2(token_admin);
@@ -117,7 +120,7 @@ fn test_deposit_for_bridge_overflow() {
 fn test_deposit_for_bridge_normal() {
     let env = Env::default();
     env.mock_all_auths();
-    let (c, admin) = setup(&env);
+    let (c, admin, _) = setup(&env);
 
     let token_admin = Address::generate(&env);
     let token_contract = env.register_stellar_asset_contract_v2(token_admin);
@@ -143,11 +146,38 @@ fn test_deposit_for_bridge_normal() {
 }
 
 #[test]
+fn test_refund_deposit_restores_daily_volume() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin, _) = setup(&env);
+
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin);
+    let token_id = token_contract.address();
+
+    let chain = s(&env, "ethereum");
+    c.add_supported_chain(&admin, &chain, &100i128);
+
+    let sender = Address::generate(&env);
+    let token_stellar_client = token::StellarAssetClient::new(&env, &token_id);
+    token_stellar_client.mint(&sender, &200i128);
+
+    // First deposit uses 80 (within limit of 100)
+    let deposit_id = c.deposit_for_bridge(&sender, &token_id, &80i128, &chain, &s(&env, "0x1"));
+
+    // Refund the deposit — should free up the daily volume
+    c.refund_deposit(&admin, &deposit_id);
+
+    // A second deposit of 80 should now succeed because the daily volume was restored
+    c.deposit_for_bridge(&sender, &token_id, &80i128, &chain, &s(&env, "0x2"));
+}
+
+#[test]
 #[should_panic(expected = "daily transfer limit exceeded for chain")]
 fn test_daily_limit_enforced() {
     let env = Env::default();
     env.mock_all_auths();
-    let (c, admin) = setup(&env);
+    let (c, admin, _) = setup(&env);
 
     let token_admin = Address::generate(&env);
     let token_contract = env.register_stellar_asset_contract_v2(token_admin);
@@ -165,4 +195,56 @@ fn test_daily_limit_enforced() {
 
     // Second deposit of 30 would push total to 110, exceeding limit
     c.deposit_for_bridge(&sender, &token_id, &30i128, &chain, &s(&env, "0x2"));
+}
+
+#[test]
+fn test_pending_failed_refund_lifecycle() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin, relayer) = setup(&env);
+
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin);
+    let token_id = token_contract.address();
+
+    let chain = s(&env, "ethereum");
+    c.add_supported_chain(&admin, &chain, &1_000_000i128);
+
+    let sender = Address::generate(&env);
+    let token_stellar_client = token::StellarAssetClient::new(&env, &token_id);
+    token_stellar_client.mint(&sender, &10_000i128);
+
+    let deposit_id = c.deposit_for_bridge(
+        &sender,
+        &token_id,
+        &10_000i128,
+        &chain,
+        &s(&env, "0xfailed"),
+    );
+
+    assert_eq!(
+        c.get_deposit(&deposit_id).unwrap().status,
+        BridgeStatus::Pending
+    );
+    c.mark_failed(&relayer, &deposit_id);
+    assert_eq!(
+        c.get_deposit(&deposit_id).unwrap().status,
+        BridgeStatus::Failed
+    );
+
+    c.refund_deposit(&admin, &deposit_id);
+    assert_eq!(
+        c.get_deposit(&deposit_id).unwrap().status,
+        BridgeStatus::Refunded
+    );
+}
+
+#[test]
+#[should_panic(expected = "unauthorized relayer")]
+fn test_mark_failed_requires_configured_relayer() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _, _) = setup(&env);
+
+    c.mark_failed(&Address::generate(&env), &1u64);
 }

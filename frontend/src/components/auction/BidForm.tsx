@@ -22,9 +22,9 @@ export function BidForm({ auction, campaignId, onSuccess, onCancel }: BidFormPro
   // All arithmetic stays in integer stroops to avoid floating-point drift.
   const floorStroops = BigInt(auction.floor_price);
   const currentBidStroops = auction.winning_bid ? BigInt(auction.winning_bid) : null;
-  const minBidStroops = currentBidStroops
-    ? currentBidStroops + (currentBidStroops * 5n) / 100n // 5% above current bid
-    : floorStroops;
+  // The contract only requires a bid to strictly exceed the current highest
+  // bid (place_bid panics on `amount <= high`) — no minimum increment.
+  const minBidStroops = currentBidStroops ? currentBidStroops + 1n : floorStroops;
   const minBidXlm = Number(minBidStroops) / STROOPS_PER_XLM;
 
   // Display helpers
@@ -49,11 +49,16 @@ export function BidForm({ auction, campaignId, onSuccess, onCancel }: BidFormPro
   const onSubmit = async (data: BidFormData) => {
     setSubmitError(null);
     try {
-      await placeBid({
+      const result = await placeBid({
         auctionId: Number(auction.auction_id),
         campaignId: parseInt(data.campaignId),
         amountStroops: xlmToStroops(data.bidAmountXlm),
       });
+      // callContract reports contract/simulation failures by resolving with
+      // `success: false` rather than throwing, so check it like CampaignForm.
+      if (result && !result.success) {
+        throw new Error(result.error || 'Failed to place bid');
+      }
       onSuccess?.();
     } catch (err: unknown) {
       setSubmitError(err instanceof Error ? err.message : 'Failed to place bid');

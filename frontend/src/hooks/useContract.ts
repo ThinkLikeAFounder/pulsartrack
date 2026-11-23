@@ -9,7 +9,7 @@ import {
   type ContractArg,
   type ScValArg,
 } from "../lib/soroban-client";
-import { CONTRACT_IDS } from "../lib/stellar-config";
+import { CONTRACT_IDS, xlmToStroops } from "../lib/stellar-config";
 import { useWalletStore } from "../store/wallet-store";
 import {
   u64ToScVal,
@@ -34,6 +34,14 @@ export function useContractCall() {
       queryClient.invalidateQueries({
         queryKey: ["contract", variables.contractId],
       });
+      // These list queries aggregate several individual contract reads under
+      // their own key (not "contract"), so a write anywhere needs to
+      // invalidate them explicitly too or the UI won't reflect it until the
+      // next scheduled refetch.
+      queryClient.invalidateQueries({ queryKey: ["advertiser_campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["publisher_auctions"] });
+      queryClient.invalidateQueries({ queryKey: ["open_auctions"] });
+      queryClient.invalidateQueries({ queryKey: ["governance_proposals"] });
     },
   });
 }
@@ -295,7 +303,6 @@ export function useCreateCampaign() {
     refundable: boolean;
   }) => {
     if (!address) throw new Error("Wallet not connected");
-    const STROOPS = 10_000_000;
 
     // Convert duration from days to ledgers (assuming ~5 seconds per ledger)
     const durationLedgers = params.durationDays * 17280; // 86400 seconds / 5 seconds per ledger
@@ -307,8 +314,8 @@ export function useCreateCampaign() {
       args: [
         addressToScVal(address), // advertiser
         u32ToScVal(params.campaignType), // campaign_type (u32)
-        i128ToScVal(Math.floor(params.budgetXlm * STROOPS)), // budget in stroops
-        i128ToScVal(Math.floor(params.costPerViewXlm * STROOPS)), // cost_per_view in stroops
+        i128ToScVal(xlmToStroops(params.budgetXlm)), // budget in stroops
+        i128ToScVal(xlmToStroops(params.costPerViewXlm)), // cost_per_view in stroops
         u32ToScVal(durationLedgers), // duration in ledgers (u32)
         u64ToScVal(params.targetViews), // target_views
         u64ToScVal(params.dailyViewLimit), // daily_view_limit
@@ -578,6 +585,32 @@ export function usePublisherEarnings(publisherAddress: string, enabled = true) {
 }
 
 /**
+ * On-chain revenue pool. The *_pct fields are the configured revenue split in
+ * basis points (10_000 = 100%) — they are contract state, not constants.
+ */
+export interface RevenuePoolData {
+  platform_pct: number | bigint;
+  publisher_pct: number | bigint;
+  treasury_pct: number | bigint;
+  burn_pct: number | bigint;
+  [key: string]: unknown;
+}
+
+/**
+ * Hook to get the revenue-settlement pool (includes the configured split)
+ */
+export function useRevenuePool(enabled = true) {
+  return useContractRead<RevenuePoolData>(
+    {
+      contractId: CONTRACT_IDS.REVENUE_SETTLEMENT,
+      method: "get_revenue_pool",
+      args: [],
+    },
+    enabled,
+  );
+}
+
+/**
  * Hook to get active auctions count
  */
 export function useAuctionCount(enabled = true) {
@@ -628,6 +661,71 @@ export function usePublisherAuctions(
 }
 
 /**
+ * Hook to get every open auction across all publishers, for advertisers
+ * browsing the RTB marketplace to bid on.
+ */
+export function useOpenAuctions(auctionCount: number | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ["open_auctions", auctionCount],
+    queryFn: async () => {
+      if (!auctionCount || auctionCount === 0) return [];
+      const auctions: Record<string, unknown>[] = [];
+      const promises = [];
+      for (let i = 1; i <= auctionCount; i++) {
+        promises.push(
+          callReadOnly({
+            contractId: CONTRACT_IDS.AUCTION_ENGINE,
+            method: "get_auction",
+            args: [u64ToScVal(i)],
+          })
+            .then((auction: unknown) => {
+              if (isRecord(auction)) {
+                auctions.push({ ...auction, auction_id: BigInt(i) });
+              }
+            })
+            .catch(() => null),
+        );
+      }
+      await Promise.all(promises);
+      return auctions.sort((a, b) => Number(b.auction_id) - Number(a.auction_id));
+    },
+    enabled: enabled && (auctionCount ?? 0) > 0,
+  });
+}
+
+/**
+ * Hook for a publisher to list a new impression slot for real-time bidding.
+ */
+export function useCreateAuction() {
+  const { mutateAsync, ...rest } = useContractCall();
+  const { address } = useWalletStore();
+
+  const createAuction = async (params: {
+    impressionSlot: string;
+    floorPriceXlm: number;
+    reservePriceXlm: number;
+    durationHours: number;
+  }) => {
+    if (!address) throw new Error("Wallet not connected");
+    const STROOPS = 10_000_000;
+    return mutateAsync({
+      contractId: CONTRACT_IDS.AUCTION_ENGINE,
+      method: "create_auction",
+      source: address,
+      args: [
+        addressToScVal(address),
+        stringToScVal(params.impressionSlot),
+        i128ToScVal(Math.floor(params.floorPriceXlm * STROOPS)),
+        i128ToScVal(Math.floor(params.reservePriceXlm * STROOPS)),
+        u64ToScVal(Math.floor(params.durationHours * 3600)),
+      ],
+    });
+  };
+
+  return { createAuction, ...rest };
+}
+
+/**
  * Hook to subscribe to a plan
  */
 export function useSubscribe() {
@@ -636,7 +734,6 @@ export function useSubscribe() {
 
   const subscribe = async (params: { planName: string; amountXlm: number }) => {
     if (!address) throw new Error("Wallet not connected");
-    const STROOPS = 10_000_000;
     return mutateAsync({
       contractId: CONTRACT_IDS.SUBSCRIPTION_MANAGER,
       method: "subscribe",
@@ -644,7 +741,7 @@ export function useSubscribe() {
       args: [
         addressToScVal(address),
         stringToScVal(params.planName),
-        i128ToScVal(Math.floor(params.amountXlm * STROOPS)),
+        i128ToScVal(xlmToStroops(params.amountXlm)),
       ],
     });
   };

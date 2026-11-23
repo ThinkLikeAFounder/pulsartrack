@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { GovernanceProposal } from '@/types/contracts';
 import { formatAddress } from '@/lib/display-utils';
 import { clsx } from 'clsx';
@@ -67,7 +68,13 @@ export function ProposalCard({ proposal, onVote, isVoting, userVote }: ProposalC
     ? ((Number(proposal.votes_abstain) / Number(total)) * 100).toFixed(1)
     : '0.0';
   const isActive = proposal.status === 'Active';
-  const now = Date.now();
+  // "Now" is tracked in state (refreshed periodically) rather than read
+  // directly in the render body, which must stay a pure function of props/state.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
   const timeLeft = Number(proposal.voting_ends_at) * 1000 - now;
   const daysLeft = Math.max(0, Math.floor(timeLeft / 86400000));
 

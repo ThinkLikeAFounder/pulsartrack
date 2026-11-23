@@ -18,7 +18,7 @@ pub enum KycLevel {
 pub struct KycRecord {
     pub account: Address,
     pub level: KycLevel,
-    pub provider: String,
+    pub provider: Address,
     pub document_hash: String, // Hash of KYC documents
     pub jurisdiction: String,
     pub verified: bool,
@@ -175,7 +175,7 @@ impl KycRegistryContract {
         let record = KycRecord {
             account: account.clone(),
             level: level.clone(),
-            provider: kyc_provider.name,
+            provider: provider.clone(),
             document_hash,
             jurisdiction,
             verified: false,
@@ -221,7 +221,7 @@ impl KycRegistryContract {
             .get(&DataKey::KycRecord(account.clone()))
             .expect("kyc not submitted");
 
-        if record.provider != provider_data.name {
+        if record.provider != provider {
             panic!("provider mismatch");
         }
 

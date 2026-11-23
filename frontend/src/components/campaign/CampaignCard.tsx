@@ -10,15 +10,15 @@ interface CampaignCardProps {
 }
 
 function StatusBadge({ status }: { status: CampaignStatus }) {
-  const colors: Record<string, string> = {
+  const colors: Record<CampaignStatus, string> = {
     Active: 'bg-green-900/40 text-green-300 border border-green-700',
     Paused: 'bg-yellow-900/40 text-yellow-300 border border-yellow-700',
     Completed: 'bg-blue-900/40 text-blue-300 border border-blue-700',
     Cancelled: 'bg-red-900/40 text-red-300 border border-red-700',
-    Expired: 'bg-gray-900/40 text-gray-400 border border-gray-600',
+    Pending: 'bg-gray-900/40 text-gray-400 border border-gray-600',
   };
   return (
-    <span className={clsx('text-xs font-medium px-2 py-0.5 rounded-full', colors[status])}>
+    <span className={clsx('text-xs font-medium px-2 py-0.5 rounded-full', colors[status] || 'bg-gray-700 text-gray-300')}>
       {status}
     </span>
   );

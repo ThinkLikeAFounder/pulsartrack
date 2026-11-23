@@ -2,9 +2,11 @@ import { Router, Request, Response } from 'express';
 import * as campaignsRepo from '../db/repositories/campaigns';
 import { callReadOnly } from '../services/soroban-client';
 import { CONTRACT_IDS } from '../config/stellar';
-import { requireAuth, rateLimitWrite, getAuthedAddress } from '../middleware/auth';
+import { requireAuth, rateLimitAccount, rateLimitWrite, getAuthedAddress } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import pool from '../config/database';
+import { errorMessage } from "../lib/errors";
+import { stroopsToXlm } from '../lib/bigint';
 
 const router = Router();
 
@@ -39,7 +41,7 @@ router.get('/stats', async (_req: Request, res: Response) => {
     let onChainTotal: number | null = null;
     if (CONTRACT_IDS.CAMPAIGN_ORCHESTRATOR) {
       try {
-        onChainTotal = await callReadOnly(
+        onChainTotal = await callReadOnly<number>(
           CONTRACT_IDS.CAMPAIGN_ORCHESTRATOR,
           'get_campaign_count'
         );
@@ -53,17 +55,17 @@ router.get('/stats', async (_req: Request, res: Response) => {
       active_campaigns: stats.activeCampaigns ?? 0,
       total_impressions: stats.totalImpressions ?? 0,
       total_clicks: stats.totalClicks ?? 0,
-      total_spent_xlm: (stats.totalSpentStroops ?? 0) / 1e7,
+      total_spent_xlm: stroopsToXlm(stats.totalSpentStroops),
       ...(stats._partial && { _partial: stats._partial }),
     });
-  } catch (err: any) {
+  } catch (err) {
     _req.log?.error({ err }, 'Failed to fetch campaign stats');
-    const details = process.env.NODE_ENV === 'development' ? err.message : undefined;
+    const details = process.env.NODE_ENV === 'development' ? errorMessage(err) : undefined;
     res.status(500).json({ error: 'Failed to fetch campaign stats', ...(details && { details }) });
   }
 });
 
-router.post('/', requireAuth, rateLimitWrite(), validate({
+router.post('/', requireAuth, rateLimitAccount(), rateLimitWrite(), validate({
   body: {
     title: { type: 'string', required: true, minLength: 1, maxLength: 200 },
     contentId: { type: 'string', required: true, minLength: 1 },
@@ -76,6 +78,11 @@ router.post('/', requireAuth, rateLimitWrite(), validate({
     if (!address) return; // Response already sent with 401
 
     const { title, contentId, budgetStroops, dailyBudgetStroops } = req.body;
+    if (dailyBudgetStroops > budgetStroops) {
+      return res.status(400).json({
+        error: 'dailyBudgetStroops must not exceed budgetStroops',
+      });
+    }
 
     const campaign = await campaignsRepo.create({
       advertiser: address,
@@ -86,9 +93,9 @@ router.post('/', requireAuth, rateLimitWrite(), validate({
     });
 
     res.status(201).json(campaign);
-  } catch (err: any) {
+  } catch (err) {
     req.log?.error({ err }, 'Failed to create campaign');
-    const details = process.env.NODE_ENV === 'development' ? err.message : undefined;
+    const details = process.env.NODE_ENV === 'development' ? errorMessage(err) : undefined;
     res.status(500).json({ error: 'Failed to create campaign', ...(details && { details }) });
   }
 });

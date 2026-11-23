@@ -343,10 +343,11 @@ export default function GovernancePage() {
                   }}
                 >
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="proposal-title" className="block text-sm font-medium text-gray-700 mb-1">
                       Proposal Title
                     </label>
                     <input
+                      id="proposal-title"
                       type="text"
                       value={proposalData.title}
                       onChange={(e) =>
@@ -360,10 +361,11 @@ export default function GovernancePage() {
                     <p className="text-xs text-gray-400 mt-1 text-right">{proposalData.title.length}/120</p>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="proposal-description" className="block text-sm font-medium text-gray-700 mb-1">
                       Description
                     </label>
                     <textarea
+                      id="proposal-description"
                       value={proposalData.description}
                       onChange={(e) =>
                         setProposalData({ ...proposalData, description: e.target.value })
@@ -378,10 +380,11 @@ export default function GovernancePage() {
                     </p>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="proposal-voting-period" className="block text-sm font-medium text-gray-700 mb-1">
                       Voting Period (days)
                     </label>
                     <input
+                      id="proposal-voting-period"
                       type="number"
                       value={proposalData.votingPeriodDays}
                       onChange={(e) =>

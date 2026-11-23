@@ -48,6 +48,10 @@ fn test_initialize() {
     let contract_id = env.register(TimelockExecutorContract, ());
     let client = TimelockExecutorContractClient::new(&env, &contract_id);
     client.initialize(&admin, &executor, &3600u64, &86_400u64);
+    let stored_admin = env.as_contract(&client.address, || {
+        env.storage().instance().get(&DataKey::Admin)
+    });
+    assert_eq!(stored_admin, Some(admin));
 }
 
 #[test]
@@ -65,7 +69,7 @@ fn test_initialize_twice() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
 fn test_initialize_non_admin_fails() {
     let env = Env::default();
     let admin = Address::generate(&env);
@@ -271,6 +275,34 @@ fn test_execute_after_grace_period() {
     assert!(matches!(entry.status, TimelockStatus::Expired));
 }
 
+#[test]
+fn test_requeue_after_expiry() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, executor) = setup(&env);
+    let target = Address::generate(&env);
+    let queue = || {
+        client.queue(
+            &admin,
+            &target,
+            &make_fn(&env),
+            &Vec::new(&env),
+            &make_desc(&env),
+            &500u64,
+        )
+    };
+
+    let entry_id = queue();
+    env.ledger().with_mut(|li| {
+        li.timestamp = 500 + 172_800 + 1;
+    });
+    assert!(!client.execute(&executor, &entry_id));
+
+    // The identical operation can be proposed again.
+    let requeued = queue();
+    assert_ne!(requeued, entry_id);
+}
+
 // ─── cancel ──────────────────────────────────────────────────────────────────
 
 #[test]
@@ -292,6 +324,33 @@ fn test_cancel_entry() {
 
     let entry = client.get_entry(&entry_id).unwrap();
     assert!(matches!(entry.status, TimelockStatus::Cancelled));
+}
+
+#[test]
+fn test_requeue_after_cancel() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, _) = setup(&env);
+    let target = Address::generate(&env);
+    let queue = || {
+        client.queue(
+            &admin,
+            &target,
+            &make_fn(&env),
+            &Vec::new(&env),
+            &make_desc(&env),
+            &500u64,
+        )
+    };
+
+    let entry_id = queue();
+    client.cancel(&admin, &entry_id);
+
+    // The identical operation can be proposed again.
+    let requeued = queue();
+    assert_ne!(requeued, entry_id);
+    let entry = client.get_entry(&requeued).unwrap();
+    assert!(matches!(entry.status, TimelockStatus::Queued));
 }
 
 #[test]

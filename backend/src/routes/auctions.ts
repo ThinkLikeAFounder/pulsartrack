@@ -2,8 +2,10 @@ import { Router, Request, Response } from "express";
 import pool from "../config/database";
 import { callReadOnly } from "../services/soroban-client";
 import { CONTRACT_IDS } from "../config/stellar";
-import { requireAuth, rateLimitWrite } from "../middleware/auth";
+import { requireAuth, rateLimitAccount, rateLimitWrite } from "../middleware/auth";
 import { validate } from "../middleware/validate";
+import { errorMessage } from "../lib/errors";
+import { stroopsToXlm } from "../lib/bigint";
 
 const router = Router();
 
@@ -26,7 +28,7 @@ router.get(
              winning_bid_stroops, winner, bid_count, status, start_time, end_time
       FROM auctions
     `;
-      const params: any[] = [];
+      const params: unknown[] = [];
 
       if (status) {
         params.push(status);
@@ -42,9 +44,9 @@ router.get(
         auctionId: r.auction_id,
         publisher: r.publisher,
         impressionSlot: r.impression_slot,
-        floorPriceXlm: Number(r.floor_price_stroops) / 1e7,
+        floorPriceXlm: stroopsToXlm(r.floor_price_stroops),
         winningBidXlm: r.winning_bid_stroops
-          ? Number(r.winning_bid_stroops) / 1e7
+          ? stroopsToXlm(r.winning_bid_stroops)
           : null,
         winner: r.winner,
         bidCount: r.bid_count,
@@ -56,7 +58,7 @@ router.get(
       let onChainTotal: number | null = null;
       if (CONTRACT_IDS.AUCTION_ENGINE) {
         try {
-          onChainTotal = await callReadOnly(
+          onChainTotal = await callReadOnly<number>(
             CONTRACT_IDS.AUCTION_ENGINE,
             "get_auction_count",
           );
@@ -69,10 +71,10 @@ router.get(
         auctions,
         total: onChainTotal ?? auctions.length,
       });
-    } catch (err: any) {
+    } catch (err) {
       req.log?.error({ err }, "Failed to fetch auctions");
       const details =
-        process.env.NODE_ENV === "development" ? err.message : undefined;
+        process.env.NODE_ENV === "development" ? errorMessage(err) : undefined;
       res.status(500).json({
         error: "Failed to fetch auctions",
         ...(details && { details }),
@@ -84,6 +86,7 @@ router.get(
 router.post(
   "/:auctionId/bid",
   requireAuth,
+  rateLimitAccount(),
   rateLimitWrite(),
   validate({
     params: {
@@ -105,7 +108,7 @@ router.post(
 
       // Lock the auction row and verify it exists and is open
       const auctionResult = await client.query(
-        `SELECT publisher, floor_price_stroops, status FROM auctions WHERE auction_id = $1 FOR UPDATE`,
+        `SELECT publisher, floor_price_stroops, status, end_time FROM auctions WHERE auction_id = $1 FOR UPDATE`,
         [auctionId],
       );
       if (auctionResult.rows.length === 0) {
@@ -120,6 +123,12 @@ router.post(
           .json({ error: "Auction is not open for bidding" });
       }
 
+      // Ended auctions are awaiting settlement — no new bids (#1251)
+      if (auction.end_time && new Date(auction.end_time).getTime() <= Date.now()) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "Auction has ended" });
+      }
+
       // Prevent self-bidding
       if (auction.publisher === address) {
         await client.query("ROLLBACK");
@@ -132,6 +141,18 @@ router.post(
       if (amountStroops < Number(auction.floor_price_stroops)) {
         await client.query("ROLLBACK");
         return res.status(400).json({ error: "Bid below floor price" });
+      }
+
+      // Verify bid strictly exceeds the current highest bid (ascending-bid rule)
+      const highestBidResult = await client.query(
+        `SELECT COALESCE(MAX(amount_stroops), -1) AS highest_bid
+         FROM bids WHERE auction_id = $1 FOR UPDATE`,
+        [auctionId],
+      );
+      const currentHighest = Number(highestBidResult.rows[0].highest_bid);
+      if (amountStroops <= currentHighest) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "Bid too low" });
       }
 
       // Verify campaign belongs to the bidder
@@ -164,15 +185,15 @@ router.post(
       await client.query("COMMIT");
 
       res.status(201).json(rows[0]);
-    } catch (err: any) {
+    } catch (err) {
       try {
         await client.query("ROLLBACK");
-      } catch (rollbackErr: any) {
+      } catch (rollbackErr) {
         req.log?.error({ rollbackErr }, "ROLLBACK failed");
       }
       req.log?.error({ err }, "Failed to submit bid");
       const details =
-        process.env.NODE_ENV === "development" ? err.message : undefined;
+        process.env.NODE_ENV === "development" ? errorMessage(err) : undefined;
       res
         .status(500)
         .json({ error: "Failed to submit bid", ...(details && { details }) });

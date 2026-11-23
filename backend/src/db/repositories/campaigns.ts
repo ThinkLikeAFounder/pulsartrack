@@ -40,7 +40,9 @@ export async function getStats() {
         : null,
     totalSpentStroops:
       aggResult.status === 'fulfilled'
-        ? Number(aggResult.value._sum.spentStroops ?? 0)
+        ? // Keep as bigint; callers convert (e.g. via stroopsToXlm) so the SUM
+          // is never squeezed through a JS Number above 2^53.
+          (aggResult.value._sum.spentStroops ?? BigInt(0))
         : null,
     // Expose which sub-queries failed so callers can show partial-data notices.
     _partial:

@@ -5,6 +5,7 @@ import { RateLimiterRedis } from "rate-limiter-flexible";
 import type Redis from "ioredis";
 import redisClient from "../config/redis";
 import { createJwt, decodeJwt, TOKEN_EXPIRY } from "../lib/jwt";
+import { errorMessage } from "../lib/errors";
 const NONCE_TTL_SECONDS = 300; // 5 minutes
 const NONCE_KEY_PREFIX = "nonce:";
 
@@ -84,8 +85,8 @@ export function requireAuth(
     const payload = decodeJwt(authHeader.slice(7));
     req.stellarAddress = payload.sub;
     next();
-  } catch (err: any) {
-    res.status(401).json({ error: err.message });
+  } catch (err) {
+    res.status(401).json({ error: errorMessage(err) });
   }
 }
 
@@ -116,9 +117,9 @@ authRouter.post("/verify", verifySignature);
 /**
  * Redis-backed rate limiters
  */
-let ipLimiter: RateLimiterRedis;
-let accountLimiter: RateLimiterRedis;
-let writeLimiter: RateLimiterRedis;
+export let ipLimiter: RateLimiterRedis;
+export let accountLimiter: RateLimiterRedis;
+export let writeLimiter: RateLimiterRedis;
 
 export function configureRateLimiters(redisClient: Redis): void {
   // Per-IP: 100 requests per minute
@@ -155,23 +156,39 @@ export function rateLimit() {
     const ip = req.ip || "unknown";
 
     try {
-      await ipLimiter.consume(ip);
+      if (ipLimiter) {
+        await ipLimiter.consume(ip);
+      }
     } catch {
       res.status(429).json({ error: "Too many requests" });
       return;
     }
 
+    next();
+  };
+}
+
+export function rateLimitAccount() {
+  return async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
     const address = req.stellarAddress;
-    if (address) {
-      try {
-        await accountLimiter.consume(address);
-      } catch {
-        res.status(429).json({ error: "Account rate limit exceeded" });
-        return;
-      }
+    if (!address) {
+      next();
+      return;
     }
 
-    next();
+    try {
+      if (accountLimiter) {
+        await accountLimiter.consume(address);
+      }
+      next();
+    } catch {
+      res.status(429).json({ error: "Account rate limit exceeded" });
+      return;
+    }
   };
 }
 
@@ -211,7 +228,7 @@ export function errorHandler(
   req.log?.error(err, "Internal server error");
   const response: Record<string, string> = { error: "Internal server error" };
   if (process.env.NODE_ENV === "development") {
-    response.message = err.message;
+    response.message = errorMessage(err);
   }
   res.status(500).json(response);
 }

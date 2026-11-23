@@ -1,6 +1,18 @@
 version: 2
 updates:
   - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels: ["dependencies"]
+    commit-message:
+      prefix: "deps"
+    groups:
+      root-minor-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "npm"
     directory: "/frontend"
     schedule:
       interval: "weekly"
@@ -48,6 +60,8 @@ updates:
     ignore:
       - dependency-name: "soroban-sdk"
         update-types: ["version-update:semver-major"]
+      - dependency-name: "ed25519-dalek"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -61,7 +75,7 @@ updates:
       actions-minor-patch:
         update-types: ["minor", "patch"]
 
-  - package-ecosystem: "docker"
+  - package-ecosystem: "docker-compose"
     directory: "/"
     schedule:
       interval: "weekly"

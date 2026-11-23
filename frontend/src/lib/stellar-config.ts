@@ -99,6 +99,22 @@ if (typeof window !== 'undefined') {
 export type ContractName = keyof typeof CONTRACT_IDS;
 
 /**
+ * True while the real Soroban contracts aren't deployed yet (any contract ID
+ * is unset) or `NEXT_PUBLIC_DEMO_MODE` is explicitly forced on. While true,
+ * the app serves every contract read/write and wallet connection from an
+ * in-browser simulated world (see demo-store.ts) instead of making real
+ * Soroban RPC calls or requiring a real Freighter wallet — so the UI has a
+ * complete, interactive demo flow before the backend/contracts are live.
+ * This flips itself off automatically the moment every contract ID below is
+ * actually filled in.
+ */
+export function isDemoMode(): boolean {
+  if (process.env.NEXT_PUBLIC_DEMO_MODE === 'true') return true;
+  if (process.env.NEXT_PUBLIC_DEMO_MODE === 'false') return false;
+  return Object.values(CONTRACT_IDS).some((id) => !id);
+}
+
+/**
  * App details for wallet integration
  */
 export const APP_DETAILS = {

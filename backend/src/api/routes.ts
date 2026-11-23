@@ -1,11 +1,7 @@
 import { Router, Request, Response } from "express";
-import {
-  getFeeStats,
-  getAccountDetails,
-  getAccountTransactions,
-} from "../services/horizon";
+import { getFeeStats } from "../services/horizon";
 import { stellarConfig, CONTRACT_IDS } from "../config/stellar";
-import { requireAuth } from "../middleware/auth";
+import { requireAuth, authRouter, rateLimitAccount } from "../middleware/auth";
 import campaignRoutes from "../routes/campaigns";
 import publisherRoutes from "../routes/publishers";
 import auctionRoutes from "../routes/auctions";
@@ -15,6 +11,7 @@ import accountRoutes from "../routes/accounts";
 const router = Router();
 
 import { runAllChecks } from "../services/health";
+import { errorMessage } from "../lib/errors";
 
 // Health check
 router.get("/health", async (_req: Request, res: Response) => {
@@ -53,10 +50,10 @@ router.get("/network", async (_req: Request, res: Response) => {
       sorobanRpcUrl: stellarConfig.sorobanRpcUrl,
       feeStats: fees,
     });
-  } catch (err: any) {
+  } catch (err) {
     _req.log?.error({ err }, "Failed to fetch network info");
     const details =
-      process.env.NODE_ENV === "development" ? err.message : undefined;
+      process.env.NODE_ENV === "development" ? errorMessage(err) : undefined;
     res.status(500).json({
       error: "Failed to fetch network info",
       ...(details && { details }),
@@ -64,54 +61,30 @@ router.get("/network", async (_req: Request, res: Response) => {
   }
 });
 
-// Account details
-router.get("/account/:address", async (req: Request, res: Response) => {
+// Stellar fee rates
+router.get("/rates", async (_req: Request, res: Response) => {
   try {
-    const { address } = req.params;
-    const account = await getAccountDetails(address as string);
-    if (!account) {
-      return res.status(404).json({ error: "Account not found or not funded" });
-    }
-    res.json(account);
-  } catch (err: any) {
-    req.log?.error({ err }, "Failed to fetch account details");
-    const details =
-      process.env.NODE_ENV === "development" ? err.message : undefined;
+    const fees = await getFeeStats();
+    res.setHeader("Cache-Control", "public, max-age=60");
+    res.json({ rates: fees });
+  } catch (err) {
+    res.setHeader("Cache-Control", "no-store");
     res.status(500).json({
-      error: "Failed to fetch account details",
-      ...(details && { details }),
+      error: "Failed to fetch rates",
+      ...(process.env.NODE_ENV === "development" && errorMessage(err)
+        ? { details: errorMessage(err) }
+        : {}),
     });
   }
 });
 
-// Account transaction history
-router.get(
-  "/account/:address/transactions",
-  async (req: Request, res: Response) => {
-    try {
-      const { address } = req.params;
-      const rawLimit = parseInt(req.query.limit as string);
-      const limit = Math.min(Math.max(isNaN(rawLimit) ? 20 : rawLimit, 1), 200);
-      const txs = await getAccountTransactions(address as string, limit);
-      res.json({ transactions: txs.records, count: txs.records.length });
-    } catch (err: any) {
-      req.log?.error({ err }, "Failed to fetch account transactions");
-      const details =
-        process.env.NODE_ENV === "development" ? err.message : undefined;
-      res.status(500).json({
-        error: "Failed to fetch account transactions",
-        ...(details && { details }),
-      });
-    }
-  },
-);
-
 // List deployed contract IDs (auth required)
-router.get("/contracts", requireAuth, (_req: Request, res: Response) => {
+router.get("/contracts", requireAuth, rateLimitAccount(), (_req: Request, res: Response) => {
   res.json({ contracts: CONTRACT_IDS });
 });
 
 // Domain routes
+router.use("/auth", authRouter);
 router.use("/account", accountRoutes);
 router.use("/campaigns", campaignRoutes);
 router.use("/publishers", publisherRoutes);

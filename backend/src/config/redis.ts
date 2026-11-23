@@ -10,6 +10,6 @@ const redisClient = new Redis(
 );
 
 redisClient.on("connect", () => logger.info("[Redis] Connected"));
-redisClient.on("error", (err: any) => logger.error(err, "[Redis] Error"));
+redisClient.on("error", (err) => logger.error(err, "[Redis] Error"));
 
 export default redisClient;

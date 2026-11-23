@@ -1,11 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
 import { validate } from "./validate";
-import { Request, Response, NextFunction } from "express";
+import { Request, Response } from "express";
 
 describe("validate middleware", () => {
-  const mockReq = (data: any = {}) =>
+  const mockReq = (data: { params?: object; query?: object; body?: object } = {}) =>
     ({
-      params: data.params || {},
+      params: data.params ?? {},
       query: data.query || {},
       body: data.body || {},
     }) as unknown as Request;
@@ -16,8 +16,6 @@ describe("validate middleware", () => {
     res.json = vi.fn().mockReturnValue(res);
     return res;
   };
-
-  const mockNext = vi.fn() as NextFunction;
 
   it("should pass validation for valid stellar address", () => {
     const middleware = validate({

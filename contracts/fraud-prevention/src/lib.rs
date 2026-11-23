@@ -257,10 +257,9 @@ impl FraudPreventionContract {
             (campaign_id, publisher, verified),
         );
 
-        if !verified {
-            panic!("verification failed");
-        }
-        true
+        // Return a rejection instead of panicking so the deduplication record,
+        // rate-limit counter, and verification cache commit for failed views.
+        verified
     }
 
     /// Flag suspicious publisher activity
@@ -319,9 +318,17 @@ impl FraudPreventionContract {
         if admin != stored_admin {
             panic!("unauthorized");
         }
-        env.storage()
-            .persistent()
-            .remove(&DataKey::SuspiciousActivity(publisher));
+        let key = DataKey::SuspiciousActivity(publisher.clone());
+        let activity: Option<SuspiciousActivity> = env.storage().persistent().get(&key);
+
+        // Lift the real suspension in publisher-network first, so the local
+        // record is never cleared while the publisher is still locked out there.
+        if let Some(activity) = activity {
+            if activity.suspended {
+                Self::_reactivate_in_publisher_network(&env, &publisher);
+            }
+        }
+        env.storage().persistent().remove(&key);
     }
 
     pub fn suspend_publisher(env: Env, admin: Address, publisher: Address) {
@@ -471,16 +478,25 @@ impl FraudPreventionContract {
         network_client.suspend_publisher(&env.current_contract_address(), publisher);
     }
 
+    fn _reactivate_in_publisher_network(env: &Env, publisher: &Address) {
+        let network_addr: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::PublisherNetwork)
+            .expect("publisher network contract not configured");
+        let network_client = PublisherNetworkContractClient::new(env, &network_addr);
+        network_client.reactivate_publisher(&env.current_contract_address(), publisher);
+    }
+
     fn _calculate_score(
         env: &Env,
         campaign_id: u64,
         _publisher: &Address,
         proof_data: &Option<BytesN<32>>,
     ) -> u32 {
-        let base_score: u32 = 80;
-        let proof_bonus: u32 = if proof_data.is_some() { 10 } else { 0 };
-
-        let score = base_score + proof_bonus;
+        // A view without proof is a strong fraud signal; a valid proof earns
+        // the high score. This makes the fraud-pause path reachable.
+        let score: u32 = if proof_data.is_some() { 90 } else { 40 };
 
         // If score is very low, trigger campaign pause
         if score < 50 {
@@ -524,6 +540,7 @@ pub trait CampaignLifecycleContract {
 #[contractclient(name = "PublisherNetworkContractClient")]
 pub trait PublisherNetworkContract {
     fn suspend_publisher(fraud_contract: Address, publisher: Address);
+    fn reactivate_publisher(fraud_contract: Address, publisher: Address);
 }
 
 #[cfg(test)]
@@ -534,14 +551,33 @@ pub(crate) mod mocks {
     pub struct CampaignLifecycleContract;
     #[contractimpl]
     impl CampaignLifecycleContract {
-        pub fn pause_for_fraud(_env: Env, _fraud_contract: Address, _campaign_id: u64) {}
+        pub fn pause_for_fraud(env: Env, _fraud_contract: Address, campaign_id: u64) {
+            env.storage()
+                .instance()
+                .set(&symbol_short!("paused"), &campaign_id);
+        }
+
+        pub fn paused_campaign(env: Env) -> Option<u64> {
+            env.storage().instance().get(&symbol_short!("paused"))
+        }
     }
 
     #[contract]
     pub struct PublisherNetworkContract;
     #[contractimpl]
     impl PublisherNetworkContract {
-        pub fn suspend_publisher(_env: Env, _fraud_contract: Address, _publisher: Address) {}
+        pub fn suspend_publisher(env: Env, _fraud_contract: Address, publisher: Address) {
+            env.storage().instance().set(&publisher, &true);
+        }
+
+        pub fn reactivate_publisher(env: Env, _fraud_contract: Address, publisher: Address) {
+            env.storage().instance().set(&publisher, &false);
+        }
+
+        /// True while the publisher is suspended in the (mock) network.
+        pub fn is_suspended(env: Env, publisher: Address) -> bool {
+            env.storage().instance().get(&publisher).unwrap_or(false)
+        }
     }
 
     #[contract]

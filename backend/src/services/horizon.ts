@@ -1,6 +1,7 @@
 import { Horizon } from '@stellar/stellar-sdk';
 import { getHorizonServer, STELLAR_REQUEST_TIMEOUT_MS } from '../config/stellar';
 import { logger } from '../lib/logger';
+import { errorHttpStatus } from '../lib/errors';
 
 export function createHorizonServer(): Horizon.Server {
   const server = getHorizonServer();
@@ -15,15 +16,15 @@ export async function getAccountDetails(address: string) {
   const server = createHorizonServer();
   try {
     const account = await server.loadAccount(address);
-    const xlmBalance = account.balances.find((b: any) => b.asset_type === 'native');
+    const xlmBalance = account.balances.find((b) => b.asset_type === 'native');
     return {
       address,
       sequenceNumber: account.sequence,
       xlmBalance: xlmBalance ? parseFloat(xlmBalance.balance) : 0,
       balances: account.balances,
     };
-  } catch (err: any) {
-    if (err.response?.status === 404) {
+  } catch (err) {
+    if (errorHttpStatus(err) === 404) {
       return null;
     }
     throw err;
@@ -31,7 +32,9 @@ export async function getAccountDetails(address: string) {
 }
 
 /**
- * Get recent transactions for an account
+ * Get recent transactions for an account.
+ * Returns null when the account does not exist on the network (Horizon 404),
+ * matching the behaviour of {@link getAccountDetails}.
  */
 export async function getAccountTransactions(
   address: string,
@@ -50,25 +53,32 @@ export async function getAccountTransactions(
     callBuilder = callBuilder.cursor(cursor);
   }
 
-  return callBuilder.call();
+  try {
+    return await callBuilder.call();
+  } catch (err) {
+    if (errorHttpStatus(err) === 404) {
+      return null;
+    }
+    throw err;
+  }
 }
 
 /**
  * Stream ledger events for contract activity with automatic reconnection
  */
 export function streamLedgers(
-  onLedger: (ledger: any) => void,
-  onError?: (err: any) => void
+  onLedger: (ledger: Horizon.ServerApi.LedgerRecord) => void,
+  onError?: (err: unknown) => void
 ): () => void {
   const server = createHorizonServer();
   let reconnectDelay = 1000;
   let isClosed = false;
-  let es: any = null;
+  let closeStream: (() => void) | null = null;
 
   function connect() {
     if (isClosed) return;
 
-    es = server
+    closeStream = server
       .ledgers()
       .cursor('now')
       .stream({
@@ -78,8 +88,8 @@ export function streamLedgers(
         },
         onerror: (err) => {
           logger.error({ err }, '[Horizon] Stream error, reconnecting...');
-          es?.close?.();
-          
+          closeStream?.();
+
           if (onError) {
             onError(err);
           }
@@ -96,7 +106,7 @@ export function streamLedgers(
 
   return () => {
     isClosed = true;
-    es?.close?.();
+    closeStream?.();
   };
 }
 

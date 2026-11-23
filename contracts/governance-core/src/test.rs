@@ -17,7 +17,10 @@ fn setup(env: &Env) -> (GovernanceCoreContractClient<'_>, Address) {
 fn test_initialize() {
     let env = Env::default();
     env.mock_all_auths();
-    setup(&env);
+    let (c, admin, ..) = setup(&env);
+    let stored_admin =
+        env.as_contract(&c.address, || env.storage().instance().get(&DataKey::Admin));
+    assert_eq!(stored_admin, Some(admin));
 }
 
 #[test]
@@ -33,7 +36,7 @@ fn test_initialize_twice() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
 fn test_initialize_non_admin_fails() {
     let env = Env::default();
     let id = env.register(GovernanceCoreContract, ());
@@ -184,4 +187,32 @@ fn test_expired_role_removed_from_storage() {
 
     // The grant should be removed from storage entirely
     assert!(c.get_role_grant(&account, &Role::Moderator).is_none());
+}
+
+#[test]
+fn test_regrant_role_does_not_inflate_count() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin) = setup(&env);
+    let account = Address::generate(&env);
+
+    let role_count = || -> u32 {
+        env.as_contract(&c.address, || {
+            env.storage()
+                .instance()
+                .get(&DataKey::RoleCount(Role::Operator))
+                .unwrap_or(0)
+        })
+    };
+
+    c.grant_role(&admin, &account, &Role::Operator, &None);
+    assert_eq!(role_count(), 1);
+
+    // Refreshing the same grant may update grant metadata, but not holder count.
+    c.grant_role(&admin, &account, &Role::Operator, &None);
+    assert_eq!(role_count(), 1);
+
+    let another_account = Address::generate(&env);
+    c.grant_role(&admin, &another_account, &Role::Operator, &None);
+    assert_eq!(role_count(), 2);
 }

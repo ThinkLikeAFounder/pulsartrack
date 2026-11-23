@@ -53,6 +53,11 @@ const INSTANCE_BUMP_AMOUNT: u32 = 86_400;
 const PERSISTENT_LIFETIME_THRESHOLD: u32 = 120_960;
 const PERSISTENT_BUMP_AMOUNT: u32 = 1_051_200;
 
+/// Minimum expiry window: 1 hour in seconds.
+const MIN_EXPIRY_SECS: u64 = 3_600;
+/// Maximum expiry window: 30 days in seconds.
+const MAX_EXPIRY_SECS: u64 = 30 * 24 * 3_600;
+
 #[contract]
 pub struct MultisigTreasuryContract;
 
@@ -92,6 +97,7 @@ impl MultisigTreasuryContract {
         description: String,
         expires_in: u64,
     ) -> u64 {
+        Self::require_not_paused(&env);
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -108,6 +114,10 @@ impl MultisigTreasuryContract {
             panic!("invalid amount");
         }
 
+        if !(MIN_EXPIRY_SECS..=MAX_EXPIRY_SECS).contains(&expires_in) {
+            panic!("expires_in must be between MIN_EXPIRY_SECS and MAX_EXPIRY_SECS");
+        }
+
         let counter: u64 = env
             .storage()
             .instance()
@@ -120,6 +130,11 @@ impl MultisigTreasuryContract {
             .get(&DataKey::RequiredSigners)
             .unwrap();
 
+        let created_at = env.ledger().timestamp();
+        let expires_at = created_at
+            .checked_add(expires_in)
+            .unwrap_or_else(|| panic!("expires_at calculation overflows u64"));
+
         let tx = TreasuryTx {
             tx_id,
             proposer: proposer.clone(),
@@ -131,8 +146,8 @@ impl MultisigTreasuryContract {
             approvals: 0,
             rejections: 0,
             required_approvals: required,
-            created_at: env.ledger().timestamp(),
-            expires_at: env.ledger().timestamp() + expires_in,
+            created_at,
+            expires_at,
             executed_at: None,
         };
 
@@ -158,6 +173,7 @@ impl MultisigTreasuryContract {
     /// Returns `false` when the transaction has expired. Expiry is a successful
     /// state transition (rather than a panic) so the `Expired` status commits.
     pub fn approve_transaction(env: Env, signer: Address, tx_id: u64) -> bool {
+        Self::require_not_paused(&env);
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -296,6 +312,7 @@ impl MultisigTreasuryContract {
     }
 
     pub fn reject_transaction(env: Env, signer: Address, tx_id: u64) {
+        Self::require_not_paused(&env);
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);

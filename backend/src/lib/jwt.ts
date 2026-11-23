@@ -24,7 +24,14 @@ export class InvalidTokenError extends Error {
   }
 }
 
-export function createJwt(payload: Record<string, any>): string {
+export interface JwtPayload {
+  sub?: string;
+  iat?: number;
+  exp: number;
+  [claim: string]: unknown;
+}
+
+export function createJwt(payload: Record<string, unknown>): string {
   const header = Buffer.from(
     JSON.stringify({ alg: "HS256", typ: "JWT" }),
   ).toString("base64url");
@@ -66,7 +73,7 @@ function safeCompareSignatures(actual: string, expected: string): boolean {
  * All failures throw InvalidTokenError with a safe, generic message.
  * No SyntaxError or internal parser details ever escape.
  */
-export function decodeJwt(token: string): Record<string, any> {
+export function decodeJwt(token: string): JwtPayload {
   try {
     const parts = token.split(".");
     if (parts.length !== 3) {
@@ -86,7 +93,7 @@ export function decodeJwt(token: string): Record<string, any> {
     }
 
     // Signature verified; now safe to parse header
-    let header: any;
+    let header: { alg?: unknown; typ?: unknown };
     try {
       header = JSON.parse(Buffer.from(headerB64, "base64url").toString());
     } catch {
@@ -98,7 +105,7 @@ export function decodeJwt(token: string): Record<string, any> {
     }
 
     // Parse payload
-    let payload: any;
+    let payload: Record<string, unknown>;
     try {
       payload = JSON.parse(Buffer.from(bodyB64, "base64url").toString());
     } catch {
@@ -114,7 +121,7 @@ export function decodeJwt(token: string): Record<string, any> {
       throw new InvalidTokenError("Token expired");
     }
 
-    return payload;
+    return payload as JwtPayload;
   } catch (error) {
     // Convert any unexpected errors to InvalidTokenError
     if (error instanceof InvalidTokenError) {

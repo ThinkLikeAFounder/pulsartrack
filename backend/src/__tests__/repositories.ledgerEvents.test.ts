@@ -66,7 +66,25 @@ describe('ledgerEvents repository', () => {
 
       expect(mockQuery).toHaveBeenCalledWith(
         expect.stringContaining('ON CONFLICT (tx_hash, event_index) DO NOTHING'),
-        [100, 'abc123', 'CXYZ', 'BidPlaced', '{"amount":100}'],
+        [100, 'abc123', 0, 'CXYZ', 'BidPlaced', '{"amount":100}'],
+      );
+    });
+
+    it('binds an explicit event_index as the third parameter', async () => {
+      mockQuery.mockResolvedValue({ rows: [] });
+
+      await ledgerEvents.create({
+        ledger_sequence: 100,
+        tx_hash: 'abc123',
+        event_index: 3,
+        contract_id: 'CXYZ',
+        event_type: 'BidPlaced',
+        event_data: { amount: 100 },
+      });
+
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.any(String),
+        [100, 'abc123', 3, 'CXYZ', 'BidPlaced', '{"amount":100}'],
       );
     });
 

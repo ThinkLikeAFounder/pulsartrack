@@ -7,9 +7,11 @@ import {
   getSorobanRpcUrl,
   getNetworkPassphrase,
   FALLBACK_SIMULATION_ACCOUNT,
+  isDemoMode,
 } from "./stellar-config";
 import { signTx } from "./wallet";
 import { useTransactionStore, TransactionType } from "../store/tx-store";
+import { demoReadOnly, demoContractCall } from "./demo-handlers";
 
 async function getSdk() {
   return import("@stellar/stellar-sdk");
@@ -66,6 +68,10 @@ export async function getSorobanServer() {
 export async function callReadOnly<T = unknown>(
   options: ReadOnlyOptions,
 ): Promise<T> {
+  if (isDemoMode()) {
+    return demoReadOnly<T>(options);
+  }
+
   const { Contract, rpc, TransactionBuilder, BASE_FEE, scValToNative } = await getSdk();
   const server = new rpc.Server(getSorobanRpcUrl(), { allowHttp: false });
   const contract = new Contract(options.contractId);
@@ -120,6 +126,10 @@ export async function callReadOnly<T = unknown>(
 export async function callContract(
   options: ContractCallOptions,
 ): Promise<ContractCallResult> {
+  if (isDemoMode()) {
+    return demoContractCall(options);
+  }
+
   const { Contract, rpc, TransactionBuilder, BASE_FEE, scValToNative } = await getSdk();
   const server = new rpc.Server(getSorobanRpcUrl(), { allowHttp: false });
   const contract = new Contract(options.contractId);

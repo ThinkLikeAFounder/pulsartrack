@@ -66,7 +66,7 @@ describe('campaigns repository', () => {
 
   it('create calls prisma.create', async () => {
     mockCreate.mockResolvedValue({ campaignId: 1n });
-    await campaigns.create({ campaignId: 1n } as any);
+    await campaigns.create({ campaignId: 1n } as unknown as Parameters<typeof campaigns.create>[0]);
     expect(mockCreate).toHaveBeenCalled();
   });
 

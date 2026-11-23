@@ -2,7 +2,45 @@
 //! Privacy-preserving on-chain targeting configuration for ad campaigns on Stellar.
 
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, String};
+use soroban_sdk::{
+    contract, contractclient, contractimpl, contracttype, symbol_short, Address, Env, String,
+};
+
+#[contracttype]
+#[derive(Clone, PartialEq)]
+pub enum LifecycleState {
+    Draft,
+    PendingReview,
+    Active,
+    Paused,
+    Completed,
+    Cancelled,
+    Expired,
+    Archived,
+    Rejected,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct CampaignLifecycle {
+    pub campaign_id: u64,
+    pub advertiser: Address,
+    pub state: LifecycleState,
+    pub created_at: u64,
+    pub activated_at: Option<u64>,
+    pub paused_at: Option<u64>,
+    pub completed_at: Option<u64>,
+    pub cancelled_at: Option<u64>,
+    pub pause_count: u32,
+    pub extension_count: u32,
+    pub original_end_ledger: u32,
+    pub current_end_ledger: u32,
+}
+
+#[contractclient(name = "LifecycleClient")]
+pub trait CampaignLifecycleInterface {
+    fn get_lifecycle(env: Env, campaign_id: u64) -> Option<CampaignLifecycle>;
+}
 
 #[contracttype]
 #[derive(Clone)]
@@ -56,6 +94,7 @@ pub struct TargetingScore {
 pub enum DataKey {
     Admin,
     PendingAdmin,
+    LifecycleContract,
     TargetingConfig(u64),         // campaign_id
     TargetingScore(u64, Address), // campaign_id, publisher
     AuthorizedOracle(Address),
@@ -72,7 +111,7 @@ pub struct TargetingEngineContract;
 
 #[contractimpl]
 impl TargetingEngineContract {
-    pub fn initialize(env: Env, admin: Address) {
+    pub fn initialize(env: Env, admin: Address, lifecycle_contract: Address) {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -81,6 +120,9 @@ impl TargetingEngineContract {
         }
         admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage()
+            .instance()
+            .set(&DataKey::LifecycleContract, &lifecycle_contract);
     }
 
     pub fn add_oracle(env: Env, admin: Address, oracle: Address) {
@@ -125,16 +167,22 @@ impl TargetingEngineContract {
             panic!("invalid age range");
         }
 
-        let config_key = DataKey::TargetingConfig(campaign_id);
-        if let Some(existing) = env
+        let lifecycle_contract = env
             .storage()
-            .persistent()
-            .get::<DataKey, TargetingConfig>(&config_key)
-        {
-            if existing.advertiser != advertiser {
-                panic!("unauthorized: campaign belongs to a different advertiser");
-            }
+            .instance()
+            .get::<DataKey, Address>(&DataKey::LifecycleContract)
+            .expect("lifecycle contract not configured");
+
+        let lifecycle_client = LifecycleClient::new(&env, &lifecycle_contract);
+        let campaign = lifecycle_client
+            .get_lifecycle(&campaign_id)
+            .expect("campaign not found");
+
+        if campaign.advertiser != advertiser {
+            panic!("unauthorized: campaign belongs to a different advertiser");
         }
+
+        let config_key = DataKey::TargetingConfig(campaign_id);
 
         let config = TargetingConfig {
             campaign_id,

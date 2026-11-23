@@ -12,6 +12,7 @@ vi.mock('@stellar/freighter-api', () => ({
 vi.mock('./stellar-config', () => ({
   CURRENT_NETWORK: 'testnet',
   getNetworkPassphrase: vi.fn().mockReturnValue('Test SDF Network ; September 2015'),
+  isDemoMode: () => false,
 }));
 
 import {

@@ -1,6 +1,9 @@
 #![cfg(test)]
 use super::*;
-use soroban_sdk::{testutils::Address as _, Address, Env, String};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger as _},
+    Address, Env, String,
+};
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -29,6 +32,10 @@ fn test_initialize() {
     let client = CampaignLifecycleContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     client.initialize(&admin);
+    let stored_admin = env.as_contract(&client.address, || {
+        env.storage().instance().get(&DataKey::Admin)
+    });
+    assert_eq!(stored_admin, Some(admin));
 }
 
 #[test]
@@ -45,7 +52,7 @@ fn test_initialize_twice() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
 fn test_initialize_non_admin_fails() {
     let env = Env::default();
 
@@ -572,6 +579,9 @@ fn test_transition_expired_to_archived() {
         &make_reason(&env),
     );
     client.transition(&admin, &1u64, &LifecycleState::Active, &make_reason(&env));
+    let lifecycle = client.get_lifecycle(&1u64).unwrap();
+    env.ledger()
+        .set_sequence_number(lifecycle.current_end_ledger + 1);
     client.transition(
         &admin,
         &1u64,
