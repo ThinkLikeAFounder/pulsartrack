@@ -760,8 +760,10 @@ impl CampaignOrchestratorContract {
             .get(&DataKey::Campaign(campaign_id))?;
 
         let total_spent = campaign.budget - campaign.remaining_budget;
-        let completion_rate = (campaign.current_views * 100)
-            .checked_div(campaign.target_views)
+        let completion_rate = campaign
+            .current_views
+            .checked_mul(100)
+            .and_then(|v| v.checked_div(campaign.target_views))
             .unwrap_or(0) as u32;
 
         Some(CampaignMetrics {
