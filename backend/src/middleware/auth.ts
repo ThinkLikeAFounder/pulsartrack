@@ -205,7 +205,9 @@ export function rateLimitWrite() {
     }
 
     try {
-      await writeLimiter.consume(address);
+      if (writeLimiter) {
+        await writeLimiter.consume(address);
+      }
       next();
     } catch {
       res
