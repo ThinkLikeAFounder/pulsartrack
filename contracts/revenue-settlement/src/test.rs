@@ -1,9 +1,9 @@
 #![cfg(test)]
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as _, Ledger},
+    testutils::{Address as _, Events as _, Ledger},
     token::{Client as TokenClient, StellarAssetClient},
-    Address, Env,
+    Address, Env, IntoVal,
 };
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -301,6 +301,7 @@ enum ReentrantTokenKey {
     RevenueContract,
     Publisher,
     Armed,
+    EventMode,
 }
 
 #[contract]
@@ -318,9 +319,29 @@ impl ReentrantToken {
         env.storage()
             .instance()
             .set(&ReentrantTokenKey::Armed, &true);
+        env.storage()
+            .instance()
+            .set(&ReentrantTokenKey::EventMode, &false);
+    }
+
+    pub fn configure_events(env: Env) {
+        env.storage()
+            .instance()
+            .set(&ReentrantTokenKey::EventMode, &true);
     }
 
     pub fn transfer(env: Env, _from: Address, _to: Address, _amount: i128) {
+        let event_mode: bool = env
+            .storage()
+            .instance()
+            .get(&ReentrantTokenKey::EventMode)
+            .unwrap_or(false);
+        if event_mode {
+            env.events()
+                .publish((symbol_short!("token"), symbol_short!("transfer")), ());
+            return;
+        }
+
         let armed: bool = env
             .storage()
             .instance()
@@ -345,6 +366,56 @@ impl ReentrantToken {
             .unwrap();
         RevenueSettlementContractClient::new(&env, &revenue).claim_publisher_balance(&publisher);
     }
+
+    pub fn burn(env: Env, _from: Address, _amount: i128) {
+        let event_mode: bool = env
+            .storage()
+            .instance()
+            .get(&ReentrantTokenKey::EventMode)
+            .unwrap_or(false);
+        if event_mode {
+            env.events()
+                .publish((symbol_short!("token"), symbol_short!("burn")), ());
+        }
+    }
+}
+
+#[test]
+fn test_distribute_persists_state_before_token_calls() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let token_id = env.register(ReentrantToken, ());
+    let treasury = Address::generate(&env);
+    let platform = Address::generate(&env);
+
+    let contract_id = env.register(RevenueSettlementContract, ());
+    let client = RevenueSettlementContractClient::new(&env, &contract_id);
+    client.initialize(&admin, &token_id, &treasury, &platform);
+
+    let publisher = Address::generate(&env);
+    client.record_revenue(&admin, &1u64, &100_000i128, &publisher);
+
+    ReentrantTokenClient::new(&env, &token_id).configure_events();
+
+    client.distribute_platform_revenue(&admin);
+
+    let events = env.events().all();
+    let revenue_idx = events
+        .iter()
+        .position(|(_, topics, _)| {
+            topics == (symbol_short!("revenue"), symbol_short!("distrib")).into_val(&env)
+        })
+        .expect("revenue distribution event is missing");
+    let token_idx = events
+        .iter()
+        .position(|(contract, topics, _)| {
+            contract == token_id
+                && topics == (symbol_short!("token"), symbol_short!("transfer")).into_val(&env)
+        })
+        .expect("token transfer event is missing");
+    assert!(revenue_idx < token_idx);
 }
 
 // The Soroban host forbids contract re-entry (including a token callback back

@@ -201,7 +201,27 @@ impl RevenueSettlementContract {
             .unwrap();
         let token_client = token::Client::new(&env, &token_addr);
 
-        if pool.platform_share > 0 {
+        // Effects: snapshot the amounts owed, zero every pending share in
+        // storage, and only then interact with the token contract. This keeps
+        // the function consistent with the Checks-Effects-Interactions order
+        // used by `claim_publisher_balance` and `auction_engine::settle_auction`.
+        let platform_share = pool.platform_share;
+        let treasury_share = pool.treasury_share;
+        let burn_amount = pool.burn_amount;
+
+        pool.platform_share = 0;
+        pool.treasury_share = 0;
+        pool.burn_amount = 0;
+        pool.total_burned = checked_add(pool.total_burned, burn_amount);
+        pool.last_settlement = env.ledger().timestamp();
+        env.storage().instance().set(&DataKey::RevenuePool, &pool);
+        env.events().publish(
+            (symbol_short!("revenue"), symbol_short!("distrib")),
+            (platform_share, treasury_share, burn_amount),
+        );
+
+        // Interactions: all token calls happen against already-final state.
+        if platform_share > 0 {
             let platform: Address = env
                 .storage()
                 .instance()
@@ -210,12 +230,11 @@ impl RevenueSettlementContract {
             token_client.transfer(
                 &env.current_contract_address(),
                 &platform,
-                &pool.platform_share,
+                &platform_share,
             );
-            pool.platform_share = 0;
         }
 
-        if pool.treasury_share > 0 {
+        if treasury_share > 0 {
             let treasury: Address = env
                 .storage()
                 .instance()
@@ -224,19 +243,13 @@ impl RevenueSettlementContract {
             token_client.transfer(
                 &env.current_contract_address(),
                 &treasury,
-                &pool.treasury_share,
+                &treasury_share,
             );
-            pool.treasury_share = 0;
         }
 
-        if pool.burn_amount > 0 {
-            pool.total_burned += pool.burn_amount; // accumulate before resetting
-            token_client.burn(&env.current_contract_address(), &pool.burn_amount);
-            pool.burn_amount = 0;
+        if burn_amount > 0 {
+            token_client.burn(&env.current_contract_address(), &burn_amount);
         }
-
-        pool.last_settlement = env.ledger().timestamp();
-        env.storage().instance().set(&DataKey::RevenuePool, &pool);
     }
 
     pub fn claim_publisher_balance(env: Env, publisher: Address) {
