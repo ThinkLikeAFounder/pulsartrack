@@ -65,3 +65,6 @@ where
     env.storage().instance().set(admin_key, &new_admin);
     env.storage().instance().remove(pending_key);
 }
+
+#[cfg(test)]
+mod test;

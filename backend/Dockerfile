@@ -6,6 +6,8 @@ WORKDIR /app
 # Copy package files
 COPY package.json package-lock.json* ./
 
+COPY prisma ./prisma
+
 # Install all dependencies (development + production)
 RUN npm ci && npm cache clean --force
 
