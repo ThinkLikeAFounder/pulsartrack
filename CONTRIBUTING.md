@@ -126,7 +126,7 @@ cargo build --workspace
 cargo test --workspace
 
 # Run tests for a specific contract
-cargo test -p campaign-contract
+cargo test -p pulsar-campaign-orchestrator
 ```
 
 > **Note:** Soroban test snapshots (`contracts/*/test_snapshots/`) are generated
