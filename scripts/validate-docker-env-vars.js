@@ -31,7 +31,46 @@ function getFrontendBuildArgs(composeText) {
   return keys.filter(key => key.startsWith('NEXT_PUBLIC_'));
 }
 
-module.exports = { getFrontendBuildArgs };
+function getBackendContractEnvVars(envSource) {
+  const varsMatch = envSource.match(/const CONTRACT_ENV_VARS = \[([\s\S]*?)\] as const;/);
+  if (!varsMatch) return null;
+
+  return [...varsMatch[1].matchAll(/"(CONTRACT_[A-Z0-9_]+)"/g)].map(match => match[1]);
+}
+
+function getBackendEnvExampleContractVars(exampleText) {
+  return [...exampleText.matchAll(/^[ \t]*(CONTRACT_[A-Z0-9_]+)=/gm)]
+    .map(match => match[1]);
+}
+
+function getContractEnvVarMismatch(envSource, exampleText) {
+  const requiredVars = getBackendContractEnvVars(envSource);
+  if (!requiredVars) return null;
+
+  const exampleEntries = [...exampleText.matchAll(/^[ \t]*(CONTRACT_[A-Z0-9_]+)=(.*)$/gm)];
+  const exampleVars = exampleEntries.map(match => match[1]);
+  const seen = new Set();
+  const duplicates = exampleVars.filter(name => {
+    if (seen.has(name)) return true;
+    seen.add(name);
+    return false;
+  });
+  return {
+    missing: requiredVars.filter(name => !exampleVars.includes(name)),
+    extra: exampleVars.filter(name => !requiredVars.includes(name)),
+    duplicates,
+    nonEmpty: exampleEntries
+      .filter(match => match[2].trim() !== '')
+      .map(match => match[1]),
+  };
+}
+
+module.exports = {
+  getBackendContractEnvVars,
+  getBackendEnvExampleContractVars,
+  getContractEnvVarMismatch,
+  getFrontendBuildArgs,
+};
 
 if (require.main !== module) return;
 
@@ -71,6 +110,43 @@ console.log(`🐳 Found ${dockerfileArgs.length} NEXT_PUBLIC_* ARG declarations 
 // Read docker-compose.yml
 const dockerComposePath = path.join(__dirname, '../docker-compose.yml');
 const dockerCompose = fs.readFileSync(dockerComposePath, 'utf8');
+let hasErrors = false;
+
+// Ensure backend/.env.example stays aligned with the backend's validated variables.
+const backendEnvPath = path.join(__dirname, '../backend/src/config/env.ts');
+const backendEnv = fs.readFileSync(backendEnvPath, 'utf8');
+const backendExamplePath = path.join(__dirname, '../backend/.env.example');
+const backendExample = fs.readFileSync(backendExamplePath, 'utf8');
+const contractVarMismatch = getContractEnvVarMismatch(backendEnv, backendExample);
+if (!contractVarMismatch) {
+  console.error('❌ Could not find CONTRACT_ENV_VARS in backend/src/config/env.ts');
+  process.exit(1);
+}
+console.log(`📋 Found ${getBackendContractEnvVars(backendEnv).length} backend contract variables`);
+
+if (contractVarMismatch.missing.length > 0) {
+  console.error('\n❌ MISSING in backend/.env.example:');
+  contractVarMismatch.missing.forEach(v => console.error(`   - ${v}`));
+  hasErrors = true;
+}
+
+if (contractVarMismatch.extra.length > 0) {
+  console.error('\n❌ EXTRA in backend/.env.example (not in CONTRACT_ENV_VARS):');
+  contractVarMismatch.extra.forEach(v => console.error(`   - ${v}`));
+  hasErrors = true;
+}
+
+if (contractVarMismatch.duplicates.length > 0) {
+  console.error('\n❌ DUPLICATED in backend/.env.example:');
+  contractVarMismatch.duplicates.forEach(v => console.error(`   - ${v}`));
+  hasErrors = true;
+}
+
+if (contractVarMismatch.nonEmpty.length > 0) {
+  console.error('\n❌ Contract values in backend/.env.example must be blank:');
+  contractVarMismatch.nonEmpty.forEach(v => console.error(`   - ${v}`));
+  hasErrors = true;
+}
 
 // Extract build args from the frontend service only
 const composeArgs = getFrontendBuildArgs(dockerCompose);
@@ -88,8 +164,6 @@ const missingInCompose = requiredVars.filter(v => !composeArgs.includes(v));
 // Also check for extras (not required but declared)
 const extraInDockerfile = dockerfileArgs.filter(v => !requiredVars.includes(v));
 const extraInCompose = composeArgs.filter(v => !requiredVars.includes(v));
-
-let hasErrors = false;
 
 if (missingInDockerfile.length > 0) {
   console.error('\n❌ MISSING in Dockerfile ARGs:');
@@ -116,15 +190,14 @@ if (extraInCompose.length > 0) {
 }
 
 if (!hasErrors) {
-  console.log('\n✅ All required environment variables are declared in both Dockerfile and docker-compose.yml');
-  console.log('✅ Docker build configuration is valid');
+  console.log('\n✅ Backend contract example and frontend Docker build configuration are valid');
   process.exit(0);
 } else {
-  console.error('\n❌ Validation failed: Docker configuration does not match REQUIRED_ENV_VARS');
+  console.error('\n❌ Validation failed: environment examples do not match backend and frontend requirements');
   console.error('\nTo fix this issue:');
-  console.error('1. Add missing ARG declarations to frontend/Dockerfile');
-  console.error('2. Add corresponding ENV statements in frontend/Dockerfile');
-  console.error('3. Add missing build args to docker-compose.yml frontend service');
+  console.error('1. Align backend/.env.example contract entries with CONTRACT_ENV_VARS');
+  console.error('2. Add missing ARG declarations to frontend/Dockerfile');
+  console.error('3. Add corresponding ENV statements and docker-compose.yml build args');
   console.error('\nRefer to the existing patterns in both files.');
   process.exit(1);
 }
