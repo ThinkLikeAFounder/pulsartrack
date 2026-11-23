@@ -205,14 +205,17 @@ export function rateLimitWrite() {
     }
 
     try {
-      await writeLimiter.consume(address);
-      next();
+      if (writeLimiter) {
+        await writeLimiter.consume(address);
+      }
     } catch {
       res
         .status(429)
         .json({ error: "Write rate limit exceeded (10 per hour)" });
       return;
     }
+
+    next();
   };
 }
 
