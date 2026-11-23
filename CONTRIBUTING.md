@@ -209,14 +209,16 @@ This repository uses CI-gated auto-merge. Your PR must meet these requirements:
 - Contracts CI - All contract tests must pass
 - Backend CI - Backend type check, build, and tests must pass
 - Frontend CI - Frontend type check, lint, build, and tests must pass
-- E2E Tests - End-to-end tests must pass
+
+E2E Tests run in CI, but are intentionally not a required status check because
+they can be slow and flaky.
 
 **Additional Requirements:**
 - PR must be up to date with the `main` branch
 - No merge conflicts
-- At least one approval from a maintainer
 
-Once all checks pass and you have approval, the PR will be automatically merged.
+No human approval is currently required by branch protection. Once the three
+required checks pass, the PR will be automatically merged.
 
 ### After Your PR is Merged
 
