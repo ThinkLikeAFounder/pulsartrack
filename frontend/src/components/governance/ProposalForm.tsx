@@ -6,9 +6,15 @@ interface ProposalFormProps {
   onSubmit?: (data: { title: string; description: string; durationDays: number }) => Promise<void>;
   onCancel?: () => void;
   requiredBalance?: number; // PULSAR tokens required
+  durationOptions?: number[];
 }
 
-export function ProposalForm({ onSubmit, onCancel, requiredBalance = 1000 }: ProposalFormProps) {
+export function ProposalForm({
+  onSubmit,
+  onCancel,
+  requiredBalance = 1000,
+  durationOptions = [3, 5, 7, 14],
+}: ProposalFormProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [durationDays, setDurationDays] = useState(7);
@@ -89,7 +95,7 @@ export function ProposalForm({ onSubmit, onCancel, requiredBalance = 1000 }: Pro
           onChange={(e) => setDurationDays(parseInt(e.target.value))}
           className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 text-sm"
         >
-          {[3, 5, 7, 14].map((d) => (
+          {durationOptions.map((d) => (
             <option key={d} value={d}>{d} days</option>
           ))}
         </select>
