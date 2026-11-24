@@ -29,5 +29,5 @@ All sub-packages and contracts share a single release version sequence (e.g. `0.
 
 ## 3. Maintenance & Documentation Requirements
 
-1. **CHANGELOG Updates**: Every pull request introducing significant features, contract modifications, security fixes, or breaking changes must add an entry under `[Unreleased]` in [`CHANGELOG.md`](file:///Users/marvellous/Desktop/pulsartrack/CHANGELOG.md).
+1. **CHANGELOG Updates**: Every pull request introducing significant features, contract modifications, security fixes, or breaking changes must add an entry under `[Unreleased]` in [`CHANGELOG.md`](CHANGELOG.md).
 2. **Version Bumps**: Tagged releases bump `version` in `frontend/package.json`, `backend/package.json`, and all `contracts/*/Cargo.toml` files simultaneously via workspace scripts.
