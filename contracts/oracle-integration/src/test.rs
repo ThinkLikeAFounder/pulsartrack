@@ -55,6 +55,48 @@ fn test_add_oracle() {
 }
 
 #[test]
+fn test_add_oracle_duplicate_does_not_increment_count() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin) = setup(&env);
+    let first = Address::generate(&env);
+    let second = Address::generate(&env);
+
+    let count = || -> u32 {
+        env.as_contract(&c.address, || {
+            env.storage().instance().get(&DataKey::OracleCount).unwrap()
+        })
+    };
+
+    c.add_oracle(&admin, &first);
+    assert_eq!(count(), 1);
+    c.add_oracle(&admin, &second);
+    assert_eq!(count(), 2);
+    c.add_oracle(&admin, &first);
+    assert_eq!(count(), 2);
+    assert!(c.is_oracle_authorized(&first));
+    assert!(c.is_oracle_authorized(&second));
+}
+
+#[test]
+fn test_duplicate_add_then_remove_returns_count_to_zero() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin) = setup(&env);
+    let oracle = Address::generate(&env);
+
+    c.add_oracle(&admin, &oracle);
+    c.add_oracle(&admin, &oracle);
+    c.remove_oracle(&admin, &oracle);
+
+    let count: u32 = env.as_contract(&c.address, || {
+        env.storage().instance().get(&DataKey::OracleCount).unwrap()
+    });
+    assert_eq!(count, 0);
+    assert!(!c.is_oracle_authorized(&oracle));
+}
+
+#[test]
 fn test_remove_oracle() {
     let env = Env::default();
     env.mock_all_auths();

@@ -1,6 +1,9 @@
 #![cfg(test)]
 use super::*;
-use soroban_sdk::{testutils::Address as _, Address, Env};
+use soroban_sdk::{
+    testutils::{Address as _, Events as _},
+    Address, Env, FromVal, IntoVal,
+};
 
 fn setup(env: &Env) -> (AccessControlContractClient<'_>, Address) {
     let admin = Address::generate(env);
@@ -64,6 +67,29 @@ fn test_revoke_role_lower_rank() {
     assert!(c.has_role(&operator, &Role::Operator));
     c.revoke_role(&super_admin, &operator, &Role::Operator);
     assert!(!c.has_role(&operator, &Role::Operator));
+}
+
+#[test]
+fn test_revoke_role_event_reports_actual_role() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, super_admin) = setup(&env);
+    let operator = Address::generate(&env);
+    c.grant_role(&super_admin, &operator, &Role::Operator);
+
+    // The role argument is only an ABI-compatible hint; the stored role wins.
+    c.revoke_role(&super_admin, &operator, &Role::Moderator);
+
+    let (event_contract, event_topics, event_data) = env.events().all().last().unwrap();
+    assert_eq!(event_contract, c.address);
+    assert_eq!(
+        event_topics,
+        (symbol_short!("access"), symbol_short!("revoked")).into_val(&env)
+    );
+    let (revoked_account, revoked_role): (Address, Role) =
+        <(Address, Role)>::from_val(&env, &event_data);
+    assert_eq!(revoked_account, operator);
+    assert!(revoked_role == Role::Operator);
 }
 
 #[test]
