@@ -428,9 +428,18 @@ impl PaymentProcessorContract {
                     payment_count: 0,
                 });
 
-        stats.total_fees_collected += fee;
-        stats.total_volume += volume;
-        stats.payment_count += 1;
+        stats.total_fees_collected = stats
+            .total_fees_collected
+            .checked_add(fee)
+            .expect("total_fees_collected overflow");
+        stats.total_volume = stats
+            .total_volume
+            .checked_add(volume)
+            .expect("total_volume overflow");
+        stats.payment_count = stats
+            .payment_count
+            .checked_add(1)
+            .expect("payment_count overflow");
         env.storage().persistent().set(&key, &stats);
         env.storage().persistent().extend_ttl(
             &key,
