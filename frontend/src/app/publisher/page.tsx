@@ -16,6 +16,7 @@ import {
   usePublisherData,
   usePublisherKyc,
   usePublisherEarnings,
+  useClaimPublisherBalance,
   useRevenuePool,
   useAuctionCount,
   usePublisherAuctions,
@@ -139,6 +140,7 @@ export default function PublisherPage() {
     address || '',
     isConnected,
   );
+  const { claimPublisherBalance, isPending: isClaiming } = useClaimPublisherBalance();
   const { data: revenuePool, isLoading: revenuePoolLoading } = useRevenuePool(isConnected);
   const { data: auctionCount } = useAuctionCount(isConnected);
   const { data: auctions, isLoading: auctionsLoading } = usePublisherAuctions(
@@ -602,6 +604,8 @@ export default function PublisherPage() {
                         : earnings || 0n
                     }
                     pendingPayout={earnings || 0n}
+                    onWithdraw={async () => { await claimPublisherBalance(); }}
+                    isWithdrawing={isClaiming}
                     isSplitLoading={revenuePoolLoading}
                     revenueSplit={
                       revenuePool

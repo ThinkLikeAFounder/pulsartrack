@@ -1,7 +1,8 @@
-import { getServer } from './soroban-client';
-import * as ledgerEventsRepo from '../db/repositories/ledgerEvents';
-import { logger } from '../lib/logger';
+import { getServer } from "./soroban-client";
+import * as ledgerEventsRepo from "../db/repositories/ledgerEvents";
+import { logger } from "../lib/logger";
 import { errorMessage } from "../lib/errors";
+import { projectEvent } from "./event-projector";
 
 /**
  * Background event indexer that reads Soroban contract events from the RPC
@@ -14,8 +15,14 @@ import { errorMessage } from "../lib/errors";
 // Both values are validated (integer >= 1, with defaults) by loadEnv() in
 // config/env.ts before the indexer starts, so a malformed value fails startup
 // instead of silently becoming NaN here.
-const POLL_INTERVAL_MS =parseInt(process.env.EVENT_POLL_INTERVAL_MS || '5000', 10);
-const MAX_EVENTS_PER_POLL = parseInt(process.env.EVENT_MAX_PER_POLL || '200', 10);
+const POLL_INTERVAL_MS = parseInt(
+  process.env.EVENT_POLL_INTERVAL_MS || "5000",
+  10,
+);
+const MAX_EVENTS_PER_POLL = parseInt(
+  process.env.EVENT_MAX_PER_POLL || "200",
+  10,
+);
 
 let running = false;
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
@@ -23,9 +30,9 @@ let pollTimer: ReturnType<typeof setTimeout> | null = null;
 export function startEventIndexer() {
   if (running) return;
   running = true;
-  logger.info('[EventIndexer] Starting event indexer');
+  logger.info("[EventIndexer] Starting event indexer");
   poll().catch((err) => {
-    logger.error({ err }, '[EventIndexer] Fatal error in indexer loop');
+    logger.error({ err }, "[EventIndexer] Fatal error in indexer loop");
   });
 }
 
@@ -35,7 +42,7 @@ export function stopEventIndexer() {
     clearTimeout(pollTimer);
     pollTimer = null;
   }
-  logger.info('[EventIndexer] Stopped');
+  logger.info("[EventIndexer] Stopped");
 }
 
 async function poll() {
@@ -61,11 +68,11 @@ async function poll() {
       for (let i = 0; i < events.length; i++) {
         const event = events[i];
         // SDK BaseEventResponse exposes txHash, not transactionHash
-        const txHash = event.txHash || '';
+        const txHash = event.txHash || "";
         const ledgerSeq = event.ledger || 0;
         // contractId is typed as Contract (SDK class) — convert to string
-        const contractId = event.contractId ? event.contractId.toString() : '';
-        const eventType = event.topic?.[0] || 'unknown';
+        const contractId = event.contractId ? event.contractId.toString() : "";
+        const eventType = event.topic?.[0] || "unknown";
         const eventData = event.value || null;
 
         // Extract the stable event_index from the event's unique id field.
@@ -73,8 +80,8 @@ async function poll() {
         // 10-character zero-padded number representing the event's position
         // within its transaction. This is stable across polls for the same
         // event, unlike the loop counter i which resets each poll (#1094).
-        const eventId = event.id || '';
-        const eventIndexStr = eventId.split('-')[1] || '0';
+        const eventId = event.id || "";
+        const eventIndexStr = eventId.split("-")[1] || "0";
         const eventIndex = parseInt(eventIndexStr, 10) || 0;
 
         const result = await ledgerEventsRepo.create({
@@ -82,18 +89,34 @@ async function poll() {
           tx_hash: txHash,
           event_index: eventIndex,
           contract_id: contractId,
-          event_type: typeof eventType === 'string' ? eventType : JSON.stringify(eventType),
+          event_type:
+            typeof eventType === "string"
+              ? eventType
+              : JSON.stringify(eventType),
           event_data: eventData,
         });
 
-        if (result) written++;
+        if (result) {
+          written++;
+          await projectEvent({
+            event_type: result.event_type,
+            event_data: result.event_data,
+            tx_hash: result.tx_hash,
+            ledger_sequence: ledgerSeq,
+          });
+        }
       }
-      logger.info(`[EventIndexer] Indexed ${written}/${events.length} events from ledger ${events[0]?.ledger ?? '?'}`);
+      logger.info(
+        `[EventIndexer] Indexed ${written}/${events.length} events from ledger ${events[0]?.ledger ?? "?"}`,
+      );
     }
   } catch (err) {
     // Transient RPC errors are expected during network issues — log and
     // continue polling rather than crashing the server.
-    logger.warn({ err: errorMessage(err) }, '[EventIndexer] Poll error, will retry');
+    logger.warn(
+      { err: errorMessage(err) },
+      "[EventIndexer] Poll error, will retry",
+    );
   }
 
   if (running) {
