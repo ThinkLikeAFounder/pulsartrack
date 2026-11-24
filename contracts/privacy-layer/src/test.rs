@@ -1,7 +1,12 @@
 #![cfg(test)]
 use super::*;
 use ed25519_dalek::{Signer, SigningKey};
-use soroban_sdk::{testutils::Address as _, Address, BytesN, Env, String};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger},
+    Address, BytesN, Env, String,
+};
+
+const MIN_ADMIN_DELAY_LEDGERS: u32 = 17_280;
 
 fn setup(env: &Env) -> (PrivacyLayerContractClient<'_>, Address) {
     let admin = Address::generate(env);
@@ -27,6 +32,94 @@ fn setup_verifier_key(
     );
     key
 }
+
+#[test]
+fn test_admin_rotation_after_timelock() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin) = setup(&env);
+    let new_admin = Address::generate(&env);
+
+    c.propose_admin(&admin, &new_admin);
+    let pending = env.as_contract(&c.address, || {
+        env.storage()
+            .instance()
+            .get::<DataKey, (Address, u32)>(&DataKey::PendingAdmin)
+    });
+    let (pending_admin, proposed_at) = pending.unwrap();
+    assert_eq!(pending_admin, new_admin);
+
+    env.ledger()
+        .with_mut(|ledger| ledger.sequence_number = proposed_at + MIN_ADMIN_DELAY_LEDGERS);
+    c.accept_admin(&new_admin);
+
+    let stored_admin = env.as_contract(&c.address, || {
+        env.storage()
+            .instance()
+            .get::<DataKey, Address>(&DataKey::Admin)
+    });
+    assert_eq!(stored_admin, Some(new_admin));
+    let pending = env.as_contract(&c.address, || {
+        env.storage()
+            .instance()
+            .get::<DataKey, (Address, u32)>(&DataKey::PendingAdmin)
+    });
+    assert!(pending.is_none());
+}
+
+#[test]
+#[should_panic(expected = "unauthorized")]
+fn test_non_admin_cannot_propose_admin() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _) = setup(&env);
+    c.propose_admin(&Address::generate(&env), &Address::generate(&env));
+}
+
+#[test]
+#[should_panic(expected = "admin transfer time lock not elapsed")]
+fn test_accept_admin_before_timelock_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin) = setup(&env);
+    let new_admin = Address::generate(&env);
+    c.propose_admin(&admin, &new_admin);
+
+    let proposed_at = env.as_contract(&c.address, || {
+        env.storage()
+            .instance()
+            .get::<DataKey, (Address, u32)>(&DataKey::PendingAdmin)
+            .unwrap()
+            .1
+    });
+    env.ledger().with_mut(|ledger| {
+        ledger.sequence_number = proposed_at + MIN_ADMIN_DELAY_LEDGERS - 1;
+    });
+    c.accept_admin(&new_admin);
+}
+
+#[test]
+#[should_panic(expected = "not pending admin")]
+fn test_non_pending_admin_cannot_accept_transfer() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin) = setup(&env);
+    let new_admin = Address::generate(&env);
+    let stranger = Address::generate(&env);
+    c.propose_admin(&admin, &new_admin);
+
+    let proposed_at = env.as_contract(&c.address, || {
+        env.storage()
+            .instance()
+            .get::<DataKey, (Address, u32)>(&DataKey::PendingAdmin)
+            .unwrap()
+            .1
+    });
+    env.ledger()
+        .with_mut(|ledger| ledger.sequence_number = proposed_at + MIN_ADMIN_DELAY_LEDGERS);
+    c.accept_admin(&stranger);
+}
+
 fn s(env: &Env, v: &str) -> String {
     String::from_str(env, v)
 }
