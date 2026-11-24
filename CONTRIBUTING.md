@@ -197,7 +197,7 @@ npm run build
    - Clear description of the changes
    - Reference to the issue number (e.g., "Closes #123")
    - Any relevant testing notes
-   - An entry in [`CHANGELOG.md`](file:///Users/marvellous/Desktop/pulsartrack/CHANGELOG.md) under `[Unreleased]` for user-facing changes or breaking changes (see [`VERSIONING.md`](file:///Users/marvellous/Desktop/pulsartrack/VERSIONING.md) for versioning rules)
+   - An entry in [`CHANGELOG.md`](CHANGELOG.md) under `[Unreleased]` for user-facing changes or breaking changes (see [`VERSIONING.md`](VERSIONING.md) for versioning rules)
 
 4. Submit the pull request
 

@@ -441,6 +441,68 @@ describe('PulsarWebSocket', () => {
     });
   });
 
+  describe('server protocol', () => {
+    it('maps the server "payload" field onto event.data', () => {
+      const client = new PulsarWebSocket('ws://test.example.com');
+      client.connect();
+      triggerOpen();
+      triggerMessage({ type: 'authenticated', payload: {} });
+
+      const bidHandler = vi.fn();
+      client.on('bid_placed', bidHandler);
+      triggerMessage({ type: 'bid_placed', payload: { auctionId: 7 }, timestamp: 1 });
+
+      expect(bidHandler).toHaveBeenCalledTimes(1);
+      expect(bidHandler.mock.calls[0][0].data).toEqual({ auctionId: 7 });
+    });
+
+    it('sends channel subscriptions once authenticated and again after reconnect', () => {
+      const client = new PulsarWebSocket('ws://test.example.com');
+      const release = client.subscribe('auctions');
+      client.connect();
+      triggerOpen();
+      expect(currentWs!.sentMessages).not.toContain(JSON.stringify({ type: 'subscribe', channel: 'auctions' }));
+
+      triggerMessage({ type: 'authenticated', payload: {} });
+      expect(currentWs!.sentMessages).toContain(JSON.stringify({ type: 'subscribe', channel: 'auctions' }));
+
+      triggerClose();
+      vi.advanceTimersByTime(3000);
+      triggerOpen();
+      triggerMessage({ type: 'authenticated', payload: {} });
+      expect(currentWs!.sentMessages).toContain(JSON.stringify({ type: 'subscribe', channel: 'auctions' }));
+
+      release();
+      expect(currentWs!.sentMessages).toContain(JSON.stringify({ type: 'unsubscribe', channel: 'auctions' }));
+    });
+
+    it('only unsubscribes a shared channel when the last subscriber releases it', () => {
+      const client = new PulsarWebSocket('ws://test.example.com');
+      client.connect();
+      triggerOpen();
+      triggerMessage({ type: 'authenticated', payload: {} });
+
+      const a = client.subscribe('campaigns');
+      const b = client.subscribe('campaigns');
+      const unsub = JSON.stringify({ type: 'unsubscribe', channel: 'campaigns' });
+      a();
+      expect(currentWs!.sentMessages).not.toContain(unsub);
+      b();
+      expect(currentWs!.sentMessages).toContain(unsub);
+    });
+
+    it('does not reconnect when the server rejects the client (4001)', () => {
+      const client = new PulsarWebSocket('ws://test.example.com');
+      client.connect();
+      triggerOpen();
+
+      currentWs!.readyState = 3;
+      (currentWs!.onclose as unknown as (e: { code: number }) => void)({ code: 4001 });
+      vi.advanceTimersByTime(60000);
+      expect(constructionSpy).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('singleton getPulsarWebSocket / connectWebSocket / disconnectWebSocket', () => {
     it('getPulsarWebSocket returns the same instance across calls', () => {
       const a = getPulsarWebSocket();
