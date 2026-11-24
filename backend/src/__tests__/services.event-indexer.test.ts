@@ -28,6 +28,7 @@ import { startEventIndexer, stopEventIndexer } from '../services/event-indexer';
 describe('event-indexer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers();
     mockGetLatestSequence.mockResolvedValue(BigInt(0));
   });
 
