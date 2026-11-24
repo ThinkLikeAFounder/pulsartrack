@@ -748,11 +748,3 @@ export function useSubscribe() {
 
   return { subscribe, ...rest };
 }
-
-/**
- * Convenience hook for wallet info
- */
-export function useWallet() {
-  const { address, isConnected } = useWalletStore();
-  return { address, isConnected };
-}
