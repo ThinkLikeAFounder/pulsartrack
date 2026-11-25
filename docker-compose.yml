@@ -18,6 +18,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    ports:
+      - "5432:5432"
     networks:
       - pulsartrack-network
 
@@ -31,8 +33,10 @@ services:
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
+    ports:
+      - "6379:6379"
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a \"$REDIS_PASSWORD\" ping"]
+      test: ["CMD-SHELL", 'redis-cli -a "$REDIS_PASSWORD" ping']
       interval: 10s
       timeout: 3s
       retries: 5

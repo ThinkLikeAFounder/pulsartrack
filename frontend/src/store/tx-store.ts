@@ -13,6 +13,7 @@ export type TransactionType =
   | "payout"
   | "governance_vote"
   | "publisher_register"
+  | "publisher_claim"
   | "subscription"
   | "other";
 
