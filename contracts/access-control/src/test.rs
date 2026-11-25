@@ -132,3 +132,15 @@ fn test_self_revocation_blocked() {
     // Admin tries to revoke their own role — must panic (equal rank)
     c.revoke_role(&admin_account, &admin_account, &Role::Admin);
 }
+
+#[test]
+#[should_panic(expected = "cannot grant a role to an account at or above your own rank")]
+fn test_moderator_cannot_demote_super_admin_via_grant_role() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, super_admin) = setup(&env);
+    let moderator = Address::generate(&env);
+    c.grant_role(&super_admin, &moderator, &Role::Moderator);
+
+    c.grant_role(&moderator, &super_admin, &Role::Operator);
+}

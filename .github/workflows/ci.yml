@@ -59,9 +59,16 @@ jobs:
       - name: Build backend
         run: npm run build
         working-directory: backend
-      - name: Run backend tests
-        run: npm test
+      - name: Run backend tests with coverage
+        run: npm run test:coverage
         working-directory: backend
+      - name: Upload backend coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/coverage
+          retention-days: 14
 
   frontend:
     name: Frontend CI
@@ -90,9 +97,16 @@ jobs:
       - name: Build frontend
         run: npm run build
         working-directory: frontend
-      - name: Run frontend tests
-        run: npm test
+      - name: Run frontend tests with coverage
+        run: npm run test:coverage -- --run
         working-directory: frontend
+      - name: Upload frontend coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend/coverage
+          retention-days: 14
 
   e2e:
     name: E2E Tests
