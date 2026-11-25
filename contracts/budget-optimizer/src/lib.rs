@@ -160,8 +160,6 @@ impl BudgetOptimizerContract {
             last_reset_day: env.ledger().timestamp() / 86_400, // Hourly reset tracking
         };
 
-        // Actually, let me look at this more carefully. The campaign_id should come from args
-
         let _ttl_key = DataKey::Allocation(args.campaign_id);
         env.storage().persistent().set(&_ttl_key, &allocation);
         env.storage().persistent().extend_ttl(
