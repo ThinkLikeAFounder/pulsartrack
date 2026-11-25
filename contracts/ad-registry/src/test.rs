@@ -308,3 +308,29 @@ fn test_accept_admin_unauthorized() {
     c.propose_admin(&admin, &new_admin);
     c.accept_admin(&stranger);
 }
+
+#[test]
+fn test_track_view_dedup_persistent() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin) = setup(&env);
+    let viewer = Address::generate(&env);
+    let cid = register(&c, &env);
+    c.update_status(&admin, &cid, &ContentStatus::Approved);
+    c.track_view(&cid, &viewer);
+
+    let perf = c.get_performance(&cid).unwrap();
+    assert_eq!(perf.total_views, 1);
+    assert_eq!(perf.unique_viewers, 1);
+
+    // Advance ledger sequence/time past what temporary storage would retain
+    env.ledger().with_mut(|li| {
+        li.sequence_number += 50_000;
+        li.timestamp += 500_000;
+    });
+
+    c.track_view(&cid, &viewer);
+    let perf = c.get_performance(&cid).unwrap();
+    assert_eq!(perf.total_views, 2);
+    assert_eq!(perf.unique_viewers, 1);
+}
