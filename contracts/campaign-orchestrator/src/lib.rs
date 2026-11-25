@@ -545,22 +545,24 @@ impl CampaignOrchestratorContract {
             panic!("unauthorized");
         }
 
-        // Only decrement stats if it was active
-        if let CampaignStatus::Active = campaign.status {
-            let stats_key = DataKey::AdvertiserStats(advertiser.clone());
-            if let Some(mut stats) = env
-                .storage()
-                .persistent()
-                .get::<DataKey, AdvertiserStats>(&stats_key)
-            {
-                stats.active_campaigns = stats.active_campaigns.saturating_sub(1);
-                env.storage().persistent().set(&stats_key, &stats);
-                env.storage().persistent().extend_ttl(
-                    &stats_key,
-                    PERSISTENT_LIFETIME_THRESHOLD,
-                    PERSISTENT_BUMP_AMOUNT,
-                );
-            }
+        match campaign.status {
+            CampaignStatus::Active => {}
+            _ => panic!("campaign is not active"),
+        }
+
+        let stats_key = DataKey::AdvertiserStats(advertiser.clone());
+        if let Some(mut stats) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, AdvertiserStats>(&stats_key)
+        {
+            stats.active_campaigns = stats.active_campaigns.saturating_sub(1);
+            env.storage().persistent().set(&stats_key, &stats);
+            env.storage().persistent().extend_ttl(
+                &stats_key,
+                PERSISTENT_LIFETIME_THRESHOLD,
+                PERSISTENT_BUMP_AMOUNT,
+            );
         }
 
         campaign.status = CampaignStatus::Paused;
