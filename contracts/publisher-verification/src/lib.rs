@@ -287,6 +287,98 @@ impl PublisherVerificationContract {
         );
     }
 
+    /// Reinstate a suspended publisher (admin only)
+    pub fn reinstate_publisher(env: Env, admin: Address, publisher: Address) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+
+        let mut pub_data: Publisher = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Publisher(publisher.clone()))
+            .expect("publisher not found");
+
+        if pub_data.status != VerificationStatus::Suspended {
+            panic!("publisher is not suspended");
+        }
+
+        pub_data.status = VerificationStatus::Verified;
+
+        let _ttl_key = DataKey::Publisher(publisher);
+        env.storage().persistent().set(&_ttl_key, &pub_data);
+        env.storage().persistent().extend_ttl(
+            &_ttl_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+    }
+
+    pub fn unsuspend_publisher(env: Env, admin: Address, publisher: Address) {
+        Self::reinstate_publisher(env, admin, publisher);
+    }
+
+    /// Reject a publisher (admin only)
+    pub fn reject_publisher(env: Env, admin: Address, publisher: Address) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+
+        let mut pub_data: Publisher = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Publisher(publisher.clone()))
+            .expect("publisher not found");
+
+        pub_data.status = VerificationStatus::Rejected;
+
+        let _ttl_key = DataKey::Publisher(publisher);
+        env.storage().persistent().set(&_ttl_key, &pub_data);
+        env.storage().persistent().extend_ttl(
+            &_ttl_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+    }
+
+    /// Revoke a publisher's verification permanently (admin only)
+    pub fn revoke_publisher(env: Env, admin: Address, publisher: Address) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+
+        let mut pub_data: Publisher = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Publisher(publisher.clone()))
+            .expect("publisher not found");
+
+        pub_data.status = VerificationStatus::Revoked;
+
+        let _ttl_key = DataKey::Publisher(publisher);
+        env.storage().persistent().set(&_ttl_key, &pub_data);
+        env.storage().persistent().extend_ttl(
+            &_ttl_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+    }
+
     /// Update publisher reputation score (admin only)
     pub fn update_reputation(env: Env, admin: Address, publisher: Address, score: u32) {
         env.storage()
