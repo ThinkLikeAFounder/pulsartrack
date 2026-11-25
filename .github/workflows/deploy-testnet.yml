@@ -26,7 +26,7 @@ jobs:
       STELLAR_NETWORK: testnet
       STELLAR_IDENTITY: pulsartrack-deployer
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
