@@ -468,3 +468,23 @@ fn test_set_budget_allocation_owner_can_update() {
     assert_eq!(alloc.total_budget, 200_000);
     assert_eq!(alloc.daily_budget, 20_000);
 }
+
+#[test]
+#[should_panic(expected = "daily budget must be non-negative")]
+fn test_optimize_budget_negative_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, advertiser, oracle) = setup(&env);
+
+    c.set_budget_allocation(&SetBudgetAllocationArgs {
+        advertiser: advertiser.clone(),
+        campaign_id: 1u64,
+        total_budget: 100_000i128,
+        daily_budget: 10_000i128,
+        optimization_mode: OptimizationMode::ManualCpc,
+        target_cpa: 500i128,
+        target_ctr: 100u32,
+    });
+
+    c.optimize_budget(&oracle, &1u64, &-1000i128, &s(&env, "anomaly drop"));
+}
