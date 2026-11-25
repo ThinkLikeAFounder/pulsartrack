@@ -1265,3 +1265,43 @@ fn test_proposal_passes_with_snapshot_supply_not_live_supply() {
     let proposal = client.get_proposal(&proposal_id).unwrap();
     assert!(matches!(proposal.status, ProposalStatus::Passed));
 }
+
+#[test]
+#[should_panic(expected = "voting_period out of bounds")]
+fn test_initialize_excessive_voting_period_panics() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let token = Address::generate(&env);
+    let contract_id = env.register(GovernanceDaoContract, ());
+    let client = GovernanceDaoContractClient::new(&env, &contract_id);
+
+    client.initialize(
+        &admin,
+        &token,
+        &(MAX_VOTING_PERIOD + 1),
+        &1_000u32,
+        &51u32,
+        &0i128,
+    );
+}
+
+#[test]
+#[should_panic(expected = "voting_period out of bounds")]
+fn test_initialize_zero_voting_period_panics() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let token = Address::generate(&env);
+    let contract_id = env.register(GovernanceDaoContract, ());
+    let client = GovernanceDaoContractClient::new(&env, &contract_id);
+
+    client.initialize(
+        &admin,
+        &token,
+        &0u32,
+        &1_000u32,
+        &51u32,
+        &0i128,
+    );
+}

@@ -114,6 +114,7 @@ const INSTANCE_LIFETIME_THRESHOLD: u32 = 17_280;
 const INSTANCE_BUMP_AMOUNT: u32 = 86_400;
 const PERSISTENT_LIFETIME_THRESHOLD: u32 = 120_960; // ~7 days
 const PERSISTENT_BUMP_AMOUNT: u32 = 1_051_200; // ~61 days
+pub const MAX_VOTING_PERIOD: u32 = 6_307_200; // ~365 days at 5s/ledger
 
 #[contract]
 pub struct GovernanceDaoContract;
@@ -135,6 +136,9 @@ impl GovernanceDaoContract {
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
         if env.storage().instance().has(&DataKey::Admin) {
             panic!("already initialized");
+        }
+        if voting_period == 0 || voting_period > MAX_VOTING_PERIOD {
+            panic!("voting_period out of bounds");
         }
         if quorum_bps == 0 {
             panic!("quorum must be > 0");
@@ -231,7 +235,9 @@ impl GovernanceDaoContract {
             quorum_bps,
             threshold_pct: threshold,
             start_ledger: start,
-            end_ledger: start + voting_period,
+            end_ledger: start
+                .checked_add(voting_period)
+                .expect("end_ledger overflow"),
             snapshot_ledger: start,
             created_at: env.ledger().timestamp(),
             executed_at: None,
