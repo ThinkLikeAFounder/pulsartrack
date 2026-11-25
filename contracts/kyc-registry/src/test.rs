@@ -279,3 +279,29 @@ fn test_same_name_provider_cannot_verify_another_providers_record() {
     // Matching display names must not grant authority over another address's record.
     c.verify_kyc(&impostor_provider, &account, &None);
 }
+
+#[test]
+#[should_panic(expected = "already verified")]
+fn test_verify_kyc_already_verified_panics() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin) = setup(&env);
+    let provider = Address::generate(&env);
+    let account = Address::generate(&env);
+
+    c.register_provider(&admin, &provider, &s(&env, "Provider"));
+    c.submit_kyc(
+        &account,
+        &provider,
+        &KycLevel::Standard,
+        &s(&env, "DocHash"),
+        &s(&env, "US"),
+    );
+    c.verify_kyc(&provider, &account, &None);
+
+    let prov_data = c.get_provider(&provider).unwrap();
+    assert_eq!(prov_data.total_verifications, 1);
+
+    // Calling verify_kyc again on already-verified record must panic and not increment total_verifications
+    c.verify_kyc(&provider, &account, &None);
+}
