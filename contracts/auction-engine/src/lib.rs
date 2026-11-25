@@ -64,6 +64,10 @@ const INSTANCE_BUMP_AMOUNT: u32 = 86_400;
 const PERSISTENT_LIFETIME_THRESHOLD: u32 = 120_960;
 const PERSISTENT_BUMP_AMOUNT: u32 = 1_051_200;
 
+/// Maximum allowed auction duration: 30 days in seconds.
+/// Prevents u64 overflow when computing end_time.
+const MAX_DURATION_SECS: u64 = 30 * 24 * 3_600;
+
 #[contract]
 pub struct AuctionEngineContract;
 
@@ -104,6 +108,10 @@ impl AuctionEngineContract {
             panic!("duration must be positive");
         }
 
+        if duration_secs > MAX_DURATION_SECS {
+            panic!("duration exceeds maximum allowed");
+        }
+
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -117,6 +125,9 @@ impl AuctionEngineContract {
         let auction_id = counter + 1;
 
         let now = env.ledger().timestamp();
+        let end_time = now
+            .checked_add(duration_secs)
+            .unwrap_or_else(|| panic!("duration overflow"));
         let auction = Auction {
             auction_id,
             publisher: publisher.clone(),
@@ -124,7 +135,7 @@ impl AuctionEngineContract {
             floor_price,
             reserve_price,
             start_time: now,
-            end_time: now + duration_secs,
+            end_time,
             status: AuctionStatus::Open,
             winning_bid: None,
             winner: None,
@@ -350,14 +361,6 @@ impl AuctionEngineContract {
                     .remove(&DataKey::BidderBid(auction_id, voter_addr));
             }
         }
-
-        let _ttl_key = DataKey::Auction(auction_id);
-        env.storage().persistent().set(&_ttl_key, &auction);
-        env.storage().persistent().extend_ttl(
-            &_ttl_key,
-            PERSISTENT_LIFETIME_THRESHOLD,
-            PERSISTENT_BUMP_AMOUNT,
-        );
 
         env.events().publish(
             (symbol_short!("auction"), symbol_short!("settle")),

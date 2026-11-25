@@ -46,6 +46,8 @@ const INSTANCE_LIFETIME_THRESHOLD: u32 = 17_280;
 const INSTANCE_BUMP_AMOUNT: u32 = 86_400;
 const PERSISTENT_LIFETIME_THRESHOLD: u32 = 120_960;
 const PERSISTENT_BUMP_AMOUNT: u32 = 1_051_200;
+/// Longest program allowed: about 365 days at 5 seconds per ledger.
+pub const MAX_DURATION_LEDGERS: u32 = 6_307_200;
 
 #[contract]
 pub struct RewardsDistributorContract;
@@ -94,6 +96,9 @@ impl RewardsDistributorContract {
         if duration_ledgers == 0 {
             panic!("duration_ledgers must be positive");
         }
+        if duration_ledgers > MAX_DURATION_LEDGERS {
+            panic!("duration_ledgers exceeds maximum");
+        }
 
         let counter: u32 = env
             .storage()
@@ -103,6 +108,10 @@ impl RewardsDistributorContract {
         let program_id = counter + 1;
 
         let start = env.ledger().sequence();
+        let end_ledger = match start.checked_add(duration_ledgers) {
+            Some(end) => end,
+            None => panic!("end_ledger overflow"),
+        };
         let program = RewardProgram {
             program_id,
             name,
@@ -110,7 +119,7 @@ impl RewardsDistributorContract {
             distributed: 0,
             reward_per_unit,
             start_ledger: start,
-            end_ledger: start + duration_ledgers,
+            end_ledger,
             is_active: true,
         };
 

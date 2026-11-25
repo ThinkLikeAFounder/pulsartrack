@@ -288,6 +288,103 @@ fn test_revenue_stats_updated() {
     assert_eq!(stats.payment_count, 1);
 }
 
+// ─── revenue stats overflow (#1350) ──────────────────────────────────────────
+
+/// Registers a token, seeds its stored revenue stats, and runs one payment.
+fn pay_with_seeded_revenue_stats(seed: RevenueStats) {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let treasury = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_addr = deploy_token(&env, &token_admin);
+
+    let contract_id = env.register(PaymentProcessorContract, ());
+    let client = PaymentProcessorContractClient::new(&env, &contract_id);
+    client.initialize(&admin, &treasury);
+    client.add_token(&admin, &token_addr, &1_000i128, &100_000_000i128);
+
+    env.as_contract(&contract_id, || {
+        env.storage()
+            .persistent()
+            .set(&DataKey::RevenueStats(token_addr.clone()), &seed);
+    });
+
+    let payer = Address::generate(&env);
+    let recipient = Address::generate(&env);
+    mint(&env, &token_addr, &token_admin, &payer, 1_000_000);
+    client.process_payment(&payer, &recipient, &token_addr, &10_000i128);
+}
+
+#[test]
+#[should_panic(expected = "total_fees_collected overflow")]
+fn test_revenue_stats_fee_total_overflow_panics() {
+    pay_with_seeded_revenue_stats(RevenueStats {
+        total_fees_collected: i128::MAX,
+        total_volume: 0,
+        payment_count: 0,
+    });
+}
+
+#[test]
+#[should_panic(expected = "total_volume overflow")]
+fn test_revenue_stats_volume_overflow_panics() {
+    pay_with_seeded_revenue_stats(RevenueStats {
+        total_fees_collected: 0,
+        total_volume: i128::MAX,
+        payment_count: 0,
+    });
+}
+
+#[test]
+#[should_panic(expected = "payment_count overflow")]
+fn test_revenue_stats_payment_count_overflow_panics() {
+    pay_with_seeded_revenue_stats(RevenueStats {
+        total_fees_collected: 0,
+        total_volume: 0,
+        payment_count: u64::MAX,
+    });
+}
+
+#[test]
+fn test_revenue_stats_just_below_the_limit_still_accumulates() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let treasury = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_addr = deploy_token(&env, &token_admin);
+
+    let contract_id = env.register(PaymentProcessorContract, ());
+    let client = PaymentProcessorContractClient::new(&env, &contract_id);
+    client.initialize(&admin, &treasury);
+    client.add_token(&admin, &token_addr, &1_000i128, &100_000_000i128);
+
+    // fee = 10_000 * 250 / 10_000 = 250, volume = 10_000, count = 1.
+    env.as_contract(&contract_id, || {
+        env.storage().persistent().set(
+            &DataKey::RevenueStats(token_addr.clone()),
+            &RevenueStats {
+                total_fees_collected: i128::MAX - 250,
+                total_volume: i128::MAX - 10_000,
+                payment_count: u64::MAX - 1,
+            },
+        );
+    });
+
+    let payer = Address::generate(&env);
+    let recipient = Address::generate(&env);
+    mint(&env, &token_addr, &token_admin, &payer, 1_000_000);
+    client.process_payment(&payer, &recipient, &token_addr, &10_000i128);
+
+    let stats = client.get_revenue_stats(&token_addr).unwrap();
+    assert_eq!(stats.total_fees_collected, i128::MAX);
+    assert_eq!(stats.total_volume, i128::MAX);
+    assert_eq!(stats.payment_count, u64::MAX);
+}
+
 // ─── payment error paths ──────────────────────────────────────────────────────
 
 #[test]

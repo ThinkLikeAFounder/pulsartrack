@@ -77,4 +77,20 @@ describe('useTxNotifications', () => {
     expect(mockSuccess).not.toHaveBeenCalled();
     expect(mockError).not.toHaveBeenCalled();
   });
+
+  it('forgets transactions that are pruned from the store', () => {
+    storeState.transactions = [transaction('h4', 'pending', 'Bid')];
+    const { rerender } = renderHook(() => useTxNotifications());
+
+    // Store prunes the transaction (e.g. clearOldTransactions)
+    storeState.transactions = [];
+    rerender();
+
+    // If the same hash reappears already settled, the stale "pending" entry
+    // must not have survived to trigger a notification.
+    storeState.transactions = [transaction('h4', 'success', 'Bid')];
+    rerender();
+
+    expect(mockSuccess).not.toHaveBeenCalled();
+  });
 });

@@ -14,6 +14,16 @@ export function useTxNotifications() {
   const previousTxsRef = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
+    // Drop entries for transactions that are no longer in the store (e.g.
+    // pruned by clearOldTransactions) so this ref doesn't grow for the whole
+    // page session.
+    const currentHashes = new Set(transactions.map((tx) => tx.txHash));
+    for (const txHash of previousTxsRef.current.keys()) {
+      if (!currentHashes.has(txHash)) {
+        previousTxsRef.current.delete(txHash);
+      }
+    }
+
     transactions.forEach((tx) => {
       const previousStatus = previousTxsRef.current.get(tx.txHash);
 

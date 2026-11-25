@@ -68,21 +68,28 @@ impl OracleIntegrationContract {
             panic!("unauthorized");
         }
         let _ttl_key = DataKey::AuthorizedOracle(oracle.clone());
-        env.storage().persistent().set(&_ttl_key, &true);
+        let already_authorized: bool = env
+            .storage()
+            .persistent()
+            .get(&_ttl_key)
+            .unwrap_or(false);
+        if !already_authorized {
+            env.storage().persistent().set(&_ttl_key, &true);
+
+            let count: u32 = env
+                .storage()
+                .instance()
+                .get(&DataKey::OracleCount)
+                .unwrap_or(0);
+            env.storage()
+                .instance()
+                .set(&DataKey::OracleCount, &(count + 1));
+        }
         env.storage().persistent().extend_ttl(
             &_ttl_key,
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
         );
-
-        let count: u32 = env
-            .storage()
-            .instance()
-            .get(&DataKey::OracleCount)
-            .unwrap_or(0);
-        env.storage()
-            .instance()
-            .set(&DataKey::OracleCount, &(count + 1));
     }
 
     pub fn remove_oracle(env: Env, admin: Address, oracle: Address) {
@@ -94,19 +101,23 @@ impl OracleIntegrationContract {
         if admin != stored_admin {
             panic!("unauthorized");
         }
-        env.storage()
-            .persistent()
-            .remove(&DataKey::AuthorizedOracle(oracle));
+        let key = DataKey::AuthorizedOracle(oracle);
+        let was_authorized: bool = env.storage().persistent().get(&key).unwrap_or(false);
+        env.storage().persistent().remove(&key);
 
-        // Decrement OracleCount with floor of 0 to guard against underflow
-        let count: u32 = env
-            .storage()
-            .instance()
-            .get(&DataKey::OracleCount)
-            .unwrap_or(0);
-        env.storage()
-            .instance()
-            .set(&DataKey::OracleCount, &count.saturating_sub(1));
+        // Only decrement for an authorization that actually existed. Together
+        // with the duplicate guard in `add_oracle`, this keeps OracleCount in
+        // sync with the number of authorized addresses.
+        if was_authorized {
+            let count: u32 = env
+                .storage()
+                .instance()
+                .get(&DataKey::OracleCount)
+                .unwrap_or(0);
+            env.storage()
+                .instance()
+                .set(&DataKey::OracleCount, &count.saturating_sub(1));
+        }
     }
 
     pub fn update_price(

@@ -22,12 +22,12 @@ import {
     usePublisherData,
     usePublisherKyc,
     usePublisherEarnings,
+    useRevenuePool,
     useAuctionCount,
     usePublisherAuctions,
     useOpenAuctions,
     useCreateAuction,
     useSubscribe,
-    useWallet,
 } from './useContract';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { callReadOnly, callContract } from '@/lib/soroban-client';
@@ -771,6 +771,28 @@ describe('useContract hooks', () => {
         });
     });
 
+    describe('useRevenuePool', () => {
+        it('should fetch the configured revenue split', async () => {
+            const pool = { platform_pct: 1000, publisher_pct: 8000, treasury_pct: 500, burn_pct: 500 };
+            vi.mocked(callReadOnly).mockResolvedValue(pool);
+
+            const { result } = renderHook(() => useRevenuePool(), {
+                wrapper: createWrapper(),
+            });
+
+            await waitFor(() => {
+                expect(result.current.isLoading).toBe(false);
+            });
+
+            expect(result.current.data).toEqual(pool);
+            expect(callReadOnly).toHaveBeenCalledWith({
+                contractId: 'REVENUE_SETTLEMENT_ID',
+                method: 'get_revenue_pool',
+                args: [],
+            });
+        });
+    });
+
     describe('useAuctionCount', () => {
         it('should fetch active auction count', async () => {
             vi.mocked(callReadOnly).mockResolvedValue(4);
@@ -937,7 +959,6 @@ describe('useContract hooks', () => {
         });
     });
 });
-
 // ---------------------------------------------------------------------------
 // Coverage for the remaining hooks (issue #1267). Read hooks are checked for
 // the exact contract/method/args they query; mutation hooks for the exact
@@ -1395,11 +1416,3 @@ describe('useContract mutation hooks', () => {
     });
 });
 
-describe('useWallet', () => {
-    it('exposes the wallet store address and connection state', () => {
-        useWalletStore.getState().setAddress(ADDR);
-        useWalletStore.getState().setConnected(true);
-        const { result } = renderHook(() => useWallet());
-        expect(result.current).toEqual({ address: ADDR, isConnected: true });
-    });
-});

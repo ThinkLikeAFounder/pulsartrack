@@ -44,6 +44,7 @@ pub struct DataRequest {
 }
 
 #[contracttype]
+#[derive(Clone)]
 pub enum DataKey {
     Admin,
     PendingAdmin,
@@ -81,6 +82,22 @@ impl PrivacyLayerContract {
         env.storage()
             .instance()
             .set(&DataKey::Verifier, &None::<Address>);
+    }
+
+    /// Starts a timelocked transfer of contract administration.
+    pub fn propose_admin(env: Env, current_admin: Address, new_admin: Address) {
+        pulsar_common_admin::propose_admin(
+            &env,
+            &DataKey::Admin,
+            &DataKey::PendingAdmin,
+            current_admin,
+            new_admin,
+        );
+    }
+
+    /// Accepts a proposed admin transfer after the shared timelock elapses.
+    pub fn accept_admin(env: Env, new_admin: Address) {
+        pulsar_common_admin::accept_admin(&env, &DataKey::Admin, &DataKey::PendingAdmin, new_admin);
     }
 
     pub fn set_verifier(env: Env, admin: Address, verifier: Option<Address>) {

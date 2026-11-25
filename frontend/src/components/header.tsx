@@ -84,24 +84,24 @@ export function Header() {
                 >
                   Home
                 </Link>
-                <a
+                <Link
                   href="/advertiser"
                   className="text-gray-700 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors font-medium"
                 >
                   Advertiser
-                </a>
-                <a
+                </Link>
+                <Link
                   href="/publisher"
                   className="text-gray-700 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors font-medium"
                 >
                   Publisher
-                </a>
-                <a
+                </Link>
+                <Link
                   href="/governance"
                   className="text-gray-700 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors font-medium"
                 >
                   Governance
-                </a>
+                </Link>
               </nav>
             </div>
 
@@ -171,14 +171,14 @@ export function Header() {
                   { href: "/publisher", label: "Publisher" },
                   { href: "/governance", label: "Governance" },
                 ].map(({ href, label }) => (
-                  <a
+                  <Link
                     key={href}
                     href={href}
                     className="text-gray-700 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors font-medium px-2 py-1"
                     onClick={() => setMobileMenuOpen(false)}
                   >
                     {label}
-                  </a>
+                  </Link>
                 ))}
 
                 <div className="pt-4 border-t border-gray-200 dark:border-gray-800">

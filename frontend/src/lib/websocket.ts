@@ -55,6 +55,16 @@ const PulsarEventSchema = z.object({
 
 type EventHandler = (event: PulsarEvent) => void;
 
+/** Channels the backend WebSocket server broadcasts on. */
+export type Channel = 'ledger' | 'campaigns' | 'auctions';
+
+/**
+ * Close codes the server uses when it rejects a client outright (bad/missing
+ * auth token, per-IP connection limit). Reconnecting would just be rejected
+ * again, so the client stops retrying until connect() is called explicitly.
+ */
+const NON_RETRYABLE_CLOSE_CODES = new Set([4001, 4029]);
+
 export class PulsarWebSocket {
   private ws: WebSocket | null = null;
   private handlers: Map<EventType | 'all', EventHandler[]> = new Map();
@@ -69,6 +79,8 @@ export class PulsarWebSocket {
   private readonly heartbeatTimeoutMs = 10000;
   private authToken: string | null = null;
   private authenticated = false;
+  // Ref-counted so several components can share a channel subscription.
+  private channelRefs: Map<Channel, number> = new Map();
 
   constructor(url: string) {
     this.url = url;
@@ -116,8 +128,19 @@ export class PulsarWebSocket {
 
           if (parsed?.type === 'authenticated') {
             this.authenticated = true;
+            this.resubscribeAll();
             this.emit({ type: 'connected', data: parsed.payload || {}, timestamp: Date.now() });
             return;
+          }
+
+          // Subscription acks carry no event data for consumers.
+          if (parsed?.type === 'subscribed' || parsed?.type === 'unsubscribed') {
+            return;
+          }
+
+          // The server sends event bodies as `payload`; consumers read `data`.
+          if (parsed && typeof parsed === 'object' && parsed.data === undefined && parsed.payload !== undefined) {
+            parsed.data = parsed.payload;
           }
 
           const result = PulsarEventSchema.safeParse(parsed);
@@ -135,10 +158,13 @@ export class PulsarWebSocket {
         this.emit({ type: 'error', data: { msg: 'WebSocket error' }, timestamp: Date.now() });
       };
 
-      this.ws.onclose = () => {
+      this.ws.onclose = (event?: CloseEvent) => {
         this.authenticated = false;
         this.stopHeartbeat();
         this.emit({ type: 'disconnected', data: {}, timestamp: Date.now() });
+        if (event && NON_RETRYABLE_CLOSE_CODES.has(event.code)) {
+          return;
+        }
         this.scheduleReconnect();
       };
     } catch {
@@ -211,6 +237,45 @@ export class PulsarWebSocket {
       this.ws.onclose = null;
       this.ws.close();
       this.ws = null;
+    }
+  }
+
+  /**
+   * Subscribe to a server broadcast channel. Safe to call before the socket is
+   * authenticated: pending subscriptions are sent once auth succeeds (and
+   * again after every reconnect). Returns an unsubscribe function.
+   */
+  subscribe(channel: Channel): () => void {
+    const count = this.channelRefs.get(channel) ?? 0;
+    this.channelRefs.set(channel, count + 1);
+    if (count === 0) {
+      this.sendChannelMessage('subscribe', channel);
+    }
+
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      const remaining = (this.channelRefs.get(channel) ?? 1) - 1;
+      if (remaining > 0) {
+        this.channelRefs.set(channel, remaining);
+      } else {
+        this.channelRefs.delete(channel);
+        this.sendChannelMessage('unsubscribe', channel);
+      }
+    };
+  }
+
+  private sendChannelMessage(type: 'subscribe' | 'unsubscribe', channel: Channel): void {
+    if (!this.authenticated || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    this.ws.send(JSON.stringify({ type, channel }));
+  }
+
+  private resubscribeAll(): void {
+    for (const channel of this.channelRefs.keys()) {
+      this.sendChannelMessage('subscribe', channel);
     }
   }
 
