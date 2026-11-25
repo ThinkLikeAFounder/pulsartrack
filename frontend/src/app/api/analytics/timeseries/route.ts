@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getBackendApiBaseUrl } from "@/lib/api-url";
 import { createRateLimiter, getClientIp } from "@/lib/rate-limiter";
 
 /**
@@ -77,6 +78,7 @@ async function fetchFromBackend(
     return buildEmptySeries(timeframeToDays(timeframe));
   }
 
+  const apiBaseUrl = getBackendApiBaseUrl(apiUrl);
   const days = timeframeToDays(timeframe);
 
   // Aggregate per-day counts indexed by date string.
@@ -92,7 +94,7 @@ async function fetchFromBackend(
   await Promise.all(
     campaignIds.map(async (id) => {
       try {
-        const res = await fetch(`${apiUrl}/campaigns/${id}/timeseries?days=${days}`, {
+        const res = await fetch(`${apiBaseUrl}/campaigns/${id}/timeseries?days=${days}`, {
           headers: { "Content-Type": "application/json" },
           signal: AbortSignal.timeout(5_000),
         });
