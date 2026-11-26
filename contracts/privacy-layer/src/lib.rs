@@ -40,6 +40,7 @@ pub struct DataRequest {
     pub data_type: String,
     pub purpose: String,
     pub approved: bool,
+    pub rejected: bool,
     pub requested_at: u64,
 }
 
@@ -392,6 +393,7 @@ impl PrivacyLayerContract {
             data_type,
             purpose,
             approved: false,
+            rejected: false,
             requested_at: env.ledger().timestamp(),
         };
 
@@ -430,6 +432,7 @@ impl PrivacyLayerContract {
             .expect("request not found");
 
         req.approved = true;
+        req.rejected = false;
 
         env.storage().persistent().set(&key, &req);
         env.storage().persistent().extend_ttl(
@@ -463,6 +466,7 @@ impl PrivacyLayerContract {
             .expect("request not found");
 
         req.approved = false;
+        req.rejected = true;
 
         env.storage().persistent().set(&key, &req);
         env.storage().persistent().extend_ttl(

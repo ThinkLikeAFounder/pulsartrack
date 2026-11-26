@@ -325,16 +325,19 @@ fn test_data_request_lifecycle() {
     assert_eq!(req.data_type, s(&env, "demographics"));
     assert_eq!(req.purpose, s(&env, "ad-attribution"));
     assert!(!req.approved);
+    assert!(!req.rejected);
 
     // Approve
     c.approve_data_request(&admin, &req_id);
     let req_approved = c.get_data_request(&req_id).unwrap();
     assert!(req_approved.approved);
+    assert!(!req_approved.rejected);
 
     // Reject
     c.reject_data_request(&admin, &req_id);
     let req_rejected = c.get_data_request(&req_id).unwrap();
     assert!(!req_rejected.approved);
+    assert!(req_rejected.rejected);
 }
 
 #[test]
