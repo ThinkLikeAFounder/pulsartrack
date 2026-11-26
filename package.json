@@ -1,6 +1,6 @@
 {
   "name": "pulsartrack-monorepo",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "PulsarTrack monorepo with backend, frontend, and shared packages",
   "workspaces": [

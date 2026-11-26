@@ -92,6 +92,43 @@ console.log(`🐳 Found ${dockerfileArgs.length} NEXT_PUBLIC_* ARG declarations 
 // Read docker-compose.yml
 const dockerComposePath = path.join(__dirname, '../docker-compose.yml');
 const dockerCompose = fs.readFileSync(dockerComposePath, 'utf8');
+let hasErrors = false;
+
+// Ensure backend/.env.example stays aligned with the backend's validated variables.
+const backendEnvPath = path.join(__dirname, '../backend/src/config/env.ts');
+const backendEnv = fs.readFileSync(backendEnvPath, 'utf8');
+const backendExamplePath = path.join(__dirname, '../backend/.env.example');
+const backendExample = fs.readFileSync(backendExamplePath, 'utf8');
+const contractVarMismatch = getContractEnvVarMismatch(backendEnv, backendExample);
+if (!contractVarMismatch) {
+  console.error('❌ Could not find CONTRACT_ENV_VARS in backend/src/config/env.ts');
+  process.exit(1);
+}
+console.log(`📋 Found ${getBackendContractEnvVars(backendEnv).length} backend contract variables`);
+
+if (contractVarMismatch.missing.length > 0) {
+  console.error('\n❌ MISSING in backend/.env.example:');
+  contractVarMismatch.missing.forEach(v => console.error(`   - ${v}`));
+  hasErrors = true;
+}
+
+if (contractVarMismatch.extra.length > 0) {
+  console.error('\n❌ EXTRA in backend/.env.example (not in CONTRACT_ENV_VARS):');
+  contractVarMismatch.extra.forEach(v => console.error(`   - ${v}`));
+  hasErrors = true;
+}
+
+if (contractVarMismatch.duplicates.length > 0) {
+  console.error('\n❌ DUPLICATED in backend/.env.example:');
+  contractVarMismatch.duplicates.forEach(v => console.error(`   - ${v}`));
+  hasErrors = true;
+}
+
+if (contractVarMismatch.nonEmpty.length > 0) {
+  console.error('\n❌ Contract values in backend/.env.example must be blank:');
+  contractVarMismatch.nonEmpty.forEach(v => console.error(`   - ${v}`));
+  hasErrors = true;
+}
 
 const backendEnvPath = path.join(__dirname, '../backend/src/config/env.ts');
 const backendEnv = fs.readFileSync(backendEnvPath, 'utf8');
@@ -129,8 +166,6 @@ const missingInBackend = contractEnvVars.filter(v => !composeContractVars.includ
 const extraInDockerfile = dockerfileArgs.filter(v => !requiredVars.includes(v));
 const extraInCompose = composeArgs.filter(v => !requiredVars.includes(v));
 const extraInBackend = composeContractVars.filter(v => !contractEnvVars.includes(v));
-
-let hasErrors = false;
 
 if (missingInDockerfile.length > 0) {
   console.error('\n❌ MISSING in Dockerfile ARGs:');

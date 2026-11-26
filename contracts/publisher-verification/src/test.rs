@@ -233,3 +233,44 @@ fn test_is_verified_nonexistent() {
     let (c, _, _) = setup(&env);
     assert!(!c.is_verified(&Address::generate(&env)));
 }
+
+#[test]
+fn test_reinstate_publisher() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin, _) = setup(&env);
+    let pub1 = Address::generate(&env);
+    c.register_publisher(&pub1, &s(&env, "example.com"));
+    c.submit_kyc(&pub1, &s(&env, "hash"), &s(&env, "provider"));
+    c.verify_publisher(&admin, &pub1);
+    assert!(c.is_verified(&pub1));
+
+    c.suspend_publisher(&admin, &pub1);
+    assert!(!c.is_verified(&pub1));
+    let pub_data = c.get_publisher(&pub1).unwrap();
+    assert_eq!(pub_data.status, VerificationStatus::Suspended);
+
+    c.reinstate_publisher(&admin, &pub1);
+    assert!(c.is_verified(&pub1));
+    let pub_data_reinstated = c.get_publisher(&pub1).unwrap();
+    assert_eq!(pub_data_reinstated.status, VerificationStatus::Verified);
+}
+
+#[test]
+fn test_reject_and_revoke_publisher() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin, _) = setup(&env);
+    let pub1 = Address::generate(&env);
+    let pub2 = Address::generate(&env);
+
+    c.register_publisher(&pub1, &s(&env, "reject.com"));
+    c.reject_publisher(&admin, &pub1);
+    let pub_data1 = c.get_publisher(&pub1).unwrap();
+    assert_eq!(pub_data1.status, VerificationStatus::Rejected);
+
+    c.register_publisher(&pub2, &s(&env, "revoke.com"));
+    c.revoke_publisher(&admin, &pub2);
+    let pub_data2 = c.get_publisher(&pub2).unwrap();
+    assert_eq!(pub_data2.status, VerificationStatus::Revoked);
+}

@@ -14,6 +14,24 @@ fn setup(env: &Env) -> (BudgetOptimizerContractClient<'_>, Address, Address) {
     (c, admin, oracle)
 }
 
+fn set_budget(
+    c: &BudgetOptimizerContractClient<'_>,
+    advertiser: Address,
+    campaign_id: u64,
+    total_budget: i128,
+    daily_budget: i128,
+) {
+    c.set_budget_allocation(&SetBudgetAllocationArgs {
+        advertiser,
+        campaign_id,
+        total_budget,
+        daily_budget,
+        optimization_mode: OptimizationMode::ManualCpc,
+        target_cpa: 500i128,
+        target_ctr: 100u32,
+    });
+}
+
 #[test]
 fn test_initialize() {
     let env = Env::default();
@@ -84,6 +102,50 @@ fn test_record_spend() {
     c.record_spend(&admin, &1u64, &5_000i128);
     let alloc = c.get_allocation(&1u64).unwrap();
     assert_eq!(alloc.spent_today, 5_000);
+}
+
+#[test]
+#[should_panic(expected = "budget exceeded")]
+fn test_record_spend_enforces_daily_budget() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin, _) = setup(&env);
+    set_budget(
+        &c,
+        Address::generate(&env),
+        1u64,
+        100_000i128,
+        10_000i128,
+    );
+
+    c.record_spend(&admin, &1u64, &10_000i128);
+    c.record_spend(&admin, &1u64, &1i128);
+}
+
+#[test]
+#[should_panic(expected = "budget exceeded")]
+fn test_record_spend_enforces_total_budget() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin, _) = setup(&env);
+    set_budget(&c, Address::generate(&env), 1u64, 100i128, 100i128);
+
+    c.record_spend(&admin, &1u64, &100i128);
+    c.record_spend(&admin, &1u64, &1i128);
+}
+
+#[test]
+fn test_record_spend_allows_exact_budget() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin, _) = setup(&env);
+    set_budget(&c, Address::generate(&env), 1u64, 100i128, 100i128);
+
+    c.record_spend(&admin, &1u64, &100i128);
+
+    let alloc = c.get_allocation(&1u64).unwrap();
+    assert_eq!(alloc.spent_today, 100);
+    assert_eq!(alloc.spent_total, 100);
 }
 
 #[test]
@@ -405,4 +467,24 @@ fn test_set_budget_allocation_owner_can_update() {
     let alloc = c.get_allocation(&1u64).unwrap();
     assert_eq!(alloc.total_budget, 200_000);
     assert_eq!(alloc.daily_budget, 20_000);
+}
+
+#[test]
+#[should_panic(expected = "daily budget must be non-negative")]
+fn test_optimize_budget_negative_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, advertiser, oracle) = setup(&env);
+
+    c.set_budget_allocation(&SetBudgetAllocationArgs {
+        advertiser: advertiser.clone(),
+        campaign_id: 1u64,
+        total_budget: 100_000i128,
+        daily_budget: 10_000i128,
+        optimization_mode: OptimizationMode::ManualCpc,
+        target_cpa: 500i128,
+        target_ctr: 100u32,
+    });
+
+    c.optimize_budget(&oracle, &1u64, &-1000i128, &s(&env, "anomaly drop"));
 }

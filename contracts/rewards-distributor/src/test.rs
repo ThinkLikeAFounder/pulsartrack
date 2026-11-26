@@ -70,6 +70,37 @@ fn test_create_program() {
 }
 
 #[test]
+#[should_panic(expected = "duration_ledgers exceeds maximum")]
+fn test_create_program_rejects_duration_over_maximum() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin, _, _) = setup(&env);
+    c.create_program(
+        &admin,
+        &String::from_str(&env, "too long"),
+        &1_000_000i128,
+        &10i128,
+        &(MAX_DURATION_LEDGERS + 1),
+    );
+}
+
+#[test]
+#[should_panic(expected = "end_ledger overflow")]
+fn test_create_program_rejects_end_ledger_overflow() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|li| li.sequence_number = u32::MAX - 10);
+    let (c, admin, _, _) = setup(&env);
+    c.create_program(
+        &admin,
+        &String::from_str(&env, "overflow"),
+        &1_000_000i128,
+        &10i128,
+        &MAX_DURATION_LEDGERS,
+    );
+}
+
+#[test]
 fn test_distribute_rewards() {
     let env = Env::default();
     env.mock_all_auths();

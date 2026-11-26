@@ -9,12 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Real-time Event Streaming**: wired WebSocket events into the frontend app for live publisher, campaign, and audience activity updates (#1344).
+- **Publisher Payout Event Indexing**: added event-driven indexing and tracking for publisher payout workflows (#1396).
+
+### Changed
+- **Governance UI Components**: refactored governance-related components for reuse across the application, reducing duplication.
+
 ### Fixed
 - **Deployment Initialization**: `scripts/initialize.sh` now initializes all 43 contracts deployed by `scripts/deploy.sh`, fails on real invocation errors, treats already-initialized contracts as idempotent, and accepts configurable admin/config arguments.
 - **Targeting Engine Tests**: updated `initialize` calls for the lifecycle contract argument and replaced the stale WASM cross-contract import with a local contract client interface so workspace builds and tests do not require prebuilt artifacts.
 - **Panic Tests**: added specific expected panic messages to all previously bare `#[should_panic]` attributes across the workspace.
 - **Initialize Test Coverage**: added stored-admin state assertions to every `test_initialize` that lacked one.
 - **CI/Test Stability**: fixed pre-existing clippy lint, expired-campaign ledger setup, fraud-prevention lifecycle mocks, and workspace formatting drift so CI passes.
+- **Campaign Orchestrator**: require active campaign status before allowing state transitions (e.g. pausing) (#1370).
+- **Frontend Analytics**: include `/api` prefix in timeseries analytics backend proxy calls (#1373).
+- **Access Control**: prevent lower-ranked callers from overwriting higher-ranked role assignments (#1377).
+- **Budget Optimizer**: enforce budget caps when recording campaign spend and validate non-negative daily budgets.
+- **Privacy Layer**: enable timelocked admin rotation for enhanced key management security (#1349).
+- **Revenue Settlement**: reorder operations to follow checks-effects-interactions (CEI) pattern, ensuring accounting updates before external transfers.
+- **Access Control Events**: emit stored role in `revoke_role` events for accurate tracking in indexers.
+- **Oracle Integration**: keep OracleCount in sync with authorization state changes.
+- **Fraud Prevention**: require publisher authentication in `verify_view` calls for stricter access control.
+- **AD Registry**: use persistent storage with TTL extensions for viewer deduplication.
+- **Wrapped Token Manager**: reorder mint operations to follow CEI pattern (#1362).
+- **KYC Registry**: prevent duplicate `verify_kyc` calls on already-verified records.
+- **Identity & Publisher Contracts**: add `reinstate` and `revoke` operations for identity and publisher lifecycle management.
+- **Security**: cleared failing scheduled dependency audits and strengthened wallet/toast UI foundations.
+- **Rate Limiting & Payout**: guarded write limiter, bounded reward program duration, and removed dead repository entries (#1314, #1315, #1316).
+- **Prisma & Docker**: fixed prisma generation in Docker workflows and synchronized contract environment variables across compose services.
 
 ---
 

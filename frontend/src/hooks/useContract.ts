@@ -584,6 +584,26 @@ export function usePublisherEarnings(publisherAddress: string, enabled = true) {
   );
 }
 
+/** Claim the connected publisher's accumulated revenue from the settlement contract. */
+export function useClaimPublisherBalance() {
+  const { mutateAsync, ...rest } = useContractCall();
+  const { address } = useWalletStore();
+
+  const claimPublisherBalance = async () => {
+    if (!address) throw new Error("Wallet not connected");
+    return mutateAsync({
+      contractId: CONTRACT_IDS.REVENUE_SETTLEMENT,
+      method: "claim_publisher_balance",
+      source: address,
+      args: [addressToScVal(address)],
+      txType: "publisher_claim",
+      description: "Claim publisher earnings",
+    });
+  };
+
+  return { claimPublisherBalance, ...rest };
+}
+
 /**
  * On-chain revenue pool. The *_pct fields are the configured revenue split in
  * basis points (10_000 = 100%) — they are contract state, not constants.
@@ -747,12 +767,4 @@ export function useSubscribe() {
   };
 
   return { subscribe, ...rest };
-}
-
-/**
- * Convenience hook for wallet info
- */
-export function useWallet() {
-  const { address, isConnected } = useWalletStore();
-  return { address, isConnected };
 }

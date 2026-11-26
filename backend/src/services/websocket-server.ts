@@ -105,29 +105,29 @@ export function setupWebSocketServer(server: Server): WebSocketServer {
     let authenticated = false;
     let messageCount = 0;
     let resetTime = Date.now() + MESSAGE_RATE_LIMIT_WINDOW_MS;
-
-    const authTimer = setTimeout(() => {
-      if (!authenticated) {
-        logger.warn(`[WS] Auth timeout for IP ${ip}`);
-        ws.close(4001, "Authentication timeout");
-        const remaining = (connectionsPerIp.get(ip) ?? 1) - 1;
-        if (remaining > 0) {
-          connectionsPerIp.set(ip, remaining);
-        } else {
-          connectionsPerIp.delete(ip);
-        }
-      }
-    }, AUTH_TIMEOUT_MS);
-
-    ws.on("close", () => {
-      clearTimeout(authTimer);
-      clients.delete(ws);
+    let released = false;
+    const releaseConnection = () => {
+      if (released) return;
+      released = true;
       const remaining = (connectionsPerIp.get(ip) ?? 1) - 1;
       if (remaining > 0) {
         connectionsPerIp.set(ip, remaining);
       } else {
         connectionsPerIp.delete(ip);
       }
+    };
+
+    const authTimer = setTimeout(() => {
+      if (!authenticated) {
+        logger.warn(`[WS] Auth timeout for IP ${ip}`);
+        ws.close(4001, "Authentication timeout");
+      }
+    }, AUTH_TIMEOUT_MS);
+
+    ws.on("close", () => {
+      clearTimeout(authTimer);
+      clients.delete(ws);
+      releaseConnection();
       logger.info(`[WS] Client disconnected. Total: ${clients.size}`);
     });
 
@@ -135,12 +135,6 @@ export function setupWebSocketServer(server: Server): WebSocketServer {
       clearTimeout(authTimer);
       logger.error(err, "[WS] Client error");
       clients.delete(ws);
-      const remaining = (connectionsPerIp.get(ip) ?? 1) - 1;
-      if (remaining > 0) {
-        connectionsPerIp.set(ip, remaining);
-      } else {
-        connectionsPerIp.delete(ip);
-      }
     });
 
     ws.on("message", (data) => {
@@ -167,12 +161,6 @@ export function setupWebSocketServer(server: Server): WebSocketServer {
             clearTimeout(authTimer);
             logger.warn(`[WS] Auth failed from ${ip}: ${(err as Error).message}`);
             ws.close(4001, "Unauthorized");
-            const remaining = (connectionsPerIp.get(ip) ?? 1) - 1;
-            if (remaining > 0) {
-              connectionsPerIp.set(ip, remaining);
-            } else {
-              connectionsPerIp.delete(ip);
-            }
             return;
           }
 

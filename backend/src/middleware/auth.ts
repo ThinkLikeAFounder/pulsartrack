@@ -215,6 +215,8 @@ export function rateLimitWrite() {
         .json({ error: "Write rate limit exceeded (10 per hour)" });
       return;
     }
+
+    next();
   };
 }
 

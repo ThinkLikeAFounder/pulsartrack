@@ -163,10 +163,8 @@ impl WrappedTokenContract {
             panic!("token not active");
         }
 
-        // Mint stellar-side tokens; the wrapped-token contract must be the stellar token's admin
-        let stellar_asset_client = token::StellarAssetClient::new(&env, &wrapped.stellar_token);
-        stellar_asset_client.mint(&recipient, &amount);
-
+        // FIX #1362: Update accounting BEFORE minting (CEI pattern)
+        // This ensures all state changes are persisted before external calls
         wrapped.total_wrapped = wrapped
             .total_wrapped
             .checked_add(amount)
@@ -206,13 +204,17 @@ impl WrappedTokenContract {
             .instance()
             .set(&DataKey::WrapRecordCounter, &record_id);
 
-        // Mark source transaction as processed to prevent replay attacks
+        // Mark source transaction as processed to prevent replay attacks (before external call)
         env.storage().persistent().set(&tx_key, &true);
         env.storage().persistent().extend_ttl(
             &tx_key,
             PERSISTENT_LIFETIME_THRESHOLD,
             PERSISTENT_BUMP_AMOUNT,
         );
+
+        // Now mint stellar-side tokens (external call after all state updates)
+        let stellar_asset_client = token::StellarAssetClient::new(&env, &wrapped.stellar_token);
+        stellar_asset_client.mint(&recipient, &amount);
 
         env.events().publish(
             (symbol_short!("wrapped"), symbol_short!("minted")),

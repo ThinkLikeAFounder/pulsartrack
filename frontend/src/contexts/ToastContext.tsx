@@ -86,6 +86,7 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
       <button
         onClick={onDismiss}
         className="flex-shrink-0 opacity-60 hover:opacity-100 text-sm transition-opacity"
+        aria-label="Dismiss notification"
       >
         ✕
       </button>
@@ -137,7 +138,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={{ toasts, success, error, warning, info, dismiss }}>
       {children}
       {/* Toast container */}
-      <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 w-80">
+      <div
+        className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 w-80"
+        role="status"
+        aria-live="polite"
+      >
         {toasts.map((toast) => (
           <ToastItem key={toast.id} toast={toast} onDismiss={() => dismiss(toast.id)} />
         ))}

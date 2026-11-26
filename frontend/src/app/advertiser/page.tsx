@@ -25,6 +25,8 @@ import type { Auction } from '@/types/contracts';
 type AdvertiserTab = 'campaigns' | 'create' | 'targeting' | 'auctions' | 'analytics';
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { LiveIndicator } from "@/components/LiveIndicator";
+import { useLiveAuctionUpdates, useLiveCampaignUpdates } from "@/hooks/useWebSocket";
 
 const COLOR_MAP = {
   blue: { bg: "bg-blue-100", text: "text-blue-600" },
@@ -45,6 +47,10 @@ export default function AdvertiserPage() {
   const { data: auctionCount } = useAuctionCount();
   const { data: openAuctions, isLoading: isAuctionsLoading, refetch: refetchAuctions } =
     useOpenAuctions(auctionCount);
+  // Push updates: bids/settlements and campaign activity refetch the
+  // affected queries as soon as the backend broadcasts them.
+  const { isConnected: isAuctionFeedLive } = useLiveAuctionUpdates();
+  const { isConnected: isCampaignFeedLive } = useLiveCampaignUpdates();
 
   const [activeTab, setActiveTab] = useState<AdvertiserTab>('campaigns');
   const [timeframe, setTimeframe] = useState<'7d' | '30d' | '90d'>('30d');
@@ -184,9 +190,12 @@ export default function AdvertiserPage() {
           {/* Tab Content */}
           {activeTab === "campaigns" && (
             <div className="bg-white rounded-xl border border-gray-200 p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                Active Campaigns
-              </h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-gray-900">
+                  Active Campaigns
+                </h2>
+                <LiveIndicator isConnected={isCampaignFeedLive} />
+              </div>
 
               {isCampaignsLoading ? (
                 <div className="animate-pulse flex space-x-4 p-4 border rounded-lg bg-gray-50">
@@ -259,9 +268,12 @@ export default function AdvertiserPage() {
 
           {activeTab === "auctions" && (
             <div className="bg-gray-900 rounded-xl border border-gray-800 p-6">
-              <h2 className="text-lg font-semibold text-white mb-1">
-                Real-Time Bidding Marketplace
-              </h2>
+              <div className="flex items-center justify-between mb-1">
+                <h2 className="text-lg font-semibold text-white">
+                  Real-Time Bidding Marketplace
+                </h2>
+                <LiveIndicator isConnected={isAuctionFeedLive} />
+              </div>
               <p className="text-sm text-gray-400 mb-4">
                 Bid on open impression slots from publishers across the network.
               </p>

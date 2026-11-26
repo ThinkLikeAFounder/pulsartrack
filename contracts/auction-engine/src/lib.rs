@@ -268,17 +268,34 @@ impl AuctionEngineContract {
             PERSISTENT_BUMP_AMOUNT,
         );
 
-        // Refund the previous highest bidder if they exist
-        if let Some((prev_winner, prev_amount)) = prev_bid {
-            // Clear previous bidder's deposit record as they are now refunded
-            env.storage()
-                .persistent()
-                .remove(&DataKey::BidderBid(auction_id, prev_winner.clone()));
-            token_client.transfer(&env.current_contract_address(), &prev_winner, &prev_amount);
-        }
+        match prev_bid {
+            // Self-re-bid: BidderBid already holds the new amount, so only
+            // escrow the difference instead of a full refund-then-repay cycle
+            Some((prev_winner, prev_amount)) if prev_winner == bidder => {
+                token_client.transfer(
+                    &bidder,
+                    &env.current_contract_address(),
+                    &(amount - prev_amount),
+                );
+            }
+            prev => {
+                // Refund the previous highest bidder if they exist
+                if let Some((prev_winner, prev_amount)) = prev {
+                    // Clear previous bidder's deposit record as they are now refunded
+                    env.storage()
+                        .persistent()
+                        .remove(&DataKey::BidderBid(auction_id, prev_winner.clone()));
+                    token_client.transfer(
+                        &env.current_contract_address(),
+                        &prev_winner,
+                        &prev_amount,
+                    );
+                }
 
-        // Transfer the new bid into the contract
-        token_client.transfer(&bidder, &env.current_contract_address(), &amount);
+                // Transfer the new bid into the contract
+                token_client.transfer(&bidder, &env.current_contract_address(), &amount);
+            }
+        }
 
         env.events().publish(
             (symbol_short!("bid"), symbol_short!("placed")),

@@ -225,6 +225,10 @@ impl KycRegistryContract {
             panic!("provider mismatch");
         }
 
+        if record.verified {
+            panic!("already verified");
+        }
+
         let now = env.ledger().timestamp();
         record.verified = true;
         record.verified_at = Some(now);

@@ -75,6 +75,16 @@ impl AccessControlContract {
             panic!("cannot grant a role equal to or higher than your own");
         }
 
+        if let Some(target_role) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, Role>(&DataKey::Role(account.clone()))
+        {
+            if role_rank(&caller_role) <= role_rank(&target_role) {
+                panic!("cannot grant a role to an account at or above your own rank");
+            }
+        }
+
         let _ttl_key = DataKey::Role(account.clone());
         env.storage().persistent().set(&_ttl_key, &role);
         env.storage().persistent().extend_ttl(
@@ -89,7 +99,9 @@ impl AccessControlContract {
         );
     }
 
-    pub fn revoke_role(env: Env, caller: Address, target: Address, role: Role) {
+    // `role` remains in the signature for ABI compatibility, but the stored
+    // role is authoritative; the event must report what was actually removed.
+    pub fn revoke_role(env: Env, caller: Address, target: Address, _role: Role) {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -108,9 +120,11 @@ impl AccessControlContract {
             .persistent()
             .remove(&DataKey::Role(target.clone()));
 
+        // Emit the role actually removed from storage, not the caller-supplied
+        // hint, so indexers can trust the audit trail.
         env.events().publish(
             (symbol_short!("access"), symbol_short!("revoked")),
-            (target, role),
+            (target, target_role),
         );
     }
 

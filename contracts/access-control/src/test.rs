@@ -1,6 +1,9 @@
 #![cfg(test)]
 use super::*;
-use soroban_sdk::{testutils::Address as _, Address, Env};
+use soroban_sdk::{
+    testutils::{Address as _, Events as _},
+    Address, Env, FromVal, IntoVal,
+};
 
 fn setup(env: &Env) -> (AccessControlContractClient<'_>, Address) {
     let admin = Address::generate(env);
@@ -67,6 +70,29 @@ fn test_revoke_role_lower_rank() {
 }
 
 #[test]
+fn test_revoke_role_event_reports_actual_role() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, super_admin) = setup(&env);
+    let operator = Address::generate(&env);
+    c.grant_role(&super_admin, &operator, &Role::Operator);
+
+    // The role argument is only an ABI-compatible hint; the stored role wins.
+    c.revoke_role(&super_admin, &operator, &Role::Moderator);
+
+    let (event_contract, event_topics, event_data) = env.events().all().last().unwrap();
+    assert_eq!(event_contract, c.address);
+    assert_eq!(
+        event_topics,
+        (symbol_short!("access"), symbol_short!("revoked")).into_val(&env)
+    );
+    let (revoked_account, revoked_role): (Address, Role) =
+        <(Address, Role)>::from_val(&env, &event_data);
+    assert_eq!(revoked_account, operator);
+    assert!(revoked_role == Role::Operator);
+}
+
+#[test]
 #[should_panic(expected = "cannot revoke a role equal to or higher than your own")]
 fn test_admin_cannot_revoke_super_admin() {
     let env = Env::default();
@@ -105,4 +131,16 @@ fn test_self_revocation_blocked() {
 
     // Admin tries to revoke their own role — must panic (equal rank)
     c.revoke_role(&admin_account, &admin_account, &Role::Admin);
+}
+
+#[test]
+#[should_panic(expected = "cannot grant a role to an account at or above your own rank")]
+fn test_moderator_cannot_demote_super_admin_via_grant_role() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, super_admin) = setup(&env);
+    let moderator = Address::generate(&env);
+    c.grant_role(&super_admin, &moderator, &Role::Moderator);
+
+    c.grant_role(&moderator, &super_admin, &Role::Operator);
 }

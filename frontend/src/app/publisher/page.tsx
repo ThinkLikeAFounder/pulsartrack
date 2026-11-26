@@ -16,6 +16,7 @@ import {
   usePublisherData,
   usePublisherKyc,
   usePublisherEarnings,
+  useClaimPublisherBalance,
   useRevenuePool,
   useAuctionCount,
   usePublisherAuctions,
@@ -30,6 +31,8 @@ import { PlanCard } from '@/components/subscription/PlanCard';
 import { PublisherCard } from '@/components/publisher/PublisherCard';
 import { EarningsDisplay } from '@/components/publisher/EarningsDisplay';
 import { toPublisher } from '@/lib/contract-adapters';
+import { LiveIndicator } from '@/components/LiveIndicator';
+import { useLiveAuctionUpdates } from '@/hooks/useWebSocket';
 import type { Subscription, SubscriptionPlan, SubscriptionTier } from '@/types/contracts';
 
 type PublisherTab = 'overview' | 'auctions' | 'earnings' | 'subscription';
@@ -137,6 +140,7 @@ export default function PublisherPage() {
     address || '',
     isConnected,
   );
+  const { claimPublisherBalance, isPending: isClaiming } = useClaimPublisherBalance();
   const { data: revenuePool, isLoading: revenuePoolLoading } = useRevenuePool(isConnected);
   const { data: auctionCount } = useAuctionCount(isConnected);
   const { data: auctions, isLoading: auctionsLoading } = usePublisherAuctions(
@@ -144,6 +148,8 @@ export default function PublisherPage() {
     auctionCount,
     isConnected,
   );
+  // New bids on this publisher's auctions refetch the list live.
+  const { isConnected: isAuctionFeedLive } = useLiveAuctionUpdates();
   const { data: subscriptionData } = useSubscription(
     address || '',
     isConnected,
@@ -390,8 +396,9 @@ export default function PublisherPage() {
           {activeTab === 'auctions' && (
             <div className="bg-white rounded-xl border border-gray-200 p-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-gray-900">
+                <h2 className="flex items-center gap-3 text-lg font-semibold text-gray-900">
                   Real-Time Bidding Auctions
+                  <LiveIndicator isConnected={isAuctionFeedLive} />
                 </h2>
                 {!showCreateAuction && (
                   <button
@@ -597,6 +604,8 @@ export default function PublisherPage() {
                         : earnings || 0n
                     }
                     pendingPayout={earnings || 0n}
+                    onWithdraw={async () => { await claimPublisherBalance(); }}
+                    isWithdrawing={isClaiming}
                     isSplitLoading={revenuePoolLoading}
                     revenueSplit={
                       revenuePool

@@ -1,13 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import {
-  Vote,
-  Clock,
-  CheckCircle,
-  XCircle,
-  BarChart2,
-} from 'lucide-react';
+import { Vote } from 'lucide-react';
 import { useWalletStore } from '@/store/wallet-store';
 import { WalletConnectButton } from '@/components/wallet/WalletModal';
 import {
@@ -17,39 +11,24 @@ import {
   useCastVote,
   useCreateProposal,
 } from '@/hooks/useContract';
-import { stroopsToXlm } from '@/lib/stellar-config';
 import { useToast } from '@/contexts/ToastContext';
-
-type ProposalStatus = 'Active' | 'Passed' | 'Rejected' | 'Executed';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { GovernanceStats } from '@/components/governance/GovernanceStats';
+import { ProposalCard } from '@/components/governance/ProposalCard';
+import { ProposalForm } from '@/components/governance/ProposalForm';
+import {
+  normalizeProposals,
+  toVoteType,
+  type ProposalVote,
+} from './adapters';
 
 type GovernanceTab = 'proposals' | 'create' | 'my_votes';
 
-const STATUS_COLORS: Record<ProposalStatus, string> = {
-  Active: 'bg-blue-100 text-blue-700',
-  Passed: 'bg-green-100 text-green-700',
-  Rejected: 'bg-red-100 text-red-700',
-  Executed: 'bg-gray-100 text-gray-700',
-};
-
-import { ErrorBoundary } from '@/components/ErrorBoundary';
-
-function toVotePercentage(votes: bigint, total: bigint) {
-  if (total === 0n) {
-    return 0;
-  }
-
-  return Number((votes * 10_000n) / total) / 100;
-}
+const DURATION_OPTIONS = Array.from({ length: 30 }, (_, index) => index + 1);
 
 export default function GovernancePage() {
   const { address, isConnected } = useWalletStore();
   const [activeTab, setActiveTab] = useState<GovernanceTab>('proposals');
-  const [proposalData, setProposalData] = useState({
-    title: '',
-    description: '',
-    votingPeriodDays: 7,
-  });
-  const [formError, setFormError] = useState<string | null>(null);
 
   // Fetch governance data
   const { data: balance, isLoading: balanceLoading } = useGovernanceBalance(
@@ -61,7 +40,10 @@ export default function GovernancePage() {
     useGovernanceProposals(proposalCount, isConnected);
   const { success, error: toastError } = useToast();
   const { castVote, isPending: voteLoading } = useCastVote();
-  const { createProposal, isPending: createLoading } = useCreateProposal();
+  const { createProposal } = useCreateProposal();
+
+  const normalizedProposals = normalizeProposals(proposals);
+  const hasBalance = (balance ?? 0n) > 0n;
 
   if (!isConnected) {
     return (
@@ -81,6 +63,14 @@ export default function GovernancePage() {
     );
   }
 
+  const handleVote = (proposalId: number, vote: ProposalVote) => {
+    void castVote({
+      proposalId,
+      voteType: toVoteType(vote),
+      votePower: balance ?? 0n,
+    });
+  };
+
   return (
     <ErrorBoundary name="GovernancePage" resetKeys={[activeTab]}>
       <div className="min-h-screen bg-gray-50">
@@ -98,40 +88,19 @@ export default function GovernancePage() {
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           {/* Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            {[
-              {
-                label: 'Your PULSAR Balance',
-                value: balanceLoading
-                  ? 'Loading...'
-                  : `${Number(stroopsToXlm(balance || 0n)).toFixed(2)} PULSAR`,
-                icon: BarChart2,
-              },
-              {
-                label: 'Voting Power',
-                value: balanceLoading
-                  ? 'Loading...'
-                  : Number(stroopsToXlm(balance || 0n)).toFixed(0),
-                icon: Vote,
-              },
-              {
-                label: 'Active Proposals',
-                value: proposalCount ?? '0',
-                icon: Clock,
-              },
-            ].map(({ label, value, icon: Icon }) => (
-              <div
-                key={label}
-                className="bg-white p-4 rounded-xl border border-gray-200 flex items-center gap-3"
-              >
-                <Icon className="w-8 h-8 text-indigo-500" />
-                <div>
-                  <p className="text-sm text-gray-600">{label}</p>
-                  <p className="text-xl font-bold text-gray-900">{value}</p>
-                </div>
-              </div>
-            ))}
-          </div>
+          {balanceLoading ? (
+            <div className="bg-white rounded-xl border border-gray-200 p-6 text-center mb-6">
+              <p className="text-gray-600">Loading governance data...</p>
+            </div>
+          ) : (
+            <div className="mb-6">
+              <GovernanceStats
+                proposals={normalizedProposals}
+                tokenBalance={balance ?? 0n}
+                votingPower={balance ?? 0n}
+              />
+            </div>
+          )}
 
           {/* Tabs */}
           <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit">
@@ -160,135 +129,26 @@ export default function GovernancePage() {
                 <div className="bg-white rounded-xl border border-gray-200 p-6 text-center">
                   <p className="text-gray-600">Loading proposals...</p>
                 </div>
-              ) : proposals && proposals.length > 0 ? (
-                proposals.map((proposal) => {
-                  const votesFor = proposal.votes_for || 0n;
-                  const votesAgainst = proposal.votes_against || 0n;
-                  const votesAbstain = proposal.votes_abstain || 0n;
-                  const total = votesFor + votesAgainst + votesAbstain;
-                  const forPct = toVotePercentage(votesFor, total);
-                  const againstPct = toVotePercentage(votesAgainst, total);
-
-                  return (
-                    <div
-                      key={proposal.id}
-                      className="bg-white rounded-xl border border-gray-200 p-6"
-                    >
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
-                          <h3 className="text-lg font-semibold text-gray-900">
-                            {proposal.title}
-                          </h3>
-                          <p className="text-sm text-gray-500 mt-1">
-                            By {proposal.proposer?.substring(0, 8)}...
-                            {proposal.proposer?.substring(
-                              proposal.proposer?.length - 4,
-                            )}{' '}
-                            &bull; Voting ends{' '}
-                            {new Date(
-                              Number(proposal.end_time) * 1000,
-                            ).toLocaleDateString()}
-                          </p>
-                        </div>
-                        <span
-                          className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            proposal.is_active
-                              ? STATUS_COLORS['Active']
-                              : STATUS_COLORS['Passed']
-                          }`}
-                        >
-                          {proposal.is_active ? 'Active' : 'Passed'}
-                        </span>
-                      </div>
-
-                      <p className="text-gray-600 text-sm mb-4">
-                        {proposal.description}
+              ) : normalizedProposals.length > 0 ? (
+                normalizedProposals.map((proposal) => (
+                  <div key={proposal.proposal_id.toString()}>
+                    <ProposalCard
+                      proposal={proposal}
+                      isVoting={voteLoading}
+                      onVote={proposal.status === 'Active' && hasBalance ? handleVote : undefined}
+                    />
+                    {proposal.status !== 'Active' && (
+                      <p className="text-sm text-gray-500 mt-2">
+                        Voting period has ended
                       </p>
-
-                      {/* Vote Bars */}
-                      <div className="space-y-2 mb-4">
-                        <div className="flex items-center gap-2">
-                          <CheckCircle className="w-4 h-4 text-green-500" />
-                          <div className="flex-1 bg-gray-100 rounded-full h-2">
-                            <div
-                              className="bg-green-500 rounded-full h-2 transition-all"
-                              style={{ width: `${forPct}%` }}
-                            />
-                          </div>
-                          <span className="text-xs text-gray-600 w-12 text-right">
-                            {forPct.toFixed(1)}%
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <XCircle className="w-4 h-4 text-red-500" />
-                          <div className="flex-1 bg-gray-100 rounded-full h-2">
-                            <div
-                              className="bg-red-500 rounded-full h-2 transition-all"
-                              style={{ width: `${againstPct}%` }}
-                            />
-                          </div>
-                          <span className="text-xs text-gray-600 w-12 text-right">
-                            {againstPct.toFixed(1)}%
-                          </span>
-                        </div>
-                      </div>
-
-                      {proposal.is_active && (balance ?? 0n) > 0n && (
-                        <div className="flex gap-3">
-                          <button
-                            onClick={() =>
-                              castVote({
-                                proposalId: proposal.id,
-                                voteType: 'For',
-                                votePower: balance || 0n,
-                              })
-                            }
-                            disabled={voteLoading}
-                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 transition-colors text-sm font-medium"
-                          >
-                            {voteLoading ? 'Voting...' : 'Vote For'}
-                          </button>
-                          <button
-                            onClick={() =>
-                              castVote({
-                                proposalId: proposal.id,
-                                voteType: 'Against',
-                                votePower: balance || 0n,
-                              })
-                            }
-                            disabled={voteLoading}
-                            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-400 transition-colors text-sm font-medium"
-                          >
-                            {voteLoading ? 'Voting...' : 'Vote Against'}
-                          </button>
-                          <button
-                            onClick={() =>
-                              castVote({
-                                proposalId: proposal.id,
-                                voteType: 'Abstain',
-                                votePower: balance || 0n,
-                              })
-                            }
-                            disabled={voteLoading}
-                            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:bg-gray-100 transition-colors text-sm font-medium"
-                          >
-                            {voteLoading ? 'Voting...' : 'Abstain'}
-                          </button>
-                        </div>
-                      )}
-                      {!proposal.is_active && (
-                        <p className="text-sm text-gray-500">
-                          Voting period has ended
-                        </p>
-                      )}
-                      {(balance ?? 0n) === 0n && (
-                        <p className="text-sm text-gray-500">
-                          You need PULSAR tokens to vote
-                        </p>
-                      )}
-                    </div>
-                  );
-                })
+                    )}
+                    {!hasBalance && (
+                      <p className="text-sm text-gray-500 mt-2">
+                        You need PULSAR tokens to vote
+                      </p>
+                    )}
+                  </div>
+                ))
               ) : (
                 <div className="bg-white rounded-xl border border-gray-200 p-6 text-center">
                   <p className="text-gray-600">No proposals yet</p>
@@ -302,119 +162,37 @@ export default function GovernancePage() {
               <h2 className="text-lg font-semibold text-gray-900 mb-6">
                 Create Governance Proposal
               </h2>
-              {(balance ?? 0n) === 0n ? (
+              {!hasBalance ? (
                 <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
                   <p className="text-sm text-yellow-800">
                     You need PULSAR tokens to create a proposal.
                   </p>
                 </div>
               ) : (
-                <form
-                  className="space-y-4"
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-                    setFormError(null);
-                    if (!proposalData.title.trim()) {
-                      setFormError('Title is required');
-                      return;
-                    }
-                    if (!proposalData.description.trim() || proposalData.description.length < 50) {
-                      setFormError('Description must be at least 50 characters');
-                      return;
-                    }
+                <ProposalForm
+                  durationOptions={DURATION_OPTIONS}
+                  onSubmit={async ({ title, description, durationDays }) => {
                     try {
                       await createProposal({
-                        title: proposalData.title,
-                        description: proposalData.description,
-                        votingPeriodDays: proposalData.votingPeriodDays,
+                        title,
+                        description,
+                        votingPeriodDays: durationDays,
                       });
-                      setProposalData({ title: '', description: '', votingPeriodDays: 7 });
-                      success('Proposal submitted', 'Your governance proposal has been created.');
+                      success(
+                        'Proposal submitted',
+                        'Your governance proposal has been created.',
+                      );
                     } catch (error) {
-                      // Issue #791 — surface the failure to the user, not just the console.
-                      // The form data is intentionally left intact so they can retry;
-                      // the submit button re-enables on its own once the mutation settles.
                       console.error('Failed to create proposal:', error);
                       toastError(
                         'Proposal submission failed',
                         error instanceof Error ? error.message : 'Please try again.',
                       );
+                      // Let ProposalForm keep the entered values visible for a retry.
+                      throw error;
                     }
                   }}
-                >
-                  <div>
-                    <label htmlFor="proposal-title" className="block text-sm font-medium text-gray-700 mb-1">
-                      Proposal Title
-                    </label>
-                    <input
-                      id="proposal-title"
-                      type="text"
-                      value={proposalData.title}
-                      onChange={(e) =>
-                        setProposalData({ ...proposalData, title: e.target.value })
-                      }
-                      maxLength={120}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                      placeholder="A concise title for your proposal"
-                      required
-                    />
-                    <p className="text-xs text-gray-400 mt-1 text-right">{proposalData.title.length}/120</p>
-                  </div>
-                  <div>
-                    <label htmlFor="proposal-description" className="block text-sm font-medium text-gray-700 mb-1">
-                      Description
-                    </label>
-                    <textarea
-                      id="proposal-description"
-                      value={proposalData.description}
-                      onChange={(e) =>
-                        setProposalData({ ...proposalData, description: e.target.value })
-                      }
-                      rows={4}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                      placeholder="Detailed explanation of the proposed change and its rationale..."
-                      required
-                    />
-                    <p className="text-xs text-gray-400 mt-1">
-                      {proposalData.description.length} chars {proposalData.description.length < 50 && `(need ${50 - proposalData.description.length} more)`}
-                    </p>
-                  </div>
-                  <div>
-                    <label htmlFor="proposal-voting-period" className="block text-sm font-medium text-gray-700 mb-1">
-                      Voting Period (days)
-                    </label>
-                    <input
-                      id="proposal-voting-period"
-                      type="number"
-                      value={proposalData.votingPeriodDays}
-                      onChange={(e) =>
-                        setProposalData({
-                          ...proposalData,
-                          votingPeriodDays: parseInt(e.target.value),
-                        })
-                      }
-                      min={1}
-                      max={30}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                      required
-                    />
-                  </div>
-                  {formError && (
-                    <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                      {formError}
-                    </div>
-                  )}
-                  <button
-                    type="submit"
-                    disabled={createLoading}
-                    className="w-full py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-gray-400 transition-colors font-medium"
-                  >
-                    {createLoading ? 'Creating...' : 'Submit Proposal'}
-                  </button>
-                  <p className="text-xs text-gray-500 text-center">
-                    Requires minimum PULSAR token balance to submit proposals.
-                  </p>
-                </form>
+                />
               )}
             </div>
           )}
