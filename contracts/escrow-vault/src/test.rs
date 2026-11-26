@@ -1108,3 +1108,43 @@ fn test_upgrade_admin_delegates_to_host() {
     let new_wasm_hash = BytesN::from_array(&env, &[1u8; 32]);
     c.upgrade(&new_wasm_hash);
 }
+
+#[test]
+#[should_panic(expected = "escrow already finalized")]
+fn test_hold_for_fraud_on_released_escrow_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let token_admin = Address::generate(&env);
+    let token_addr = deploy_token(&env, &token_admin);
+    let admin = Address::generate(&env);
+    let oracle = Address::generate(&env);
+    let contract_id = env.register(EscrowVaultContract, ());
+    let client = EscrowVaultContractClient::new(&env, &contract_id);
+    client.initialize(&admin, &token_addr, &oracle);
+
+    let fraud_contract = Address::generate(&env);
+    client.set_fraud_contract(&admin, &fraud_contract);
+
+    let depositor = Address::generate(&env);
+    let beneficiary = Address::generate(&env);
+    mint(&env, &token_admin, &token_addr, &depositor, 1_000_000);
+
+    let escrow_id = client.create_escrow(&EscrowCreateArgs {
+        depositor: depositor.clone(),
+        campaign_id: 1u64,
+        beneficiary: beneficiary.clone(),
+        amount: 100_000i128,
+        time_lock_duration: MIN_TIME_LOCK_SECS,
+        performance_threshold: 0u32,
+        expires_in: 999_999u64,
+        required_approvers: vec![&env],
+    });
+
+    env.ledger().set_timestamp(MIN_TIME_LOCK_SECS + 1);
+    client.release_escrow(&escrow_id);
+
+    let escrow = client.get_escrow(&escrow_id).unwrap();
+    assert!(matches!(escrow.state, EscrowState::Released));
+
+    client.hold_for_fraud(&fraud_contract, &escrow_id);
+}

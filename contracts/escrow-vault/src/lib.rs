@@ -189,6 +189,13 @@ impl EscrowVaultContract {
             .get(&DataKey::Escrow(escrow_id))
             .expect("escrow not found");
 
+        match escrow.state {
+            EscrowState::Released | EscrowState::Refunded => {
+                panic!("escrow already finalized");
+            }
+            _ => {}
+        }
+
         escrow.state = EscrowState::Disputed;
 
         let _ttl_key = DataKey::Escrow(escrow_id);
