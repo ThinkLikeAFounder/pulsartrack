@@ -1,0 +1,45 @@
+# Shared build context for backend/ and frontend/ (see docker-compose.yml).
+# The context is the repository root so packages/sentry-scrubber is reachable.
+
+# Dependencies and build output
+**/node_modules
+**/dist
+backend/build
+frontend/build
+**/.next
+frontend/out
+**/coverage
+**/.nyc_output
+**/*.tsbuildinfo
+**/npm-debug.log*
+
+# Tests
+backend/test
+backend/tests
+**/*.test.ts
+**/*.spec.ts
+
+# Environment files
+**/.env
+**/.env.*
+
+# Parts of the repo no image needs
+.git
+.github
+contracts
+target
+deployments
+docs
+scripts
+**/*.md
+**/Dockerfile
+**/.dockerignore
+docker-compose*.yml
+
+# IDE / OS / misc
+.vscode
+.idea
+**/*.swp
+**/*.swo
+**/.DS_Store
+**/*.log

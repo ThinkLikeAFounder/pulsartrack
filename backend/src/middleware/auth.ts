@@ -208,6 +208,7 @@ export function rateLimitWrite() {
       if (writeLimiter) {
         await writeLimiter.consume(address);
       }
+      next();
     } catch {
       res
         .status(429)

@@ -1,10 +1,26 @@
 # Frontend Dockerfile - Multi-stage build for Next.js
+# Build from the repository root: docker build -f frontend/Dockerfile .
+# Stage 0: Build the shared @pulsartrack/sentry-scrubber package.
+# backend/package.json and frontend/package.json reference it as
+# "file:../packages/sentry-scrubber". The build context is the repository root
+# (see docker-compose.yml), and WORKDIR /app makes "../packages" resolve to
+# /packages, so the package is placed there in every stage that needs it.
+FROM node:22-alpine AS scrubber
+WORKDIR /packages/sentry-scrubber
+COPY packages/sentry-scrubber/ ./
+RUN npm install --no-audit --no-fund --no-package-lock \
+    && npm run build \
+    && npm prune --omit=dev
+
 # Stage 1: Dependencies
 FROM node:22-alpine AS deps
 WORKDIR /app
 
+# Shared package that node_modules/@pulsartrack/sentry-scrubber links to
+COPY --from=scrubber /packages/sentry-scrubber /packages/sentry-scrubber
+
 # Install dependencies based on the preferred package manager
-COPY package.json package-lock.json* ./
+COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm ci
 
 # Stage 2: Builder
@@ -13,9 +29,10 @@ WORKDIR /app
 
 # Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
+COPY --from=scrubber /packages/sentry-scrubber /packages/sentry-scrubber
 
 # Copy source code
-COPY . .
+COPY frontend/ .
 
 # Set environment variables for build
 ENV NEXT_TELEMETRY_DISABLED=1

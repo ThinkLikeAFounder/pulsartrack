@@ -1,12 +1,28 @@
 # Backend Dockerfile - Multi-stage build for TypeScript Express API
+# Build from the repository root: docker build -f backend/Dockerfile .
+# Stage 0: Build the shared @pulsartrack/sentry-scrubber package.
+# backend/package.json and frontend/package.json reference it as
+# "file:../packages/sentry-scrubber". The build context is the repository root
+# (see docker-compose.yml), and WORKDIR /app makes "../packages" resolve to
+# /packages, so the package is placed there in every stage that needs it.
+FROM node:22-alpine AS scrubber
+WORKDIR /packages/sentry-scrubber
+COPY packages/sentry-scrubber/ ./
+RUN npm install --no-audit --no-fund --no-package-lock \
+    && npm run build \
+    && npm prune --omit=dev
+
 # Stage 1: Dependencies - Install everything for building
 FROM node:22-alpine AS deps
 WORKDIR /app
 
-# Copy package files
-COPY package.json package-lock.json* ./
+# Shared package that node_modules/@pulsartrack/sentry-scrubber links to
+COPY --from=scrubber /packages/sentry-scrubber /packages/sentry-scrubber
 
-COPY prisma ./prisma
+# Copy package files
+COPY backend/package.json backend/package-lock.json* ./
+
+COPY backend/prisma ./prisma
 
 # Install all dependencies (development + production)
 RUN npm ci && npm cache clean --force
@@ -17,10 +33,11 @@ WORKDIR /app
 
 # Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
-COPY package.json ./
+COPY --from=scrubber /packages/sentry-scrubber /packages/sentry-scrubber
+COPY backend/package.json ./
 
 # Copy source code
-COPY . .
+COPY backend/ .
 
 # Build TypeScript
 RUN npm run build
@@ -36,8 +53,9 @@ RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 expressjs
 
 # Copy everything from builder to ensure we have dependencies for pruning
-COPY package.json ./
+COPY backend/package.json ./
 COPY --from=deps /app/node_modules ./node_modules
+COPY --from=scrubber /packages/sentry-scrubber /packages/sentry-scrubber
 
 # Prune devDependencies for production
 RUN npm prune --production
