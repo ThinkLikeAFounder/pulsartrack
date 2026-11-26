@@ -189,6 +189,10 @@ impl BudgetOptimizerContract {
             panic!("unauthorized");
         }
 
+        if new_daily_budget < 0 {
+            panic!("daily budget must be non-negative");
+        }
+
         let mut allocation: BudgetAllocation = env
             .storage()
             .persistent()

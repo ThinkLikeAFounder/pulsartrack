@@ -363,3 +363,56 @@ fn test_set_auction_contract_unauthorized() {
     let (c, _, _, _) = setup(&env);
     c.set_auction_contract(&Address::generate(&env), &Address::generate(&env));
 }
+
+#[test]
+#[should_panic(expected = "campaign is not active")]
+fn test_pause_cancelled_campaign_panics() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _, _, token) = setup(&env);
+    let advertiser = Address::generate(&env);
+    mint(&env, &token, &advertiser, 5_000_000);
+
+    let id = c.create_campaign(&CampaignCreateArgs {
+        advertiser: advertiser.clone(),
+        campaign_type: 1u32,
+        budget: 1_000_000i128,
+        cost_per_view: 100i128,
+        duration: 1000u32,
+        target_views: 10_000u64,
+        daily_view_limit: 5_000u64,
+        refundable: true,
+    });
+
+    c.cancel_campaign(&advertiser, &id);
+    c.pause_campaign(&advertiser, &id);
+}
+
+#[test]
+fn test_pause_resume_cannot_revive_terminal_campaign() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, _, _, token) = setup(&env);
+    let advertiser = Address::generate(&env);
+    mint(&env, &token, &advertiser, 5_000_000);
+
+    let id = c.create_campaign(&CampaignCreateArgs {
+        advertiser: advertiser.clone(),
+        campaign_type: 1u32,
+        budget: 1_000_000i128,
+        cost_per_view: 100i128,
+        duration: 1000u32,
+        target_views: 10_000u64,
+        daily_view_limit: 5_000u64,
+        refundable: true,
+    });
+
+    c.cancel_campaign(&advertiser, &id);
+    assert!(c.try_pause_campaign(&advertiser, &id).is_err());
+    assert!(c.try_resume_campaign(&advertiser, &id).is_err());
+
+    let campaign = c.get_campaign(&id).unwrap();
+    assert!(matches!(campaign.status, CampaignStatus::Cancelled));
+    let stats = c.get_advertiser_stats(&advertiser).unwrap();
+    assert_eq!(stats.active_campaigns, 0);
+}

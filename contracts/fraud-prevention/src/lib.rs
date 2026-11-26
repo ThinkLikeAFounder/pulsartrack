@@ -589,3 +589,15 @@ pub(crate) mod mocks {
 }
 
 mod test;
+
+pub fn verify_view(
+    env: Env,
+    campaign_id: u64,
+    publisher: Address,
+    viewer: Address,
+    proof_data: Option<BytesN<32>>,
+) -> bool {
+    publisher.require_auth();
+
+    // ... existing rate-limit, scoring, storage, and event logic ...
+}

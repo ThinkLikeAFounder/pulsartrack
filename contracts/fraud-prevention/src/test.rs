@@ -1,8 +1,8 @@
 #![cfg(test)]
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as _, Ledger},
-    Address, BytesN, Env,
+    testutils::{Address as _, Ledger, MockAuth, MockAuthInvoke},
+    Address, BytesN, Env, IntoVal,
 };
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -358,6 +358,109 @@ fn test_clear_flag_unauthorized() {
 }
 
 // ─── verify_view ─────────────────────────────────────────────────────────────
+
+#[test]
+#[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
+fn test_verify_view_without_publisher_auth_fails() {
+    let env = Env::default();
+    let (client, admin) = {
+        env.mock_all_auths();
+        setup(&env)
+    };
+
+    let publisher = Address::generate(&env);
+    let viewer = Address::generate(&env);
+    let lifecycle = env.register(mocks::CampaignLifecycleContract, ());
+    let network = Address::generate(&env);
+    let vault = Address::generate(&env);
+
+    env.mock_all_auths();
+    client.set_dependent_contracts(&admin, &lifecycle, &network, &vault);
+
+    // Clear auth mocks before calling verify_view with no authorization for `publisher`.
+    let env_unauth = Env::default();
+    let admin_u = Address::generate(&env_unauth);
+    let contract_id = env_unauth.register(FraudPreventionContract, ());
+    let unauth_client = FraudPreventionContractClient::new(&env_unauth, &contract_id);
+    env_unauth.mock_all_auths();
+    unauth_client.initialize(&admin_u);
+
+    // Re-run on `env` where `publisher` has no auth mocked:
+    let _ = (&client, &publisher, &viewer, &lifecycle);
+    let fresh_env = Env::default();
+    let fresh_admin = Address::generate(&fresh_env);
+    let fresh_cid = fresh_env.register(FraudPreventionContract, ());
+    let fresh_client = FraudPreventionContractClient::new(&fresh_env, &fresh_cid);
+    {
+        fresh_env.mock_all_auths();
+        fresh_client.initialize(&fresh_admin);
+    }
+    let fresh_publisher = Address::generate(&fresh_env);
+    let fresh_viewer = Address::generate(&fresh_env);
+    // No mock_all_auths() active on `fresh_env` -> panics with Auth InvalidAction
+    fresh_client.verify_view(&1u64, &fresh_publisher, &fresh_viewer, &None);
+}
+
+#[test]
+#[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
+fn test_verify_view_wrong_signer_fails() {
+    let env = Env::default();
+    let admin = Address::generate(&env);
+    let contract_id = env.register(FraudPreventionContract, ());
+    let client = FraudPreventionContractClient::new(&env, &contract_id);
+    {
+        env.mock_all_auths();
+        client.initialize(&admin);
+    }
+
+    let publisher = Address::generate(&env);
+    let imposter = Address::generate(&env);
+    let viewer = Address::generate(&env);
+
+    // Authorize `imposter` instead of `publisher` for `verify_view`.
+    env.mock_auths(&[MockAuth {
+        address: &imposter,
+        invoke: &MockAuthInvoke {
+            contract: &contract_id,
+            fn_name: "verify_view",
+            args: (1u64, &publisher, &viewer, Option::<BytesN<32>>::None).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+
+    client.verify_view(&1u64, &publisher, &viewer, &None);
+}
+
+#[test]
+fn test_verify_view_legitimate_publisher_with_auth() {
+    let env = Env::default();
+    let admin = Address::generate(&env);
+    let contract_id = env.register(FraudPreventionContract, ());
+    let client = FraudPreventionContractClient::new(&env, &contract_id);
+    {
+        env.mock_all_auths();
+        client.initialize(&admin);
+    }
+
+    let publisher = Address::generate(&env);
+    let viewer = Address::generate(&env);
+    let proof = BytesN::from_array(&env, &[9u8; 32]);
+
+    // Authorize specifically `publisher` for `verify_view` without broad `mock_all_auths()`.
+    env.mock_auths(&[MockAuth {
+        address: &publisher,
+        invoke: &MockAuthInvoke {
+            contract: &contract_id,
+            fn_name: "verify_view",
+            args: (1u64, &publisher, &viewer, Some(proof.clone())).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+
+    let verified = client.verify_view(&1u64, &publisher, &viewer, &Some(proof));
+    assert!(verified);
+    assert_eq!(client.get_total_verifications(), 1);
+}
 
 #[test]
 fn test_verify_view_with_proof() {

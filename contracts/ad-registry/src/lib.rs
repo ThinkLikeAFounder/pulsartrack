@@ -360,9 +360,14 @@ impl AdRegistryContract {
             .expect("performance not found");
 
         let viewer_key = DataKey::ViewerSeen(content_id, viewer.clone());
-        if !env.storage().temporary().has(&viewer_key) {
+        if !env.storage().persistent().has(&viewer_key) {
             perf.unique_viewers += 1;
-            env.storage().temporary().set(&viewer_key, &true);
+            env.storage().persistent().set(&viewer_key, &true);
+            env.storage().persistent().extend_ttl(
+                &viewer_key,
+                PERSISTENT_LIFETIME_THRESHOLD,
+                PERSISTENT_BUMP_AMOUNT,
+            );
         }
 
         perf.total_views += 1;

@@ -327,3 +327,46 @@ fn test_update_metadata_suspended_fails() {
     c.suspend_identity(&admin, &account);
     c.update_metadata(&account, &s(&env, "QmNew"));
 }
+
+#[test]
+fn test_reinstate_identity() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin) = setup(&env);
+    let account = Address::generate(&env);
+    c.register(
+        &account,
+        &IdentityType::Advertiser,
+        &s(&env, "Alice"),
+        &s(&env, "QmOld"),
+    );
+    c.verify_identity(&admin, &account, &s(&env, "QmCred"));
+    assert!(c.is_verified(&account));
+
+    c.suspend_identity(&admin, &account);
+    assert!(!c.is_verified(&account));
+    let id_suspended = c.get_identity(&account).unwrap();
+    assert_eq!(id_suspended.status, IdentityStatus::Suspended);
+
+    c.reinstate_identity(&admin, &account);
+    assert!(c.is_verified(&account));
+    let id_reinstated = c.get_identity(&account).unwrap();
+    assert_eq!(id_reinstated.status, IdentityStatus::Verified);
+}
+
+#[test]
+fn test_revoke_identity() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (c, admin) = setup(&env);
+    let account = Address::generate(&env);
+    c.register(
+        &account,
+        &IdentityType::Advertiser,
+        &s(&env, "Alice"),
+        &s(&env, "QmOld"),
+    );
+    c.revoke_identity(&admin, &account);
+    let id = c.get_identity(&account).unwrap();
+    assert_eq!(id.status, IdentityStatus::Revoked);
+}

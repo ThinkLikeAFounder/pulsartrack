@@ -268,6 +268,66 @@ impl IdentityRegistryContract {
         );
     }
 
+    pub fn reinstate_identity(env: Env, admin: Address, account: Address) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+
+        let mut identity: Identity = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Identity(account.clone()))
+            .expect("identity not found");
+
+        if identity.status != IdentityStatus::Suspended {
+            panic!("identity is not suspended");
+        }
+
+        identity.status = IdentityStatus::Verified;
+        let _ttl_key = DataKey::Identity(account);
+        env.storage().persistent().set(&_ttl_key, &identity);
+        env.storage().persistent().extend_ttl(
+            &_ttl_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+    }
+
+    pub fn unsuspend_identity(env: Env, admin: Address, account: Address) {
+        Self::reinstate_identity(env, admin, account);
+    }
+
+    pub fn revoke_identity(env: Env, admin: Address, account: Address) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic!("unauthorized");
+        }
+
+        let mut identity: Identity = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Identity(account.clone()))
+            .expect("identity not found");
+
+        identity.status = IdentityStatus::Revoked;
+        let _ttl_key = DataKey::Identity(account);
+        env.storage().persistent().set(&_ttl_key, &identity);
+        env.storage().persistent().extend_ttl(
+            &_ttl_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+    }
+
     pub fn get_identity(env: Env, account: Address) -> Option<Identity> {
         env.storage()
             .instance()
