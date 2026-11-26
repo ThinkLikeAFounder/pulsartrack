@@ -6,7 +6,7 @@ version: "3.8"
 services:
   # PostgreSQL Database
   db:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     container_name: pulsartrack-db-dev
     restart: unless-stopped
     environment:
