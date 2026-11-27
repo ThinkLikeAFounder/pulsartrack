@@ -13,7 +13,7 @@
   "author": "",
   "license": "Apache-2.0",
   "devDependencies": {
-    "@stellar/stellar-sdk": "^17.2.1",
+    "@stellar/stellar-sdk": "^17.4.0",
     "@types/node": "^25.2.3",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
